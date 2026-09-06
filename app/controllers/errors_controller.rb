@@ -44,8 +44,10 @@ class ErrorsController < ApplicationController
 
   def derived_status
     exception = request.env["action_dispatch.exception"]
-    status = ActionDispatch::ExceptionWrapper.new(request.env["action_dispatch.backtrace_cleaner"], exception).status_code
+    wrapper = ActionDispatch::ExceptionWrapper.new(
+      request.env["action_dispatch.backtrace_cleaner"], exception
+    )
 
-    STATUS_MESSAGES.key?(status) ? status : 500
+    STATUS_MESSAGES.key?(wrapper.status_code) ? wrapper.status_code : 500
   end
 end

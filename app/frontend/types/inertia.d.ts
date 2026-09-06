@@ -1,4 +1,4 @@
-import type { PageProps as InertiaPageProps } from '@inertiajs/core'
+import type { PageProps as InertiaPageProps } from '@inertiajs/core';
 
 /**
  * Props every Inertia page receives, shared from the Rails side by
@@ -11,11 +11,11 @@ import type { PageProps as InertiaPageProps } from '@inertiajs/core'
  */
 export interface SharedProps {
   /** Correlates a browser action with the server log line that produced it. */
-  requestId: string
+  requestId: string;
   flash: {
-    notice: string | null
-    alert: string | null
-  }
+    notice: string | null;
+    alert: string | null;
+  };
 }
 
 declare module '@inertiajs/core' {

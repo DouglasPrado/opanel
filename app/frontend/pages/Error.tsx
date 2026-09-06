@@ -1,9 +1,9 @@
-import { Head, usePage } from '@inertiajs/react'
+import { Head, usePage } from '@inertiajs/react';
 
 interface ErrorProps {
-  status: number
-  title: string
-  message: string
+  status: number;
+  title: string;
+  message: string;
 }
 
 /**
@@ -14,7 +14,7 @@ interface ErrorProps {
  * attacker and not the operator (Annex C §17).
  */
 export default function ErrorPage({ status, title, message }: ErrorProps) {
-  const { requestId } = usePage().props
+  const { requestId } = usePage().props;
 
   return (
     <>
@@ -35,5 +35,5 @@ export default function ErrorPage({ status, title, message }: ErrorProps) {
         </p>
       </main>
     </>
-  )
+  );
 }

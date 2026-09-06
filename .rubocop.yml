@@ -1,0 +1,64 @@
+# Omakase is the Rails default ruleset. What follows specializes it with the rules
+# Annex I §7.1 makes normative; it does not relax it.
+#
+# Suppressing a rule requires a written justification referencing a Story or an
+# ADR — see docs/engineering/lint-suppressions.md. `bin/lint` rejects a suppression
+# without one, so a `# rubocop:disable` cannot be used to get past a gate quietly.
+inherit_gem:
+  rubocop-rails-omakase: rubocop.yml
+
+require:
+  - ./lib/rubocop/cop/opanel/silent_rescue.rb
+  - ./lib/rubocop/cop/opanel/unclassified_error.rb
+
+AllCops:
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - 'bin/bundler-audit'
+    - 'db/schema.rb'
+    - 'db/migrate/20260906130000_create_solid_queue_tables.rb' # vendored Solid Queue schema
+    - 'node_modules/**/*'
+    - 'vendor/**/*'
+    - 'tmp/**/*'
+    - 'log/**/*'
+    - 'public/**/*'
+
+# A broad rescue that answers "it worked" hides a failure from every caller above
+# it. This is the rule Annex I §7.1 states in words.
+Opanel/SilentRescue:
+  Enabled: true
+
+# The class of an error decides retry, HTTP status and the client response. A bare
+# message produces a RuntimeError nothing can branch on.
+Opanel/UnclassifiedError:
+  Enabled: true
+  Exclude:
+    # Probe controllers and fixtures raise on purpose to exercise a failure path;
+    # the class is irrelevant there because nothing branches on it.
+    - 'spec/**/*'
+    - 'lib/gates/**/*'
+
+# An empty rescue is the other half of SilentRescue: it swallows without even
+# pretending to answer.
+Lint/SuppressedException:
+  Enabled: true
+  AllowComments: true
+
+# A `rescue` with no class rescues StandardError implicitly. Saying so makes the
+# breadth visible in review.
+Style/RescueStandardError:
+  Enabled: true
+  EnforcedStyle: explicit
+
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+Metrics:
+  Enabled: false
+
+Layout/LineLength:
+  Enabled: true
+  Max: 120
+  AllowedPatterns:
+    - '\A\s*#' # a comment that explains a trade-off is worth more than its width

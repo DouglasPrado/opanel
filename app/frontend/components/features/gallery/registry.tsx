@@ -1,7 +1,12 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react';
 
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
-import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,10 +17,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import { AspectRatio } from '@/components/ui/aspect-ratio'
-import { Avatar, AvatarFallback, AvatarGroup } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
+} from '@/components/ui/alert-dialog';
+import { AspectRatio } from '@/components/ui/aspect-ratio';
+import { Avatar, AvatarFallback, AvatarGroup } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -23,19 +28,19 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb'
-import { Button } from '@/components/ui/button'
-import { ButtonGroup, ButtonGroupSeparator, ButtonGroupText } from '@/components/ui/button-group'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+} from '@/components/ui/breadcrumb';
+import { Button } from '@/components/ui/button';
+import { ButtonGroup, ButtonGroupSeparator, ButtonGroupText } from '@/components/ui/button-group';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from '@/components/ui/context-menu'
+} from '@/components/ui/context-menu';
 import {
   Dialog,
   DialogContent,
@@ -44,8 +49,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
-import { DirectionProvider } from '@/components/ui/direction'
+} from '@/components/ui/dialog';
+import { DirectionProvider } from '@/components/ui/direction';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,26 +58,45 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
-import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
-import { Icons, LineMdIcon } from '@/components/ui/icons'
-import { Input } from '@/components/ui/input'
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
-import { Kbd, KbdGroup } from '@/components/ui/kbd'
-import { Label } from '@/components/ui/label'
-import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
-import { Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarTrigger } from '@/components/ui/menubar'
-import { Message, MessageContent, MessageGroup, MessageHeader } from '@/components/ui/message'
+} from '@/components/ui/dropdown-menu';
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { Icons, LineMdIcon } from '@/components/ui/icons';
+import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle,
+} from '@/components/ui/item';
+import { Kbd, KbdGroup } from '@/components/ui/kbd';
+import { Label } from '@/components/ui/label';
+import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker';
+import {
+  Menubar,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarTrigger,
+} from '@/components/ui/menubar';
+import { Message, MessageContent, MessageGroup, MessageHeader } from '@/components/ui/message';
 import {
   NavigationMenu,
   NavigationMenuItem,
   NavigationMenuLink,
   NavigationMenuList,
   navigationMenuTriggerStyle,
-} from '@/components/ui/navigation-menu'
+} from '@/components/ui/navigation-menu';
 import {
   Pagination,
   PaginationContent,
@@ -80,13 +104,19 @@ import {
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
-} from '@/components/ui/pagination'
-import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
-import { Progress } from '@/components/ui/progress'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
+} from '@/components/ui/pagination';
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
+import { Progress } from '@/components/ui/progress';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import {
   Sheet,
   SheetContent,
@@ -94,21 +124,28 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '@/components/ui/sheet'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Slider } from '@/components/ui/slider'
-import { Spinner } from '@/components/ui/spinner'
-import { Switch } from '@/components/ui/switch'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
-import { Title } from '@/components/ui/title'
-import { Toggle } from '@/components/ui/toggle'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+} from '@/components/ui/sheet';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Slider } from '@/components/ui/slider';
+import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { Title } from '@/components/ui/title';
+import { Toggle } from '@/components/ui/toggle';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-import { Notifications } from '@/components/shared/notifications'
-import { Profile } from '@/components/shared/profile'
+import { Notifications } from '@/components/shared/notifications';
+import { Profile } from '@/components/shared/profile';
 
 import {
   AppShell,
@@ -117,7 +154,7 @@ import {
   AppShellNavbar,
   AppShellSidebar,
   AppShellTrigger,
-} from '@/components/layouts/app-shell'
+} from '@/components/layouts/app-shell';
 import {
   Sidebar,
   SidebarContent,
@@ -127,25 +164,25 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-} from '@/components/layouts/sidebar'
+} from '@/components/layouts/sidebar';
 
-export type GalleryCategory = 'ui' | 'shared' | 'layouts'
+export type GalleryCategory = 'ui' | 'shared' | 'layouts';
 
 export interface GalleryEntry {
   /** Directory name under app/frontend/components/<category>/. */
-  name: string
-  category: GalleryCategory
-  render: () => ReactNode
+  name: string;
+  category: GalleryCategory;
+  render: () => ReactNode;
 }
 
 function ControlledSwitch() {
-  const [on, setOn] = useState(false)
-  return <Switch checked={on} onCheckedChange={setOn} aria-label="Toggle example" />
+  const [on, setOn] = useState(false);
+  return <Switch checked={on} onCheckedChange={setOn} aria-label="Toggle example" />;
 }
 
 function ControlledSlider() {
-  const [value, setValue] = useState([40])
-  return <Slider value={value} onValueChange={setValue} max={100} step={1} className="w-64" />
+  const [value, setValue] = useState([40]);
+  return <Slider value={value} onValueChange={setValue} max={100} step={1} className="w-64" />;
 }
 
 /**
@@ -188,7 +225,9 @@ export const galleryEntries: GalleryEntry[] = [
     category: 'ui',
     render: () => (
       <AlertDialog>
-        <AlertDialogTrigger asChild><Button variant="destructive">Delete</Button></AlertDialogTrigger>
+        <AlertDialogTrigger asChild>
+          <Button variant="destructive">Delete</Button>
+        </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this service?</AlertDialogTitle>
@@ -207,7 +246,9 @@ export const galleryEntries: GalleryEntry[] = [
     category: 'ui',
     render: () => (
       <AspectRatio ratio={16 / 9} className="bg-muted w-64 rounded-md">
-        <div className="text-muted-foreground flex h-full items-center justify-center text-xs">16 / 9</div>
+        <div className="text-muted-foreground flex h-full items-center justify-center text-xs">
+          16 / 9
+        </div>
       </AspectRatio>
     ),
   },
@@ -312,7 +353,11 @@ export const galleryEntries: GalleryEntry[] = [
     category: 'ui',
     render: () => (
       <Collapsible className="w-64">
-        <CollapsibleTrigger asChild><Button size="sm" variant="ghost">Environment variables</Button></CollapsibleTrigger>
+        <CollapsibleTrigger asChild>
+          <Button size="sm" variant="ghost">
+            Environment variables
+          </Button>
+        </CollapsibleTrigger>
         <CollapsibleContent className="text-muted-foreground pt-2 text-sm">
           4 variables, 2 bound to secrets
         </CollapsibleContent>
@@ -340,7 +385,9 @@ export const galleryEntries: GalleryEntry[] = [
     category: 'ui',
     render: () => (
       <Dialog>
-        <DialogTrigger asChild><Button size="sm">Open dialog</Button></DialogTrigger>
+        <DialogTrigger asChild>
+          <Button size="sm">Open dialog</Button>
+        </DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Scale service</DialogTitle>
@@ -369,7 +416,11 @@ export const galleryEntries: GalleryEntry[] = [
     category: 'ui',
     render: () => (
       <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button size="sm" variant="outline">Actions</Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="outline">
+            Actions
+          </Button>
+        </DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuLabel>Service</DropdownMenuLabel>
           <DropdownMenuSeparator />
@@ -411,8 +462,14 @@ export const galleryEntries: GalleryEntry[] = [
     category: 'ui',
     render: () => (
       <HoverCard>
-        <HoverCardTrigger asChild><Button size="sm" variant="link">sha256:9f2c…</Button></HoverCardTrigger>
-        <HoverCardContent className="text-sm">Immutable digest of the deployed release.</HoverCardContent>
+        <HoverCardTrigger asChild>
+          <Button size="sm" variant="link">
+            sha256:9f2c…
+          </Button>
+        </HoverCardTrigger>
+        <HoverCardContent className="text-sm">
+          Immutable digest of the deployed release.
+        </HoverCardContent>
       </HoverCard>
     ),
   },
@@ -558,7 +615,11 @@ export const galleryEntries: GalleryEntry[] = [
     category: 'ui',
     render: () => (
       <Popover>
-        <PopoverTrigger asChild><Button size="sm" variant="outline">Details</Button></PopoverTrigger>
+        <PopoverTrigger asChild>
+          <Button size="sm" variant="outline">
+            Details
+          </Button>
+        </PopoverTrigger>
         <PopoverContent>
           <PopoverTitle>Task 1 of 3</PopoverTitle>
           <p className="text-muted-foreground text-sm">Running on node-a since 12m ago.</p>
@@ -593,8 +654,8 @@ export const galleryEntries: GalleryEntry[] = [
     render: () => (
       <ScrollArea className="border-border h-24 w-64 rounded-md border p-3">
         <p className="text-muted-foreground text-sm">
-          A long stream of reconciliation output that has to scroll inside its own container rather than
-          growing the page.
+          A long stream of reconciliation output that has to scroll inside its own container rather
+          than growing the page.
         </p>
       </ScrollArea>
     ),
@@ -628,7 +689,11 @@ export const galleryEntries: GalleryEntry[] = [
     category: 'ui',
     render: () => (
       <Sheet>
-        <SheetTrigger asChild><Button size="sm" variant="outline">Open sheet</Button></SheetTrigger>
+        <SheetTrigger asChild>
+          <Button size="sm" variant="outline">
+            Open sheet
+          </Button>
+        </SheetTrigger>
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Operation timeline</SheetTitle>
@@ -649,15 +714,18 @@ export const galleryEntries: GalleryEntry[] = [
     ),
   },
   {
-    name: 'slider', category: 'ui',
+    name: 'slider',
+    category: 'ui',
     render: () => <ControlledSlider />,
   },
   {
-    name: 'spinner', category: 'ui',
+    name: 'spinner',
+    category: 'ui',
     render: () => <Spinner />,
   },
   {
-    name: 'switch', category: 'ui',
+    name: 'switch',
+    category: 'ui',
     render: () => <ControlledSwitch />,
   },
   {
@@ -737,7 +805,11 @@ export const galleryEntries: GalleryEntry[] = [
     render: () => (
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild><Button size="sm" variant="outline">Hover</Button></TooltipTrigger>
+          <TooltipTrigger asChild>
+            <Button size="sm" variant="outline">
+              Hover
+            </Button>
+          </TooltipTrigger>
           <TooltipContent>Desired revision 12, applied revision 12.</TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -786,7 +858,9 @@ export const galleryEntries: GalleryEntry[] = [
             </SidebarContent>
           </AppShellSidebar>
           <AppShellMain>
-            <AppShellContent className="text-muted-foreground text-sm">Page content</AppShellContent>
+            <AppShellContent className="text-muted-foreground text-sm">
+              Page content
+            </AppShellContent>
           </AppShellMain>
         </AppShell>
       </div>
@@ -817,4 +891,4 @@ export const galleryEntries: GalleryEntry[] = [
       </div>
     ),
   },
-]
+];

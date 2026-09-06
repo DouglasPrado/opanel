@@ -39,4 +39,8 @@ group :development, :test do
 
   # Test runner for unit/integration/request/policy/contract suites (SC-03).
   gem "rspec-rails", "~> 8.0"
+
+  # Ruby style and lint. Omakase is the Rails default ruleset; the project rules
+  # that specialize it live in .rubocop.yml.
+  gem "rubocop-rails-omakase", require: false
 end

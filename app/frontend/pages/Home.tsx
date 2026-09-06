@@ -1,14 +1,14 @@
-import { useState } from 'react'
-import { Head, usePage } from '@inertiajs/react'
+import { useState } from 'react';
+import { Head, usePage } from '@inertiajs/react';
 
 interface HomeProps {
   /** Server-driven. The page renders what the Control Plane says, not what it remembers. */
   platform: {
-    name: string
-    environment: string
-  }
+    name: string;
+    environment: string;
+  };
   /** Present only when the server has something to report about this page. */
-  error?: string | null
+  error?: string | null;
 }
 
 /**
@@ -23,8 +23,8 @@ interface HomeProps {
 export default function Home({ platform, error = null }: HomeProps) {
   // Local UI state: it belongs to this page and nowhere else, so it does not go
   // near a global store (Annex I §6.4).
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const { requestId } = usePage().props
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const { requestId } = usePage().props;
 
   return (
     <>
@@ -71,5 +71,5 @@ export default function Home({ platform, error = null }: HomeProps) {
         </footer>
       </main>
     </>
-  )
+  );
 }

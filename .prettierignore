@@ -1,0 +1,34 @@
+# Prettier owns the JavaScript/TypeScript/CSS side of the repository. Ruby belongs
+# to RuboCop, and prose belongs to nobody — reformatting the specification would
+# produce a diff no reviewer could read.
+#
+# The pattern is "ignore everything, then re-include what Prettier owns".
+
+/assets
+/bin
+/config
+/db
+/docs
+/lib
+/log
+/node_modules
+/public
+/scripts
+/spec
+/tmp
+/vendor
+/coverage
+/playwright-report
+/test-results
+/.claude
+**/*.md
+**/*.MD
+/Gemfile*
+/*.yml
+/*.yaml
+/Rakefile
+/config.ru
+package-lock.json
+
+/app/*
+!/app/frontend

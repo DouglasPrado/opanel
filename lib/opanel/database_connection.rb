@@ -25,11 +25,21 @@ module Opanel
     # Ordered: the first pattern that matches wins, so the specific causes are
     # listed before the generic connection failure.
     CLASSIFIERS = [
-      [ :authentication_failed, /password authentication failed|no pg_hba\.conf entry|role .* does not exist/i ],
-      [ :database_missing, /database .* does not exist/i ],
-      [ :timeout, /timeout expired|could not receive data from server|statement timeout/i ],
-      [ :host_unreachable, /could not connect to server|connection refused|could not translate host name|no such file or directory|is the server running/i ],
-      [ :configuration_invalid, /invalid (connection option|integer value)|missing .* configuration/i ]
+      [ :authentication_failed,
+        /password authentication failed|no pg_hba\.conf entry|role .* does not exist/i ],
+      [ :database_missing,
+        /database .* does not exist/i ],
+      [ :timeout,
+        /timeout expired|could not receive data from server|statement timeout/i ],
+      [ :host_unreachable, Regexp.union(
+        /could not connect to server/i,
+        /connection refused/i,
+        /could not translate host name/i,
+        /no such file or directory/i,
+        /is the server running/i
+      ) ],
+      [ :configuration_invalid,
+        /invalid (connection option|integer value)|missing .* configuration/i ]
     ].freeze
 
     # Secrets never reach a log, an exception or a response (Annex C §17.1). PG

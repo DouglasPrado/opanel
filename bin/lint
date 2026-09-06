@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Lint: RuboCop for Ruby, ESLint for TypeScript/React, and the Suppression Gate
+# over both.
+#
+#   bin/lint              # the whole repository
+#   bin/lint --changed    # only what differs from the merge base — used by pre-commit
+#   bin/lint --format json
+#
+# Exits non-zero on any violation. It never rewrites a file; bin/format does that.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+source bin/_gate_lib.sh
+
+scope="all"
+format="text"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --changed) scope="changed" ;;
+    --all) scope="all" ;;
+    --format) format="$2"; shift ;;
+    --format=*) format="${1#--format=}" ;;
+    --json) format="json" ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+gate_begin "lint" "$format"
+
+ruby_files="$(gate_files "$scope" '\.rb$|\.rake$|Gemfile$|Rakefile$|\.ru$')"
+js_files="$(gate_files "$scope" '\.(ts|tsx|js|jsx|mjs|cjs)$')"
+all_files="$(gate_files "$scope" '.')"
+
+if [ "$scope" = "changed" ] && [ -z "$ruby_files" ]; then
+  gate_skip "rubocop" "no Ruby file changed"
+else
+  # shellcheck disable=SC2086
+  gate_run "rubocop" bundle exec rubocop --force-exclusion --format simple $ruby_files
+fi
+
+if [ "$scope" = "changed" ] && [ -z "$js_files" ]; then
+  gate_skip "eslint" "no TypeScript or JavaScript file changed"
+else
+  # shellcheck disable=SC2086
+  gate_run "eslint" npx eslint --max-warnings 0 $js_files
+fi
+
+if [ -z "$all_files" ]; then
+  gate_skip "suppression-gate" "no file changed"
+else
+  # shellcheck disable=SC2086
+  gate_run "suppression-gate" bin/suppression-gate $all_files
+fi
+
+gate_finish

@@ -1,8 +1,8 @@
-import { defineConfig } from 'vite'
-import { fileURLToPath, URL } from 'node:url'
-import RubyPlugin from 'vite-plugin-ruby'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from 'vite';
+import { fileURLToPath, URL } from 'node:url';
+import RubyPlugin from 'vite-plugin-ruby';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [RubyPlugin(), react(), tailwindcss()],
@@ -14,4 +14,4 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./app/frontend', import.meta.url)),
     },
   },
-})
+});

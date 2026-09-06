@@ -129,7 +129,8 @@ module Opanel
               "INDEX_SAFETY",
               line_number,
               "`algorithm: :concurrently` requires `disable_ddl_transaction!`",
-              "add `disable_ddl_transaction!` to the migration class; PostgreSQL refuses a concurrent index build inside a transaction"
+              "add `disable_ddl_transaction!` to the migration class; PostgreSQL refuses a " \
+              "concurrent index build inside a transaction"
             )
           end
 

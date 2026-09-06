@@ -30,7 +30,7 @@ module Opanel
     # the bin/ scripts and by their specs so they run without booting Rails —
     # the Pre-commit Gate has to afford them on every commit — which means
     # Zeitwerk must not also manage them.
-    config.autoload_lib(ignore: %w[assets tasks gates])
+    config.autoload_lib(ignore: %w[assets tasks gates rubocop])
 
     # app/frontend/ holds the React/TypeScript tree bundled by Vite. Rails treats
     # every app/* directory as an autoload path, so Zeitwerk has to be told to

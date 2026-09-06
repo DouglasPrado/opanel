@@ -33,5 +33,5 @@
     }
   },
   "include": ["app/frontend/**/*.ts", "app/frontend/**/*.tsx", "vite.config.ts"],
-  "exclude": ["node_modules", "public", "vendor", "tmp"]
+  "exclude": ["node_modules", "public", "vendor", "tmp", "app/frontend/.lint-probe"]
 }

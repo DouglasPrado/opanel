@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Typecheck: `tsc --noEmit` over app/frontend/.
+#
+#   bin/typecheck
+#   bin/typecheck --format json
+#
+# There is no meaningful incremental mode: TypeScript resolves the whole program
+# to answer anything about one file. It is fast enough for the pre-commit budget
+# as it stands, and the budget is measured in docs/engineering/quality-gates.md.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+source bin/_gate_lib.sh
+
+format="text"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --changed|--all) ;; # accepted for symmetry; tsc always checks the program
+    --format) format="$2"; shift ;;
+    --format=*) format="${1#--format=}" ;;
+    --json) format="json" ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+gate_begin "typecheck" "$format"
+gate_run "tsc" npx tsc --noEmit
+gate_finish

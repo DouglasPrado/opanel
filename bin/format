@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Format: RuboCop's layout autocorrect for Ruby, Prettier for TypeScript, CSS and
+# the rest of the frontend tree.
+#
+#   bin/format              # rewrite the repository
+#   bin/format --changed    # rewrite only what differs from the merge base
+#   bin/format --check      # report without writing; this is what a gate runs
+#
+# Running it twice produces no further change — the second run is what makes it
+# safe to put in a hook.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+source bin/_gate_lib.sh
+
+scope="all"
+mode="write"
+format="text"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --changed) scope="changed" ;;
+    --all) scope="all" ;;
+    --check) mode="check" ;;
+    --format) format="$2"; shift ;;
+    --format=*) format="${1#--format=}" ;;
+    --json) format="json" ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+gate_begin "format" "$format"
+
+ruby_files="$(gate_files "$scope" '\.rb$|\.rake$|Gemfile$|Rakefile$|\.ru$')"
+prettier_files="$(gate_files "$scope" '^app/frontend/.*\.(ts|tsx|js|jsx|css)$|^(vite|vitest|playwright)\.config\.ts$|^eslint\.config\.js$')"
+
+if [ "$scope" = "changed" ] && [ -z "$ruby_files" ]; then
+  gate_skip "rubocop" "no Ruby file changed"
+elif [ "$mode" = "check" ]; then
+  # shellcheck disable=SC2086
+  gate_run "rubocop" bundle exec rubocop --force-exclusion --only Layout,Style/StringLiterals --format simple $ruby_files
+else
+  # shellcheck disable=SC2086
+  gate_run "rubocop" bundle exec rubocop --force-exclusion --autocorrect --only Layout,Style/StringLiterals --format simple $ruby_files
+fi
+
+if [ "$scope" = "changed" ] && [ -z "$prettier_files" ]; then
+  gate_skip "prettier" "no frontend file changed"
+elif [ "$mode" = "check" ]; then
+  if [ "$scope" = "all" ]; then
+    gate_run "prettier" npx prettier --check .
+  else
+    # shellcheck disable=SC2086
+    gate_run "prettier" npx prettier --check --ignore-unknown $prettier_files
+  fi
+elif [ "$scope" = "all" ]; then
+  gate_run "prettier" npx prettier --write --log-level warn .
+else
+  # shellcheck disable=SC2086
+  gate_run "prettier" npx prettier --write --log-level warn --ignore-unknown $prettier_files
+fi
+
+gate_finish

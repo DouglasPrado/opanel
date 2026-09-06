@@ -1,14 +1,14 @@
-import { Head } from '@inertiajs/react'
+import { Head } from '@inertiajs/react';
 
-import { galleryEntries, type GalleryCategory } from '@/components/features/gallery/registry'
+import { galleryEntries, type GalleryCategory } from '@/components/features/gallery/registry';
 
 const CATEGORY_LABELS: Record<GalleryCategory, string> = {
   ui: 'ui — primitives',
   shared: 'shared — composed, reused by several features',
   layouts: 'layouts — shells, navigation, page layouts',
-}
+};
 
-const CATEGORY_ORDER: GalleryCategory[] = ['ui', 'shared', 'layouts']
+const CATEGORY_ORDER: GalleryCategory[] = ['ui', 'shared', 'layouts'];
 
 /**
  * Visual inspection surface for the imported component library.
@@ -34,10 +34,14 @@ export default function Gallery() {
         </header>
 
         {CATEGORY_ORDER.map((category) => {
-          const entries = galleryEntries.filter((entry) => entry.category === category)
+          const entries = galleryEntries.filter((entry) => entry.category === category);
 
           return (
-            <section key={category} className="flex flex-col gap-6" data-testid={`gallery-${category}`}>
+            <section
+              key={category}
+              className="flex flex-col gap-6"
+              data-testid={`gallery-${category}`}
+            >
               <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 {CATEGORY_LABELS[category]}
               </h2>
@@ -53,9 +57,9 @@ export default function Gallery() {
                 </article>
               ))}
             </section>
-          )
+          );
         })}
       </main>
     </>
-  )
+  );
 }

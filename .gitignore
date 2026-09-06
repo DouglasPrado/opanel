@@ -33,6 +33,10 @@
 /tmp/pids/*
 !/tmp/pids/.keep
 
+# Lint probe directories: negative-case fixtures written and removed by the specs
+/app/frontend/.lint-probe/
+/tmp/lint-probe/
+
 # Node and Vite build output
 /node_modules/
 /public/vite*
