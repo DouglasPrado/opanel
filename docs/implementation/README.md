@@ -23,6 +23,7 @@ O Implementation Pack **não substitui a especificação**. Ele a decompõe. Em 
 | Estado persistente do loop autônomo | `M<XX>/tasks.json` |
 | Estado do handoff Implementer ↔ Reviewer | `M<XX>/review-state.json` |
 | Máquina de estados entre agentes | [`AGENT_ORCHESTRATOR.md`](AGENT_ORCHESTRATOR.md) |
+| Formato de ADR, Story Report, Milestone Report, dependência, review e blocker | [`../templates/`](../templates/README.md) |
 
 ## Estrutura de cada Milestone
 
@@ -43,9 +44,12 @@ MXX/
 ├── CODEX_REVIEW_<NN>.md  # verdict do reviewer independente — escrito SOMENTE pelo orquestrador
 ├── FIX_REPORT_<NN>.md    # correções dos findings bloqueantes de um review
 ├── BLOCKERS.md           # Stories BLOCKED com diagnóstico reproduzível
+├── reports/<story>.md    # Story Report: evidências, decisões locais, dependências
 ├── review/<story>.md     # self-review por Story (qualidade de implementação)
-└── evidence/<story>/     # saídas de testes e checks
+└── evidence/<story>/     # saídas de testes e checks (não versionado)
 ```
+
+O formato de cada um desses artefatos está em [`docs/templates/`](../templates/README.md).
 
 ## Ciclo de execução de uma Story
 
