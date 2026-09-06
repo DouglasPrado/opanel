@@ -16,12 +16,13 @@
     {
       "id": "M00-02",
       "file": "stories/M00-02-postgresql-and-migrations.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-01"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "86163d7"
     },
     {
       "id": "M00-03",
