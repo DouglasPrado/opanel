@@ -38,12 +38,13 @@
     {
       "id": "M00-04",
       "file": "stories/M00-04-inertia-react-vite-tailwind.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-01"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "7241a05"
     },
     {
       "id": "M00-05",
