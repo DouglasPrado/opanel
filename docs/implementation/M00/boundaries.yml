@@ -81,7 +81,6 @@ boundaries:
     - spec/gates/pack_spec.rb
     - spec/gates/stop_gate_spec.rb
     - docs/implementation/README.md
-    - docs/engineering/autonomous-loop.md
 
   M00-17:
     - config/architecture/docker-lab.yml

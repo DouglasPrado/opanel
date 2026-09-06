@@ -1,0 +1,76 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Stop Gate — Annex H §4.2. The last word on "may the loop stop".
+#
+#   bin/stop-gate M00
+#   bin/stop-gate M00 --format text
+#   bin/stop-gate M00 --only pack-consistent,static
+#
+# Emits `{"ok": …, "reason": …, "checks": [...]}`. `ok:false` is not an error: it
+# is the loop being told to keep working, with a reason objective enough to act
+# on without guessing.
+#
+# **No check is satisfiable by the agent asserting it.** Each one runs a command
+# and uses the exit code (Annex H §4.1). An agent asked whether its work is
+# finished will say yes — the failure mode of an autonomous loop is optimism, not
+# malice, and a gate made of assertions inherits it.
+#
+# This script may not be edited to unblock a Milestone. bin/merge-gate refuses a
+# diff that touches lib/gates/ without naming the Story or ADR that authorises
+# it, and .github/CODEOWNERS requires a human review of the same paths.
+
+require "json"
+require_relative "../lib/gates/stop_gate"
+
+GATE = Opanel::Gates::StopGate
+ROOT = File.expand_path("..", __dir__)
+
+format = "json"
+only = nil
+milestone = nil
+
+arguments = ARGV.dup
+until arguments.empty?
+  case (argument = arguments.shift)
+  when "--format" then format = arguments.shift
+  when "--text" then format = "text"
+  when "--only" then only = arguments.shift.to_s.split(",")
+  when "--list"
+    puts GATE::CHECKS
+    exit 0
+  when /\A--/
+    warn "unknown option: #{argument}"
+    exit 2
+  else milestone = argument
+  end
+end
+
+if milestone.nil?
+  warn "usage: bin/stop-gate <milestone> [--only a,b] [--format text|json]"
+  exit 2
+end
+
+unknown = Array(only) - GATE::CHECKS
+unless unknown.empty?
+  warn "unknown check(s): #{unknown.join(', ')} (see bin/stop-gate --list)"
+  exit 2
+end
+
+runner = GATE::Runner.new(milestone: milestone, root: ROOT, only: only).run
+
+if format == "text"
+  runner.checks.each do |check|
+    mark = check.passed? ? "PASS" : "FAIL"
+    puts format("  %-18s %s  %6dms", check.name, mark, check.duration_ms)
+    puts "      #{check.reason}" unless check.passed?
+  end
+  puts
+  puts runner.ok? ? "stop-gate: OK — the Milestone may stop" : "stop-gate: NOT OK — keep working"
+else
+  puts JSON.pretty_generate(runner.to_h)
+end
+
+# Exit 0 either way when reporting JSON: `ok:false` is the answer, not a crash.
+# The caller reads `ok`. Text mode exits non-zero so a shell `&&` behaves.
+exit(format == "text" && !runner.ok? ? 1 : 0)

@@ -1,0 +1,141 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The Implementation Pack's state.
+#
+#   bin/pack validate                # every Milestone
+#   bin/pack validate M00            # one
+#   bin/pack validate --format json
+#   bin/pack next M00                # the next Story the loop may pick up
+#   bin/pack status M00              # where the Milestone is
+#
+# The loop's memory is this repository, not the conversation. `bin/pack next`
+# plus `git log` rebuild the state after a lost or compacted session, which is
+# the difference between resuming and starting again (Annex H §16).
+
+require "json"
+require_relative "../lib/gates/pack"
+
+PACK = Opanel::Gates::Pack
+ROOT = File.expand_path("..", __dir__)
+
+command = ARGV.shift
+format = "text"
+milestone = nil
+
+until ARGV.empty?
+  case (argument = ARGV.shift)
+  when "--format" then format = ARGV.shift
+  when "--json" then format = "json"
+  when /\A--/
+    warn "unknown option: #{argument}"
+    exit 2
+  else milestone = argument
+  end
+end
+
+def usage
+  warn <<~USAGE
+    usage: bin/pack <validate|next|status> [milestone] [--format json]
+
+      validate [M00]   schema, Story files, dependencies, cycles, done-has-commit
+      next M00         the next Story whose dependencies are satisfied
+      status M00       counts by state
+  USAGE
+  exit 2
+end
+
+case command
+when "validate"
+  paths = if milestone
+    [ File.join(ROOT, "docs/implementation", milestone, "tasks.json") ]
+  else
+    PACK.tasks_paths(ROOT)
+  end
+
+  missing = paths.reject { |path| File.exist?(path) }
+  unless missing.empty?
+    warn "no tasks.json at #{missing.map { |p| p.sub("#{ROOT}/", '') }.join(', ')}"
+    exit 2
+  end
+
+  violations = paths.flat_map { |path| PACK.validate(path, ROOT) }
+
+  if format == "json"
+    puts JSON.generate(
+      gate: "pack-validate",
+      result: violations.empty? ? "pass" : "fail",
+      files_checked: paths.length,
+      violations: violations.map(&:to_h)
+    )
+  elsif violations.empty?
+    puts "pack: PASS (#{paths.length} milestone(s))"
+  else
+    violations.group_by(&:file).each do |file, group|
+      puts file
+      group.each do |violation|
+        puts "  #{violation.rule.ljust(18)} #{violation.detail}"
+        puts "  #{' ' * 18} #{violation.remedy}"
+      end
+    end
+    puts
+    puts "pack: FAIL (#{violations.length} violation(s) in #{paths.length} milestone(s))"
+  end
+
+  exit(violations.empty? ? 0 : 1)
+
+when "next"
+  usage unless milestone
+
+  story = PACK.next_story(milestone, ROOT)
+
+  if format == "json"
+    puts JSON.generate(milestone: milestone, story: story)
+  elsif story.nil?
+    puts "#{milestone}: no Story is eligible — every one is done, blocked, or waiting on a dependency"
+  else
+    puts story["id"]
+    puts "  file      #{story['file']}"
+    puts "  status    #{story['status']}"
+    puts "  attempts  #{story['attempts']}"
+    puts "  dependsOn #{Array(story['dependsOn']).join(', ')}" unless Array(story["dependsOn"]).empty?
+  end
+
+  exit 0
+
+when "status"
+  usage unless milestone
+
+  path = File.join(ROOT, "docs/implementation", milestone, "tasks.json")
+  unless File.exist?(path)
+    warn "no tasks.json for #{milestone}"
+    exit 2
+  end
+
+  pack = PACK.load(path)
+  counts = pack.fetch("stories").group_by { |story| story["status"] }.transform_values(&:length)
+
+  if format == "json"
+    puts JSON.generate(milestone: milestone, status: pack["status"], counts: counts)
+  else
+    puts "#{milestone} — #{pack['name']} (#{pack['status']})"
+    PACK::STATUSES.each do |state|
+      count = counts.fetch(state, 0)
+      puts "  #{state.ljust(13)} #{count}" if count.positive?
+    end
+
+    blocked = pack.fetch("stories").select { |story| story["status"] == "blocked" }
+    blocked.each do |story|
+      reason = story["blockedReason"] || {}
+      puts
+      puts "  #{story['id']} #{reason['qualifier']}"
+      puts "    #{reason['diagnosis']}"
+      puts "    reproduce: #{reason['reproduce']}" if reason["reproduce"]
+    end
+  end
+
+  exit 0
+
+else
+  usage
+end

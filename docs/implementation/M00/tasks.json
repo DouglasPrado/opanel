@@ -60,14 +60,15 @@
     {
       "id": "M00-06",
       "file": "stories/M00-06-local-development-environment.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-02",
         "M00-03",
         "M00-04"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "b8a5f82"
     },
     {
       "id": "M00-07",
@@ -106,66 +107,71 @@
     {
       "id": "M00-10",
       "file": "stories/M00-10-security-scanning-baseline.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-09"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "e12d5c8"
     },
     {
       "id": "M00-11",
       "file": "stories/M00-11-ci-pipeline-and-gates.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-07",
         "M00-08",
         "M00-09",
         "M00-10"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "e256b12"
     },
     {
       "id": "M00-12",
       "file": "stories/M00-12-quality-gate-scripts.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-11"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "65c3f0f"
     },
     {
       "id": "M00-13",
       "file": "stories/M00-13-architecture-fitness-functions.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-07"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "0214fb4"
     },
     {
       "id": "M00-14",
       "file": "stories/M00-14-autonomous-loop-scaffolding.md",
-      "status": "pending",
+      "status": "in_progress",
       "dependsOn": [
         "M00-12"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "required": true
     },
     {
       "id": "M00-15",
       "file": "stories/M00-15-structured-logging-and-health.md",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "M00-01",
         "M00-03"
       ],
       "attempts": 1,
-      "required": true
+      "required": true,
+      "commit": "524e9ed"
     },
     {
       "id": "M00-16",
@@ -181,12 +187,13 @@
     {
       "id": "M00-17",
       "file": "stories/M00-17-swarm-lab-harness.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-07"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "f230511"
     },
     {
       "id": "M00-18",

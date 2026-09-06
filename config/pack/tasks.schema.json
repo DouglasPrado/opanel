@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opanel.dev/schemas/tasks.json",
+  "title": "Implementation Pack — milestone task state",
+  "description": "The persistent state of a Milestone (Annex H §5.2). This file is what the autonomous loop reads to know where it is; the conversation is not, and neither is memory. Every field here exists because losing it costs a session.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["milestone", "name", "status", "dependencies", "stories"],
+  "properties": {
+    "milestone": {
+      "type": "string",
+      "pattern": "^M[0-9]{2}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "The Milestone's own state. The same vocabulary as a Story's, so there is one set of words to learn.",
+      "type": "string",
+      "enum": ["pending", "ready", "in_progress", "review", "fix_required", "done", "blocked"]
+    },
+    "dependencies": {
+      "description": "Milestones that must be done first.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^M[0-9]{2}$" }
+    },
+    "stories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "file", "status", "dependsOn", "attempts", "required"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^M[0-9]{2}-[0-9]{2}$"
+          },
+          "file": {
+            "description": "Path to the Story, relative to the milestone directory. Validated to exist: a Story the loop cannot open is a Story it cannot implement.",
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "ready", "in_progress", "review", "fix_required", "done", "blocked"]
+          },
+          "dependsOn": {
+            "description": "Stories in the same Milestone that must be done first. Validated for existence and for cycles.",
+            "type": "array",
+            "items": { "type": "string", "pattern": "^M[0-9]{2}-[0-9]{2}$" }
+          },
+          "attempts": {
+            "description": "How many times this Story has been attempted. Three without progress means change strategy once; still no progress means `blocked` with a reproducible diagnosis — never an infinite loop (Annex H §16).",
+            "type": "integer",
+            "minimum": 0
+          },
+          "required": {
+            "description": "Whether the Milestone can close without it.",
+            "type": "boolean"
+          },
+          "commit": {
+            "description": "The commit that closed the Story. Mandatory once status is done: a Story marked done with no commit is a claim with no checkpoint behind it.",
+            "type": "string",
+            "pattern": "^[0-9a-f]{7,40}$"
+          },
+          "blockedReason": {
+            "description": "Mandatory once status is blocked. The qualifier says who can unblock it, and the diagnosis has to be reproducible — 'it did not work' tells the next session nothing.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["qualifier", "diagnosis"],
+            "properties": {
+              "qualifier": {
+                "type": "string",
+                "enum": [
+                  "BLOCKED_FOR_PRODUCT_DECISION",
+                  "BLOCKED_FOR_HUMAN_APPROVAL",
+                  "BLOCKED_EXTERNAL_DEPENDENCY"
+                ]
+              },
+              "diagnosis": {
+                "type": "string",
+                "minLength": 20
+              },
+              "reproduce": {
+                "description": "The command that shows the block, so the next session does not have to rediscover it.",
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

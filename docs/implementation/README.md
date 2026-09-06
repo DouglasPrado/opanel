@@ -44,10 +44,52 @@ MXX/
 ├── CODEX_REVIEW_<NN>.md  # verdict do reviewer independente — escrito SOMENTE pelo orquestrador
 ├── FIX_REPORT_<NN>.md    # correções dos findings bloqueantes de um review
 ├── BLOCKERS.md           # Stories BLOCKED com diagnóstico reproduzível
+├── boundaries.yml        # o boundary declarado de cada Story (declarado ANTES de editar)
 ├── reports/<story>.md    # Story Report: evidências, decisões locais, dependências
 ├── review/<story>.md     # self-review por Story (qualidade de implementação)
 └── evidence/<story>/     # saídas de testes e checks (não versionado)
 ```
+
+### Contrato de cada artefato
+
+| Artefato | Contrato | Quem verifica |
+|---|---|---|
+| `tasks.json` | Schema de [`config/pack/tasks.schema.json`](../../config/pack/tasks.schema.json). Todo `file` existe, todo `dependsOn` referencia Story do mesmo Milestone, sem ciclos, toda Story `done` tem `commit`, toda Story `blocked` tem `blockedReason`. | `bin/pack validate` |
+| `boundaries.yml` | Globs que a Story pode tocar, **declarados antes de editar**. Story sem entrada reprova — um check satisfeito por não declarar nada fica verde justamente sobre o scope creep que existe para pegar. | `bin/gate pre-commit` |
+| `reports/<story>.md` | Mapeia cada Acceptance Criterion para implementação, teste ou evidência. | `bin/gate post-commit`, `bin/stop-gate` |
+| `review/<story>.md` | Self-review de implementação. Não é o review independente e não emite verdict. | leitura humana |
+| `review/<story>.json` | Findings estruturados, quando existirem. `Critical`/`High` não resolvidos bloqueiam. | `bin/stop-gate`, `bin/merge-gate` |
+| `evidence/<story>/` | Saída bruta dos comandos: o que foi rodado e o que respondeu. | não versionado |
+| `BLOCKERS.md` | Uma entrada por Story `blocked`, com qualificador, diagnóstico e comando que reproduz. | leitura humana |
+| `MILESTONE_REPORT.md` | Existe e declara `Status:`. | `bin/stop-gate` |
+
+## Ferramentas do loop
+
+A memória do loop é este repositório, não a conversa. Depois de uma sessão perdida ou compactada, `bin/pack next` + `git log` reconstroem o estado (Anexo H §16).
+
+```bash
+bin/pack validate          # os 15 Milestones contra o schema e as regras acima
+bin/pack next M00          # a próxima Story elegível, respeitando dependsOn
+bin/pack status M00        # contagem por estado, e o diagnóstico de cada bloqueio
+bin/stop-gate M00          # {"ok": …, "reason": …, "checks": [...]}
+```
+
+`bin/stop-gate` é a última palavra sobre "pode parar". Nenhum check dele é satisfeito por afirmação do agente: cada um executa um comando e usa o exit code (Anexo H §4.1). `ok:false` não é erro — é o loop sendo informado de que ainda há trabalho, com razão objetiva.
+
+### Política de tentativas
+
+```text
+3 tentativas sem progresso  ->  trocar de estratégia uma vez
+ainda sem progresso         ->  blocked, com diagnóstico reproduzível
+```
+
+Uma falha nova e informativa justifica outra tentativa. A **mesma** falha sem progresso, não. Nunca um loop infinito, e nunca abandono silencioso: `blocked` é um estado registrado, com um dos três qualificadores, e Stories independentes continuam.
+
+| Qualificador | Quem destrava |
+|---|---|
+| `BLOCKED_FOR_PRODUCT_DECISION` | decisão de produto |
+| `BLOCKED_FOR_HUMAN_APPROVAL` | aprovação humana (ação destrutiva ou de produção) |
+| `BLOCKED_EXTERNAL_DEPENDENCY` | dependência externa indisponível |
 
 O formato de cada um desses artefatos está em [`docs/templates/`](../templates/README.md).
 
