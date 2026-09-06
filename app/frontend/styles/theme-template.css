@@ -1,0 +1,49 @@
+/*
+ * Template de cores da marca.
+ *
+ * Altere somente estes tokens para personalizar as principais cores da
+ * biblioteca. O index.css consome essas variáveis nos componentes e mantém
+ * os demais tokens estruturais separados.
+ *
+ * Regra de contraste dos preenchimentos sólidos: fundo claro (secondary,
+ * success) recebe texto tinta; fundo escuro (primary, danger) recebe texto
+ * branco. Todos os pares abaixo passam em WCAG AA (>= 4.5:1).
+ */
+:root {
+  --brand-ink: #1b2430;
+
+  --brand-base: #3a3a3a;
+  --brand-danger: #d90429;
+  --brand-danger-foreground: #ffffff;
+  --brand-primary: #293241;
+  --brand-secondary: #ee6c4d;
+  --brand-secondary-foreground: var(--brand-ink);
+  --brand-app-shell-background: #f4f5f5;
+  --brand-app-shell-foreground: #293241;
+  --brand-subtitle: #495057;
+  --brand-success: #38b000;
+  --brand-success-foreground: var(--brand-ink);
+  --brand-title: #212529;
+}
+
+/*
+ * O modo escuro não reaproveita as cores do claro: a primária clareia para
+ * destacar do fundo, e a barra/sidebar escurecem para não virar uma faixa
+ * clara sobre a página escura.
+ */
+.dark {
+  --brand-ink: #1b2430;
+
+  --brand-base: #f8f9fa;
+  --brand-danger: #d90429;
+  --brand-danger-foreground: #ffffff;
+  --brand-primary: #98c1d9;
+  --brand-secondary: #ee6c4d;
+  --brand-secondary-foreground: var(--brand-ink);
+  --brand-app-shell-background: #1b2430;
+  --brand-app-shell-foreground: #f4f5f7;
+  --brand-subtitle: #adb5bd;
+  --brand-success: #38b000;
+  --brand-success-foreground: var(--brand-ink);
+  --brand-title: #f8f9fa;
+}

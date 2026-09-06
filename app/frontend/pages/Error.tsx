@@ -24,13 +24,13 @@ export default function ErrorPage({ status, title, message }: ErrorProps) {
         role="alert"
         className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 p-8 text-center"
       >
-        <p className="text-content-muted text-sm font-medium" data-testid="error-status">
+        <p className="text-muted-foreground text-sm font-medium" data-testid="error-status">
           {status}
         </p>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="text-content-muted text-sm">{message}</p>
+        <p className="text-muted-foreground text-sm">{message}</p>
 
-        <p className="text-content-muted mt-4 text-xs">
+        <p className="text-muted-foreground mt-4 text-xs">
           Quote this when reporting it: <code data-testid="request-id">{requestId}</code>
         </p>
       </main>
