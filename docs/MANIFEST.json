@@ -1,0 +1,135 @@
+[
+  {
+    "source": "plataforma_paas_cluster_first_parte_1.docx",
+    "dest": "architecture/01-foundation.md",
+    "bytes": 33016,
+    "sha256": "01ebb9635d4a5fa8e5f3c46990ef6ad5573f4362a310214eb4171f4e01a7ce5d",
+    "markdown_bytes": 33016
+  },
+  {
+    "source": "plataforma_paas_cluster_first_parte_2_deploy_build.docx",
+    "dest": "architecture/02-build-deploy.md",
+    "bytes": 37597,
+    "sha256": "a53f23bf968d542c94f7b6c81cbd05e15a59f428a660df149364081ca6d9a0b1",
+    "markdown_bytes": 37597
+  },
+  {
+    "source": "plataforma_paas_cluster_first_parte_3_runtime_observabilidade.docx",
+    "dest": "architecture/03-runtime-observability.md",
+    "bytes": 40581,
+    "sha256": "7c5e7e04e8591c3c89d79ffe181eeeab252608bd34a635e8abe0854aefb4ee79",
+    "markdown_bytes": 40581
+  },
+  {
+    "source": "plataforma_paas_cluster_first_parte_4_identidade_times_seguranca.docx",
+    "dest": "architecture/04-identity-teams-security.md",
+    "bytes": 35699,
+    "sha256": "801bd3e0c6202e34792206fce0c080d84a21cba0cf170cbf5fc7fb524b4cac2e",
+    "markdown_bytes": 35699
+  },
+  {
+    "source": "plataforma_paas_cluster_first_parte_5_backup_restore_dr.docx",
+    "dest": "architecture/05-backup-restore-dr.md",
+    "bytes": 39701,
+    "sha256": "e758ac18d0c9005a569e49f91bef92f265248ff583578d93f7a1e260ae3ecfa9",
+    "markdown_bytes": 39701
+  },
+  {
+    "source": "plataforma_paas_cluster_first_parte_6_infraestrutura_provisionamento.docx",
+    "dest": "architecture/06-infrastructure-provisioning.md",
+    "bytes": 41105,
+    "sha256": "14086c3e7af897ba5f51b6cd1b1fdaaf83f0d9b1a64dc01c179f60e93ce22ad6",
+    "markdown_bytes": 41105
+  },
+  {
+    "source": "plataforma_paas_cluster_first_parte_7_control_plane_interno.docx",
+    "dest": "architecture/07-internal-control-plane.md",
+    "bytes": 42067,
+    "sha256": "dbfd45474a3403a690f163125d1e0afb567a924fac42e93117128f9d201e0d33",
+    "markdown_bytes": 42067
+  },
+  {
+    "source": "plataforma_paas_cluster_first_parte_8_networking_dominios_edge.docx",
+    "dest": "architecture/08-networking-domains-edge.md",
+    "bytes": 43043,
+    "sha256": "b22679439288cb2180664908f8d71f6d07470230b024cb8f4d34596d6509f84a",
+    "markdown_bytes": 43043
+  },
+  {
+    "source": "plataforma_paas_cluster_first_parte_9_modelo_dados_apis_contratos.docx",
+    "dest": "architecture/09-data-model-apis-contracts.md",
+    "bytes": 51849,
+    "sha256": "180bf40470380764fdce24dd35628301236a3fa5b09cadfd69f6d56c627b3df7",
+    "markdown_bytes": 51849
+  },
+  {
+    "source": "plataforma_paas_cluster_first_parte_10_ui_use_cases.docx",
+    "dest": "architecture/10-ui-use-cases.md",
+    "bytes": 75811,
+    "sha256": "3480f27560a93b9693fce09487b56c82554beeaede873af46367575faaca3d6d",
+    "markdown_bytes": 75811
+  },
+  {
+    "source": "plataforma_paas_cluster_first_anexo_a_roadmap_implementacao.docx",
+    "dest": "annexes/A-implementation-roadmap.md",
+    "bytes": 49989,
+    "sha256": "ae633e45b60e04cbd67b62fac9552f6335c12fbbd22f7b26be4f5f864477d080",
+    "markdown_bytes": 49989
+  },
+  {
+    "source": "plataforma_paas_cluster_first_anexo_b_nfr_slos.docx",
+    "dest": "annexes/B-nfr-slos.md",
+    "bytes": 33877,
+    "sha256": "953d1f6814c0cc3f7c08f1b317e8b3c1c7c4a968ad68a33c625ab1b3299d1261",
+    "markdown_bytes": 33877
+  },
+  {
+    "source": "plataforma_paas_cluster_first_anexo_c_threat_model_security_hardening.docx",
+    "dest": "annexes/C-threat-model-security-hardening.md",
+    "bytes": 48078,
+    "sha256": "d0447bc3020d83457a71fbfd76cd046c47cc535940981f44c0e5c3b2341a776e",
+    "markdown_bytes": 48078
+  },
+  {
+    "source": "plataforma_paas_cluster_first_anexo_d_estrategia_testes.docx",
+    "dest": "annexes/D-test-strategy.md",
+    "bytes": 48080,
+    "sha256": "02e4a862695aafe7a3a65cd553e8b464ed2a70f431ce5f4f9477fcf03d3bef94",
+    "markdown_bytes": 48080
+  },
+  {
+    "source": "anexo_e_runbooks_operacionais.docx",
+    "dest": "annexes/E-operational-runbooks.md",
+    "bytes": 58977,
+    "sha256": "0db45ee0199143c6c3baf96b7648b3bf2b4e56b1f1cc1737b6c63b7cd427cd00",
+    "markdown_bytes": 58977
+  },
+  {
+    "source": "anexo_f_mcp_plataforma_agentes.docx",
+    "dest": "annexes/F-mcp-platform-agents.md",
+    "bytes": 52889,
+    "sha256": "540a9e9271d711c928272f42717a48e2737098941fe38a5a7828cbfff427bf13",
+    "markdown_bytes": 52889
+  },
+  {
+    "source": "plataforma_paas_cluster_first_anexo_g_desenvolvimento_orientado_agentes.docx",
+    "dest": "annexes/G-agent-oriented-development.md",
+    "bytes": 43202,
+    "sha256": "a338fff9859a7df2fb439a1296508a1809b9c77d525fcdd8be49156dd9d7fc45",
+    "markdown_bytes": 43202
+  },
+  {
+    "source": "plataforma_paas_cluster_first_anexo_h_autonomous_development_loop.docx",
+    "dest": "annexes/H-autonomous-development-loop.md",
+    "bytes": 32671,
+    "sha256": "93d5c123406dc7dabca35c462660e32897c9e26c4826cd2ac96e87f90a65ad7a",
+    "markdown_bytes": 32671
+  },
+  {
+    "source": "plataforma_paas_cluster_first_anexo_i_engineering_playbook_quality_gates.docx",
+    "dest": "annexes/I-engineering-playbook-quality-gates.md",
+    "bytes": 44910,
+    "sha256": "261bdfe5a86c8143ba73df28adcde2d2800bb8012581c7f47826f1e8e0c94d2b",
+    "markdown_bytes": 44910
+  }
+]
