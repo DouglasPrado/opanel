@@ -30,6 +30,13 @@ Bundler.require(*Rails.groups)
 require_relative "../lib/opanel/configuration"
 Opanel::Configuration.validate_or_abort!(environment: ENV.fetch("RAILS_ENV", "development"))
 
+# The log formatter is installed while the application class is being defined,
+# which is also before Zeitwerk. Required for the same reason as the
+# configuration above, and excluded from autoloading so it is not loaded twice.
+require_relative "../lib/opanel/redaction"
+require_relative "../lib/opanel/log_formatter"
+require_relative "../lib/opanel/correlation_middleware"
+
 module Opanel
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
@@ -42,12 +49,31 @@ module Opanel
     # the bin/ scripts and by their specs so they run without booting Rails —
     # the Pre-commit Gate has to afford them on every commit — which means
     # Zeitwerk must not also manage them.
-    config.autoload_lib(ignore: %w[assets tasks gates rubocop opanel/configuration.rb])
+    config.autoload_lib(
+      ignore: %w[assets tasks gates rubocop
+                 opanel/configuration.rb opanel/redaction.rb opanel/log_formatter.rb
+                 opanel/correlation_middleware.rb]
+    )
 
     # app/frontend/ holds the React/TypeScript tree bundled by Vite. Rails treats
     # every app/* directory as an autoload path, so Zeitwerk has to be told to
     # stay out of it explicitly.
     Rails.autoloaders.main.ignore(Rails.root.join("app/frontend"))
+
+    # One JSON object per line, with the correlation fields already attached and
+    # redaction applied at the sink. Configured for every environment: a log that
+    # is only structured in production is a format nobody has actually read.
+    config.log_formatter = Opanel::LogFormatter.new
+
+    # Rails' own request id becomes the correlation id at the HTTP edge, so the
+    # value a user can quote, the value in the log and the value carried into the
+    # job that request enqueues are one value (doc 09 §19).
+    #
+    # After ActionDispatch::RequestId, which generates the id — and which already
+    # sits after the Executor, so CurrentAttributes have been reset by the time
+    # this runs. Rails::Rack::Logger comes next, so "Started GET" is already
+    # correlated.
+    config.middleware.insert_after ActionDispatch::RequestId, Opanel::CorrelationMiddleware
 
     # Unhandled failures render an Inertia page carrying the request id instead of
     # Rails' static HTML, so a user can quote an id that exists in the server log

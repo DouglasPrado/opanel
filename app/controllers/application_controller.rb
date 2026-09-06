@@ -8,8 +8,6 @@ class ApplicationController < ActionController::Base
   # request visible instead of silently anonymous.
   protect_from_forgery with: :exception
 
-  before_action :assign_request_id
-
   # Props shared with every page.
   #
   # Nothing sensitive goes here. Shared props are serialized into the HTML of
@@ -24,14 +22,5 @@ class ApplicationController < ActionController::Base
         alert: flash.alert
       }
     }
-  end
-
-  private
-
-  # `request_id` reaches the browser, the log line and — from M00-15 — the job
-  # enqueued by this request, so a user-visible failure can be traced without
-  # asking the user to reproduce it.
-  def assign_request_id
-    Current.correlation_id = request.request_id
   end
 end

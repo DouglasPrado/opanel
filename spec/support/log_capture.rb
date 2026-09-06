@@ -8,7 +8,12 @@ module LogCapture
     buffer = StringIO.new
     previous = Rails.logger
 
-    Rails.logger = ActiveSupport::Logger.new(buffer).tap { |logger| logger.level = :debug }
+    Rails.logger = ActiveSupport::Logger.new(buffer).tap do |logger|
+      logger.level = :debug
+      # The application's own formatter, not the default: structure and redaction
+      # are the things under test, and a plain buffer would have neither.
+      logger.formatter = Rails.application.config.log_formatter
+    end
     yield
     buffer.string
   ensure

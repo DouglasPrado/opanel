@@ -42,15 +42,6 @@ module Opanel
         /invalid (connection option|integer value)|missing .* configuration/i ]
     ].freeze
 
-    # Secrets never reach a log, an exception or a response (Annex C §17.1). PG
-    # error text can carry a full connection URI, so redaction happens here, at the
-    # boundary that knows the shape of the value.
-    REDACTIONS = [
-      [ /(\bpassword\s*=\s*)(\S+)/i, '\1[REDACTED]' ],
-      [ %r{(\b[a-z][a-z0-9+.-]*://[^\s:/@]+:)([^\s@]+)(@)}i, '\1[REDACTED]\3' ],
-      [ /("?PG(?:PASSWORD|PASS)"?\s*[:=]\s*)(\S+)/i, '\1[REDACTED]' ]
-    ].freeze
-
     module_function
 
     # Runs the cheapest possible query against the pool and reports what happened.
@@ -102,8 +93,11 @@ module Opanel
     end
 
     # Removes credential material from a message before anyone can log it.
+    # PG error text can carry a whole connection URI; the rules live in
+    # Opanel::Redaction so the log sink and this classifier cannot disagree about
+    # what a credential looks like.
     def redact(message)
-      REDACTIONS.reduce(message) { |text, (pattern, replacement)| text.gsub(pattern, replacement) }
+      Redaction.scrub(message)
     end
 
     # PG stitches the whole connection attempt into one multi-line message. Only the
