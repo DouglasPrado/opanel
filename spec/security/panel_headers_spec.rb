@@ -27,6 +27,11 @@ RSpec.describe "panel security headers", type: :request do
   it "does not weaken script-src outside development" do
     expect(Rails.env).to eq("test")
     expect(csp).not_to include("unsafe-eval")
+
+    # Development allows an inline script for the React Refresh preamble. Nowhere
+    # else may, and that is the directive an XSS actually needs.
+    script_src = csp[/script-src([^;]*)/, 1].to_s
+    expect(script_src).not_to include("unsafe-inline")
   end
 
   it "sends a referrer policy that does not leak panel paths" do

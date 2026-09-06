@@ -48,7 +48,12 @@ class HealthController < ActionController::Base
   def queue_check
     SolidQueue::Job.where(finished_at: nil).limit(1).pluck(:id)
     { status: "ok" }
-  rescue StandardError => error
+  rescue ActiveRecord::ActiveRecordError => error
+    # Deliberately not StandardError: the only failure this check can report on is
+    # the queue being unreadable. A NoMethodError in the code above is a defect,
+    # and reporting it as "the queue is unavailable" would send an operator to
+    # look at the wrong thing — and would be the silent rescue Annex I §7.1
+    # forbids. It escapes and becomes a 500.
     { status: "unavailable", cause: Opanel::DatabaseConnection.classify(error).cause.to_s }
   end
 end

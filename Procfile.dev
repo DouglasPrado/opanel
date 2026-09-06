@@ -1,3 +1,6 @@
-
+# For anyone who prefers foreman or overmind. `bin/dev` is the supported command:
+# it needs no extra dependency and it stops the other processes when one dies,
+# which is the part that matters (see the script).
+web: bin/rails server -p ${PORT:-3000}
+worker: bin/jobs
 vite: bin/vite dev
-web: bin/rails s

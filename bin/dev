@@ -1,2 +1,178 @@
 #!/usr/bin/env ruby
-exec "./bin/rails", "server", *ARGV
+# frozen_string_literal: true
+
+# Starts the three processes development needs, in one supervised foreground
+# command: the web server, the Solid Queue worker and the Vite dev server.
+#
+#   bin/dev
+#
+# Written here rather than delegated to foreman or overmind for two reasons. It
+# removes a dependency that exists only to run three processes, and — the reason
+# that matters — **a process dying has to be visible immediately**. A supervisor
+# that keeps the other two running while one is silently dead is how a developer
+# spends twenty minutes wondering why their job never executed. When one exits,
+# this prints which one and why, and stops the rest.
+
+require "io/console"
+
+APP_ROOT = File.expand_path("..", __dir__)
+Dir.chdir(APP_ROOT)
+
+WEB_PORT = ENV.fetch("PORT", "3000")
+VITE_PORT = ENV.fetch("VITE_RUBY_PORT", "3036")
+
+# 127.0.0.1, not `localhost`. Vite binds IPv6-first, and a browser that resolves
+# `localhost` to 127.0.0.1 then finds nothing listening — the page loads, React
+# never mounts, and nothing says why. config/vite.json pins the host for the same
+# reason; this only keeps the banner honest about where to look.
+VITE_HOST = "127.0.0.1"
+
+BOLD = "\e[1m"
+DIM = "\e[2m"
+RED = "\e[31m"
+GREEN = "\e[32m"
+RESET = "\e[0m"
+
+COLOURS = { "web" => "\e[36m", "worker" => "\e[35m", "vite" => "\e[33m" }.freeze
+
+Process_ = Struct.new(:name, :command, :port, :host, :pid, keyword_init: true)
+
+processes = [
+  Process_.new(name: "web", command: [ "bin/rails", "server", "-p", WEB_PORT ],
+               port: WEB_PORT, host: "localhost"),
+  Process_.new(name: "worker", command: [ "bin/jobs" ], port: nil, host: nil),
+  Process_.new(name: "vite", command: [ "bin/vite", "dev" ], port: VITE_PORT, host: VITE_HOST)
+]
+
+def label(name)
+  "#{COLOURS.fetch(name, '')}#{name.ljust(6)}#{RESET}"
+end
+
+# One place showing what is running and where, so "is it up, and on which port"
+# never needs a second terminal.
+def banner(processes)
+  puts "#{BOLD}Opanel development#{RESET}"
+  processes.each do |process|
+    where = process.port ? "http://#{process.host}:#{process.port}" : "#{DIM}(no port)#{RESET}"
+    puts "  #{label(process.name)} #{where}  #{DIM}#{process.command.join(' ')}#{RESET}"
+  end
+  puts "  #{DIM}Ctrl-C stops all three.#{RESET}\n\n"
+end
+
+# Each child's output is prefixed with its name; three interleaved streams with
+# no attribution are unreadable.
+def stream(process, io)
+  Thread.new do
+    io.each_line { |line| puts "#{label(process.name)} #{DIM}|#{RESET} #{line}" }
+  rescue IOError
+    nil
+  end
+end
+
+# An occupied port has to say which port and which process. Puma's EADDRINUSE
+# backtrace is twenty lines that mean "something else is on 3000", and the thing
+# a developer needs — what that something is — is the one detail it omits.
+def port_holder(port)
+  output = `lsof -nP -iTCP:#{port} -sTCP:LISTEN 2>/dev/null`
+  line = output.lines[1]
+  return nil unless line
+
+  command, pid = line.split
+  "#{command} (pid #{pid})"
+end
+
+def check_ports!(processes)
+  conflicts = processes.filter_map do |process|
+    next unless process.port
+
+    holder = port_holder(process.port)
+    [ process, holder ] if holder
+  end
+
+  return if conflicts.empty?
+
+  warn "\n#{RED}#{BOLD}bin/dev cannot start.#{RESET}"
+  conflicts.each do |process, holder|
+    warn "  Port #{BOLD}#{process.port}#{RESET} (needed by #{process.name}) is held by #{BOLD}#{holder}#{RESET}."
+  end
+  warn "\n  #{BOLD}To fix:#{RESET} stop that process, or set a different port:"
+  warn "    PORT=3001 bin/dev            # web"
+  warn "    VITE_RUBY_PORT=3037 bin/dev  # vite\n\n"
+
+  exit 1
+end
+
+check_ports!(processes)
+
+readers = []
+threads = []
+shutting_down = false
+
+stop_all = lambda do |reason|
+  next if shutting_down
+
+  shutting_down = true
+  puts "\n#{BOLD}Stopping:#{RESET} #{reason}"
+
+  processes.each do |process|
+    next unless process.pid
+
+    begin
+      Process.kill("TERM", process.pid)
+    rescue Errno::ESRCH
+      nil
+    end
+  end
+end
+
+Signal.trap("INT") { stop_all.call("interrupted") }
+Signal.trap("TERM") { stop_all.call("terminated") }
+
+processes.each do |process|
+  reader, writer = IO.pipe
+  process.pid = Process.spawn(*process.command, out: writer, err: writer)
+  writer.close
+  readers << reader
+  threads << stream(process, reader)
+rescue Errno::ENOENT
+  warn "#{RED}#{BOLD}bin/dev: #{process.command.first} not found.#{RESET}"
+  warn "Run bin/setup first."
+  stop_all.call("a process could not be started")
+  exit 1
+end
+
+banner(processes)
+
+# The supervision itself: the first child to exit takes the others with it, and
+# says which one it was and with what status.
+exit_status = 0
+
+begin
+  pid, status = Process.wait2
+  dead = processes.find { |process| process.pid == pid }
+  name = dead&.name || "unknown"
+
+  if status.success?
+    puts "\n#{BOLD}#{name}#{RESET} exited cleanly."
+  else
+    exit_status = status.exitstatus || 1
+    warn "\n#{RED}#{BOLD}#{name} exited with status #{exit_status}.#{RESET}"
+    warn "The other processes are being stopped so the failure is not hidden behind them."
+  end
+
+  stop_all.call("#{name} exited")
+rescue Interrupt
+  stop_all.call("interrupted")
+end
+
+# Reap the rest, then let the output threads drain.
+processes.each do |process|
+  Process.wait(process.pid)
+rescue Errno::ECHILD, Errno::ESRCH, TypeError
+  nil
+end
+
+readers.each { |reader| reader.close unless reader.closed? }
+threads.each { |thread| thread.join(1) }
+
+exit exit_status

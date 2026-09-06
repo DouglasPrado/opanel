@@ -13,6 +13,10 @@
     <link rel="icon" href="/icon.png" type="image/png">
     <link rel="apple-touch-icon" href="/icon.png">
 
+    <%# React Refresh must be installed before the Vite client, or @vitejs/plugin-react
+        cannot find its preamble and every module fails to evaluate — the page loads
+        and React never mounts. It is a no-op outside development. %>
+    <%= vite_react_refresh_tag %>
     <%= vite_client_tag %>
     <%= vite_javascript_tag "application.tsx" %>
   </head>
