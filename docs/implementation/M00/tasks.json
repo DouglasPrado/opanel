@@ -1,7 +1,7 @@
 {
   "milestone": "M00",
   "name": "Foundation",
-  "status": "in_progress",
+  "status": "review",
   "dependencies": [],
   "stories": [
     {
@@ -154,12 +154,13 @@
     {
       "id": "M00-14",
       "file": "stories/M00-14-autonomous-loop-scaffolding.md",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "M00-12"
       ],
       "attempts": 1,
-      "required": true
+      "required": true,
+      "commit": "11c9a16"
     },
     {
       "id": "M00-15",
@@ -198,10 +199,11 @@
     {
       "id": "M00-18",
       "file": "stories/M00-18-documentation-templates.md",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [],
       "attempts": 1,
-      "required": true
+      "required": true,
+      "commit": "319aa15"
     }
   ]
 }
