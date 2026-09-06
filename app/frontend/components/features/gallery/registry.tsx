@@ -182,7 +182,16 @@ function ControlledSwitch() {
 
 function ControlledSlider() {
   const [value, setValue] = useState([40]);
-  return <Slider value={value} onValueChange={setValue} max={100} step={1} className="w-64" />;
+  return (
+    <Slider
+      value={value}
+      onValueChange={setValue}
+      max={100}
+      step={1}
+      className="w-64"
+      aria-label="CPU limit"
+    />
+  );
 }
 
 /**
@@ -488,7 +497,14 @@ export const galleryEntries: GalleryEntry[] = [
   {
     name: 'input',
     category: 'ui',
-    render: () => <Input className="w-64" placeholder="service name" defaultValue="api" />,
+    render: () => (
+      <Input
+        className="w-64"
+        placeholder="service name"
+        defaultValue="api"
+        aria-label="Service name"
+      />
+    ),
   },
   {
     name: 'input-group',
@@ -496,7 +512,7 @@ export const galleryEntries: GalleryEntry[] = [
     render: () => (
       <InputGroup className="w-64">
         <InputGroupAddon>https://</InputGroupAddon>
-        <InputGroupInput placeholder="api.example.com" />
+        <InputGroupInput placeholder="api.example.com" aria-label="Custom domain" />
       </InputGroup>
     ),
   },
@@ -630,7 +646,7 @@ export const galleryEntries: GalleryEntry[] = [
   {
     name: 'progress',
     category: 'ui',
-    render: () => <Progress value={66} className="w-64" />,
+    render: () => <Progress value={66} className="w-64" aria-label="Rollout progress" />,
   },
   {
     name: 'radio-group',
@@ -665,7 +681,7 @@ export const galleryEntries: GalleryEntry[] = [
     category: 'ui',
     render: () => (
       <Select defaultValue="production">
-        <SelectTrigger className="w-48">
+        <SelectTrigger className="w-48" aria-label="Environment">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -773,7 +789,13 @@ export const galleryEntries: GalleryEntry[] = [
   {
     name: 'textarea',
     category: 'ui',
-    render: () => <Textarea className="w-64" defaultValue="Reason for this rollback" />,
+    render: () => (
+      <Textarea
+        className="w-64"
+        defaultValue="Reason for this rollback"
+        aria-label="Rollback reason"
+      />
+    ),
   },
   {
     name: 'title',

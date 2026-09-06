@@ -11,7 +11,22 @@ Rails.application.configure do
     policy.img_src     :self, :data
     policy.object_src  :none
     policy.script_src  :self
-    policy.style_src   :self
+
+    # `unsafe-inline` for styles only, and deliberately.
+    #
+    # The imported component library positions floating elements — popovers,
+    # tooltips, scroll areas, progress bars — by writing to `element.style` at
+    # runtime. CSP governs that as an inline style, and a nonce cannot cover it:
+    # a nonce authorizes a `<style>` element, not a CSSOM mutation. Under
+    # `style-src 'self'` the browser blocks the write and the components render
+    # wrong, which is how this was found (M00-08's gallery journey).
+    #
+    # `script_src` stays strict, which is the directive that matters: inline
+    # script is code execution, inline style is presentation. Removing this needs
+    # a component library that never touches `element.style` — an upstream
+    # change, not a configuration one.
+    policy.style_src   :self, :unsafe_inline
+
     policy.connect_src :self
 
     # Clickjacking. `frame_ancestors :none` is the header form of X-Frame-Options

@@ -16,18 +16,6 @@ class BoomProbeController < ApplicationController
 end
 
 RSpec.describe "CSRF protection and error rendering", type: :request do
-  let(:modern_browser) do
-    { "HTTP_USER_AGENT" => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " \
-        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" }
-  end
-
-  def inertia_payload(body)
-    raw = body[/data-page="([^"]*)"/, 1]
-    raise "response is not an Inertia page: #{body[0, 200]}" if raw.nil?
-
-    JSON.parse(CGI.unescapeHTML(raw))
-  end
-
   # Error responses are rendered the way production renders them: ShowExceptions
   # handles the failure and Rails' developer page is off. The middleware reads
   # both per request, so they can be overridden here without rebuilding the stack.
@@ -63,7 +51,7 @@ RSpec.describe "CSRF protection and error rendering", type: :request do
       post "/__probe/csrf", headers: modern_browser
 
       expect(response).to have_http_status(:unprocessable_content)
-      expect(inertia_payload(response.body)["component"]).to eq("Error")
+      expect(inertia_payload["component"]).to eq("Error")
     end
 
     it "accepts the same request when the token is present" do
@@ -88,13 +76,13 @@ RSpec.describe "CSRF protection and error rendering", type: :request do
       get "/__probe/boom", headers: modern_browser
 
       expect(response).to have_http_status(:internal_server_error)
-      expect(inertia_payload(response.body)["component"]).to eq("Error")
+      expect(inertia_payload["component"]).to eq("Error")
     end
 
     it "shows the request id so the failure can be found in the server log" do
       get "/__probe/boom", headers: modern_browser
 
-      props = inertia_payload(response.body).fetch("props")
+      props = inertia_payload.fetch("props")
 
       expect(props["requestId"]).to be_present
       expect(props["status"]).to eq(500)
@@ -113,7 +101,7 @@ RSpec.describe "CSRF protection and error rendering", type: :request do
       get "/__probe/does-not-exist", headers: modern_browser
 
       expect(response).to have_http_status(:not_found)
-      expect(inertia_payload(response.body).dig("props", "status")).to eq(404)
+      expect(inertia_payload.dig("props", "status")).to eq(404)
     end
   end
 end

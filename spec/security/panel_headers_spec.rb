@@ -4,11 +4,6 @@ require "rails_helper"
 # a user deploys: Opanel does not impose a content policy on a customer's
 # workload (Annex C §14).
 RSpec.describe "panel security headers", type: :request do
-  let(:modern_browser) do
-    { "HTTP_USER_AGENT" => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " \
-        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" }
-  end
-
   let(:csp) { response.headers["Content-Security-Policy"].to_s }
 
   before { get "/", headers: modern_browser }

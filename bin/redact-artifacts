@@ -1,0 +1,137 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Redacts test failure artifacts before they are archived (Annex C §17.1).
+#
+#   bin/redact-artifacts tmp/test-results
+#   bin/redact-artifacts --format json tmp/test-results
+#
+# A trace, a screenshot and a video record whatever was on screen and on the wire.
+# That is why they are useful and why they cannot be uploaded unexamined: an
+# Authorization header, a session cookie or a revealed secret would be published
+# to CI storage and to whoever has the artifact link.
+#
+# Text artifacts are masked in place. Archives and binaries cannot be masked
+# without rewriting them, so a hit deletes the artifact and the command exits
+# non-zero: losing a diagnostic is recoverable, publishing a credential is not.
+
+require "json"
+require "fileutils"
+
+PATTERNS = {
+  "authorization-header" => /(authorization"?\s*[:=]\s*"?)(Bearer|Basic|Token)\s+[A-Za-z0-9._\-\/+=]+/i,
+  "cookie-header" => /((?:set-)?cookie"?\s*[:=]\s*"?)([^"\r\n;]{8,})/i,
+  "password-assignment" => /((?:password|passwd|pwd|secret|passphrase)"?\s*[:=]\s*"?)([^"\s,}]{4,})/i,
+  "token-assignment" => /((?:api[_-]?key|token|access[_-]?token|refresh[_-]?token)"?\s*[:=]\s*"?)([A-Za-z0-9._\-]{12,})/i,
+  "connection-url" => %r{([a-z][a-z0-9+.\-]*://[^\s:/@"]+:)([^\s@"]{3,})(@)}i,
+  "private-key" => /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  "recovery-key" => /(recovery[_-]?key"?\s*[:=]\s*"?)([^"\s,}]{4,})/i
+}.freeze
+
+TEXT_EXTENSIONS = %w[.txt .log .json .xml .html .md .yml .yaml .csv .har].freeze
+MASKED = "[REDACTED]"
+
+format = "text"
+roots = []
+arguments = ARGV.dup
+
+until arguments.empty?
+  argument = arguments.shift
+
+  case argument
+  when "--json" then format = "json"
+  when "--format" then format = arguments.shift
+  when /\A--format=(.+)\z/ then format = Regexp.last_match(1)
+  when /\A--/
+    warn "unknown option: #{argument}"
+    exit 2
+  else
+    roots << argument
+  end
+end
+
+roots = %w[tmp/test-results playwright-report test-results] if roots.empty?
+
+def text_artifact?(path)
+  return true if TEXT_EXTENSIONS.include?(File.extname(path).downcase)
+
+  sample = File.read(path, 4096, mode: "rb").to_s
+  !sample.empty? && sample.valid_encoding? && !sample.include?("\u0000")
+rescue SystemCallError
+  false
+end
+
+def scan(content)
+  PATTERNS.select { |_name, pattern| content.match?(pattern) }.keys
+end
+
+def mask(content)
+  PATTERNS.each_value.reduce(content) do |text, pattern|
+    text.gsub(pattern) do
+      match = Regexp.last_match
+      if match.captures.length >= 2
+        "#{match[1]}#{MASKED}#{match[3]}"
+      else
+        MASKED
+      end
+    end
+  end
+end
+
+masked = []
+deleted = []
+scanned = 0
+
+roots.each do |root|
+  next unless Dir.exist?(root)
+
+  Dir.glob(File.join(root, "**", "*")).each do |path|
+    next unless File.file?(path)
+
+    scanned += 1
+
+    if text_artifact?(path)
+      content = File.read(path, encoding: "BINARY")
+        .encode("UTF-8", invalid: :replace, undef: :replace, replace: "")
+      findings = scan(content)
+      next if findings.empty?
+
+      File.write(path, mask(content))
+      masked << { file: path, patterns: findings }
+    else
+      # An archive or a media file: read it as bytes and look for the same
+      # markers. A trace zip stores its JSON uncompressed often enough that this
+      # catches the common case, and a false positive costs one artifact.
+      content = File.read(path, encoding: "BINARY")
+        .encode("UTF-8", invalid: :replace, undef: :replace, replace: "")
+      findings = scan(content)
+      next if findings.empty?
+
+      FileUtils.rm_f(path)
+      deleted << { file: path, patterns: findings }
+    end
+  end
+end
+
+result = deleted.empty? ? "pass" : "fail"
+
+if format == "json"
+  puts JSON.pretty_generate(
+    check: "redact-artifacts",
+    result: result,
+    files_scanned: scanned,
+    masked: masked,
+    deleted: deleted
+  )
+else
+  masked.each { |entry| puts "redact-artifacts: masked #{entry[:file]} (#{entry[:patterns].join(', ')})" }
+  deleted.each { |entry| puts "redact-artifacts: DELETED #{entry[:file]} (#{entry[:patterns].join(', ')})" }
+
+  if deleted.empty?
+    puts "redact-artifacts: PASS (#{scanned} artifact(s), #{masked.length} masked)"
+  else
+    puts "redact-artifacts: FAIL — #{deleted.length} artifact(s) carried sensitive material and were removed"
+  end
+end
+
+exit(deleted.empty? ? 0 : 1)

@@ -1,16 +1,6 @@
 require "rails_helper"
 
 RSpec.describe "Inertia rendering", type: :request do
-  # allow_browser blocks anything it cannot identify, including a bare test client.
-  let(:modern_browser) do
-    { "HTTP_USER_AGENT" => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " \
-        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" }
-  end
-
-  def inertia_payload(body)
-    JSON.parse(CGI.unescapeHTML(body[/data-page="([^"]*)"/, 1]))
-  end
-
   describe "GET /" do
     it "renders an Inertia page backed by a React component" do
       get "/", headers: modern_browser
@@ -18,7 +8,7 @@ RSpec.describe "Inertia rendering", type: :request do
       expect(response).to have_http_status(:ok)
       expect(response.media_type).to eq("text/html")
 
-      payload = inertia_payload(response.body)
+      payload = inertia_payload
       expect(payload["component"]).to eq("Home")
       expect(payload["url"]).to eq("/")
     end
@@ -26,7 +16,7 @@ RSpec.describe "Inertia rendering", type: :request do
     it "sends the page its server-driven props" do
       get "/", headers: modern_browser
 
-      props = inertia_payload(response.body).fetch("props")
+      props = inertia_payload.fetch("props")
 
       expect(props.dig("platform", "name")).to eq("Opanel")
       expect(props.dig("platform", "environment")).to eq("test")
@@ -62,7 +52,7 @@ RSpec.describe "Inertia rendering", type: :request do
     it "carries the request id so a browser action can be found in the server log" do
       get "/", headers: modern_browser
 
-      props = inertia_payload(response.body).fetch("props")
+      props = inertia_payload.fetch("props")
 
       expect(props["requestId"]).to be_present
       expect(props["requestId"]).to eq(response.headers["X-Request-Id"])
@@ -71,7 +61,7 @@ RSpec.describe "Inertia rendering", type: :request do
     it "exposes flash as a structured prop rather than a rendered partial" do
       get "/", headers: modern_browser
 
-      expect(inertia_payload(response.body).dig("props", "flash")).to eq(
+      expect(inertia_payload.dig("props", "flash")).to eq(
         "notice" => nil, "alert" => nil
       )
     end

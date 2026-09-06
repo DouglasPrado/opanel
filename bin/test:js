@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Component tests: Vitest + Testing Library over app/frontend/.
+#
+#   bin/test:js
+#   bin/test:js --watch
+#   bin/test:js --format json          # gate-shaped output
+#   bin/test:js app/frontend/pages     # a subset
+#
+# A console error in a component test fails it (spec/frontend/setup.ts). React and
+# Radix report broken accessibility trees, invalid props and bad hook usage there,
+# and a suite that ignores them is not checking what it claims to.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+source bin/_gate_lib.sh
+
+format="text"
+args=()
+
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --format) format="$2"; shift ;;
+    --format=*) format="${1#--format=}" ;;
+    --json) format="json" ;;
+    --watch) args+=("--watch") ;;
+    *) args+=("$1") ;;
+  esac
+  shift
+done
+
+if [ "$format" = "text" ]; then
+  exec npx vitest run ${args[@]+"${args[@]}"}
+fi
+
+gate_begin "test:js" "$format"
+gate_run "vitest" npx vitest run ${args[@]+"${args[@]}"}
+gate_finish

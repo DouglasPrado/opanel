@@ -1,0 +1,36 @@
+{
+  "$comment": [
+    "Accessibility debt that lives upstream in the imported component library.",
+    "",
+    "It is recorded, not waived. e2e/gallery.spec.ts fails on any violation that is",
+    "not listed here, and it also fails when a listed one disappears — so the",
+    "baseline can only shrink, and shrinking it is a one-line change.",
+    "",
+    "None of these can be fixed in this repository: M00-05 forbids redesigning an",
+    "imported component, and patching the vendored copy is drift nobody would ever",
+    "reconcile. Each is fixed in gba.dev and re-imported.",
+    "",
+    "Opanel's own pages carry no baseline: e2e/smoke.spec.ts blocks on any",
+    "violation at all."
+  ],
+  "violations": {
+    "color-contrast": {
+      "nodes": 9,
+      "why": "Brand palette. destructive #d90429 on #fbe6ea reaches 4.4:1, muted-foreground #727272 on #f3f3f3 reaches 4.33:1, and the inactive tab #848484 reaches 3.37:1 — all below the 4.5:1 that WCAG 2.2 AA requires for body text.",
+      "fix": "Darken the destructive, muted-foreground and inactive-tab tokens in the gba.dev theme.",
+      "owner": "gba.dev design system"
+    },
+    "aria-input-field-name": {
+      "nodes": 1,
+      "why": "The library's Slider does not forward aria-label to the Radix thumb, which is the element carrying role=slider. A caller has no way to name it.",
+      "fix": "Forward aria-label / aria-labelledby to SliderPrimitive.Thumb.",
+      "owner": "gba.dev design system"
+    },
+    "scrollable-region-focusable": {
+      "nodes": 1,
+      "why": "ScrollArea renders the Radix Viewport with a fixed prop set, so tabIndex cannot reach the scrollable element and it is unreachable by keyboard.",
+      "fix": "Spread caller props onto ScrollAreaPrimitive.Viewport, or set tabIndex={0} on it.",
+      "owner": "gba.dev design system"
+    }
+  }
+}

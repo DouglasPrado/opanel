@@ -18,12 +18,18 @@ Rails.application.configure do
   # Configure public file server for tests with cache-control for performance.
   config.public_file_server.headers = { "cache-control" => "public, max-age=3600" }
 
-  # Show full error reports.
-  config.consider_all_requests_local = true
+  # Show full error reports — a failing test should say why in the response.
+  #
+  # The browser journeys need the opposite: they exercise what a user actually
+  # sees, and a user sees the Inertia error page, not Rails' developer page. The
+  # E2E server sets OPANEL_RENDER_ERROR_PAGES so it renders failures the way
+  # production does.
+  config.consider_all_requests_local = ENV["OPANEL_RENDER_ERROR_PAGES"].blank?
   config.cache_store = :null_store
 
-  # Render exception templates for rescuable exceptions and raise for other exceptions.
-  config.action_dispatch.show_exceptions = :rescuable
+  # Render exception templates for rescuable exceptions and raise for other
+  # exceptions — except when rendering error pages for the browser journeys.
+  config.action_dispatch.show_exceptions = ENV["OPANEL_RENDER_ERROR_PAGES"].present? ? :all : :rescuable
 
   # Disable request forgery protection in test environment.
   config.action_controller.allow_forgery_protection = false

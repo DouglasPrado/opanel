@@ -5,7 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["vite/client", "node"],
+    "types": ["vite/client", "node", "vitest/globals"],
 
     // `strict` matches the strictness the imported component library (M00-05) is
     // written against. `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`
@@ -32,6 +32,15 @@
       "@/*": ["./app/frontend/*"]
     }
   },
-  "include": ["app/frontend/**/*.ts", "app/frontend/**/*.tsx", "vite.config.ts"],
+  "include": [
+    "app/frontend/**/*.ts",
+    "app/frontend/**/*.tsx",
+    "spec/frontend/**/*.ts",
+    "spec/frontend/**/*.tsx",
+    "e2e/**/*.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ],
   "exclude": ["node_modules", "public", "vendor", "tmp", "app/frontend/.lint-probe"]
 }

@@ -81,7 +81,9 @@ RSpec.describe "lint rules" do
 
   describe "test selectors — a CSS class is not a selector (Annex D §11.1)" do
     it "rejects locator('.class')" do
-      output, status = with_frontend_probe(<<~TSX, extension: "ts") { |path| run("npx", "eslint", "--no-warn-ignored", path) }
+      probe = ->(path) { run("npx", "eslint", "--no-warn-ignored", path) }
+
+      output, status = with_frontend_probe(<<~TSX, extension: "ts", &probe)
         export function probe(page: { locator: (selector: string) => unknown }) {
           return page.locator('.deploy-button');
         }
@@ -93,7 +95,9 @@ RSpec.describe "lint rules" do
     end
 
     it "rejects querySelector('.class')" do
-      output, status = with_frontend_probe(<<~TSX, extension: "ts") { |path| run("npx", "eslint", "--no-warn-ignored", path) }
+      probe = ->(path) { run("npx", "eslint", "--no-warn-ignored", path) }
+
+      output, status = with_frontend_probe(<<~TSX, extension: "ts", &probe)
         export function probe(root: Element) {
           return root.querySelector('.service-row');
         }
@@ -104,7 +108,9 @@ RSpec.describe "lint rules" do
     end
 
     it "rejects getElementsByClassName" do
-      output, status = with_frontend_probe(<<~TSX, extension: "ts") { |path| run("npx", "eslint", "--no-warn-ignored", path) }
+      probe = ->(path) { run("npx", "eslint", "--no-warn-ignored", path) }
+
+      output, status = with_frontend_probe(<<~TSX, extension: "ts", &probe)
         export function probe(root: Element) {
           return root.getElementsByClassName('service-row');
         }
@@ -114,7 +120,9 @@ RSpec.describe "lint rules" do
     end
 
     it "accepts a role or test-id selector" do
-      output, status = with_frontend_probe(<<~TSX, extension: "ts") { |path| run("npx", "eslint", "--no-warn-ignored", path) }
+      probe = ->(path) { run("npx", "eslint", "--no-warn-ignored", path) }
+
+      output, status = with_frontend_probe(<<~TSX, extension: "ts", &probe)
         interface Page {
           getByRole: (role: string, options?: { name?: string }) => unknown;
           getByTestId: (id: string) => unknown;

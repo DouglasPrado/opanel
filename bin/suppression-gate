@@ -42,8 +42,30 @@ if paths.empty?
   paths = paths.map { |path| File.join(root, path) }
 end
 
-SKIPPED = %r{/(node_modules|vendor|public|tmp|log)/|\.(png|jpg|jpeg|gif|svg|woff2?|ico|lock)\z}
-paths = paths.select { |path| File.file?(path) && !path.match?(SKIPPED) }
+SKIPPED = %r{
+  /(node_modules|vendor|public|tmp|log)/            # not our code
+  | \.(png|jpg|jpeg|gif|svg|woff2?|ico|lock|pdf)\z  # not text
+  | \.md\z                                          # prose: an example suppresses nothing
+}x
+
+# The gate's own source and its negative-case fixtures contain the patterns by
+# definition — one as regular expressions, the other as planted violations.
+# Scanning them would report the checker for being a checker.
+#
+# This list is exactly that: adding to it is editing a gate, which the Post-commit
+# Gate flags and which needs a Story of its own (Annex I §21.2).
+SELF_REFERENTIAL = %w[
+  lib/gates/suppression_gate.rb
+  spec/gates/lint_rules_spec.rb
+].freeze
+
+paths = paths.select do |path|
+  next false unless File.file?(path)
+  next false if path.match?(SKIPPED)
+
+  relative = path.delete_prefix("#{root}/")
+  !SELF_REFERENTIAL.include?(relative)
+end
 
 started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 violations = Opanel::Gates::SuppressionGate.check_paths(paths)

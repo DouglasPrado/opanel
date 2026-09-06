@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Browser journeys: Playwright against the real application.
+#
+#   bin/test:e2e
+#   bin/test:e2e --ui
+#   bin/test:e2e --format json
+#   bin/test:e2e e2e/smoke.spec.ts
+#
+# Playwright starts the Rails server itself. On failure it keeps a trace, a
+# screenshot and a video, and the global teardown redacts them before anything can
+# be archived (Annex C §17.1) — a run that leaks fails instead of shipping.
+#
+# The report separates a retry caused by infrastructure from one caused by an
+# assertion (tmp/test-results/e2e-retries.json). A suite that is only green
+# because it kept trying is not green.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+source bin/_gate_lib.sh
+
+format="text"
+args=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --format) format="$2"; shift ;;
+    --format=*) format="${1#--format=}" ;;
+    --json) format="json" ;;
+    *) args+=("$1") ;;
+  esac
+  shift
+done
+
+# A missing browser is a setup failure and has to say so, rather than surfacing as
+# a timeout in every journey.
+if ! npx playwright --version >/dev/null 2>&1; then
+  echo "Playwright is not installed. Run: npx playwright install --with-deps chromium" >&2
+  exit 2
+fi
+
+if [ "$format" = "text" ]; then
+  exec npx playwright test ${args[@]+"${args[@]}"}
+fi
+
+gate_begin "test:e2e" "$format"
+gate_run "playwright" npx playwright test ${args[@]+"${args[@]}"}
+gate_finish

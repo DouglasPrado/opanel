@@ -6,10 +6,6 @@ require "rails_helper"
 # extends the same rule beyond this file.
 RSpec.describe "Inertia shared props", type: :security do
   include RSpec::Rails::RequestExampleGroup
-  let(:modern_browser) do
-    { "HTTP_USER_AGENT" => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " \
-        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" }
-  end
 
   # Substrings that mark a value as sensitive wherever it appears in a prop key.
   SENSITIVE_KEY_FRAGMENTS = %w[
@@ -20,11 +16,8 @@ RSpec.describe "Inertia shared props", type: :security do
   def shared_prop_keys
     get "/", headers: modern_browser
 
-    payload = JSON.parse(CGI.unescapeHTML(response.body[/data-page="([^"]*)"/, 1]))
-    shared = payload.fetch("sharedProps")
-    props = payload.fetch("props")
-
-    flatten_keys(props.slice(*shared))
+    payload = inertia_payload
+    flatten_keys(payload.fetch("props").slice(*payload.fetch("sharedProps")))
   end
 
   def flatten_keys(value, prefix = nil)
@@ -43,9 +36,8 @@ RSpec.describe "Inertia shared props", type: :security do
 
   it "declares which props are shared, so the surface is enumerable" do
     get "/", headers: modern_browser
-    payload = JSON.parse(CGI.unescapeHTML(response.body[/data-page="([^"]*)"/, 1]))
 
-    expect(payload["sharedProps"]).to match_array(%w[requestId flash errors])
+    expect(inertia_payload["sharedProps"]).to match_array(%w[requestId flash errors])
   end
 
   it "contains no key marked as sensitive" do

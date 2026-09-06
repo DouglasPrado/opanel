@@ -5,7 +5,12 @@ import '@/entrypoints/application.css';
 import { pageTitle } from '@/lib/page-title';
 import { resolvePage, type PageModules } from '@/lib/resolve-page';
 
-const pages = import.meta.glob('../pages/**/*.tsx', { eager: true }) as PageModules;
+// Test files live next to the pages they cover; they must never reach the
+// bundle. One that did would run its mocking framework in the browser and stop
+// the application from mounting — which is exactly how this was found.
+const pages = import.meta.glob(['../pages/**/*.tsx', '!../pages/**/*.test.tsx'], {
+  eager: true,
+}) as PageModules;
 
 createInertiaApp({
   title: pageTitle,
