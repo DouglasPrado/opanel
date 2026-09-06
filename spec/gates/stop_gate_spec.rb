@@ -54,15 +54,21 @@ RSpec.describe Opanel::Gates::StopGate do
       expect(output).to include("unknown check")
     end
 
-    # `ok:false` is the answer, not a crash — the caller reads the field.
+    # Asked about a Milestone that does not exist, so the answer is `no` whatever
+    # M00 happens to look like. An earlier version used M00's own missing
+    # MILESTONE_REPORT.md and went green the moment the report was written —
+    # a "must be red" case that quietly stopped being red.
+    #
+    # `ok:false` is the answer, not a crash: the caller reads the field.
     it "exits 0 in JSON mode even when the answer is no" do
-      _output, status = run_gate("M00", "--only", "milestone-report")
+      output, status = run_gate("M99", "--only", "acceptance")
 
       expect(status).to be_success
+      expect(JSON.parse(output)["ok"]).to be(false)
     end
 
     it "exits non-zero in text mode, so a shell `&&` behaves" do
-      _output, status = run_gate("M00", "--only", "milestone-report", "--format", "text")
+      _output, status = run_gate("M99", "--only", "acceptance", "--format", "text")
 
       expect(status).not_to be_success
     end
