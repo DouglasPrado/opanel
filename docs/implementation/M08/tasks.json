@@ -1,0 +1,22 @@
+{
+  "milestone": "M08",
+  "name": "Cluster Expansion, Node Lifecycle & HA",
+  "status": "pending",
+  "dependencies": ["M02", "M04"],
+  "stories": [
+    { "id": "M08-01", "file": "stories/M08-01-enrollment-token.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M08-02", "file": "stories/M08-02-node-bootstrap-and-preflight.md", "status": "pending", "dependsOn": ["M08-01"], "attempts": 0, "required": true },
+    { "id": "M08-03", "file": "stories/M08-03-worker-enrollment-flow.md", "status": "pending", "dependsOn": ["M08-02"], "attempts": 0, "required": true },
+    { "id": "M08-04", "file": "stories/M08-04-node-roles-and-capabilities.md", "status": "pending", "dependsOn": ["M08-03"], "attempts": 0, "required": true },
+    { "id": "M08-05", "file": "stories/M08-05-manager-promote-demote-quorum.md", "status": "pending", "dependsOn": ["M08-04"], "attempts": 0, "required": true },
+    { "id": "M08-06", "file": "stories/M08-06-node-drain-activate-pause.md", "status": "pending", "dependsOn": ["M08-04"], "attempts": 0, "required": true },
+    { "id": "M08-07", "file": "stories/M08-07-node-removal-and-force-remove.md", "status": "pending", "dependsOn": ["M08-06"], "attempts": 0, "required": true },
+    { "id": "M08-08", "file": "stories/M08-08-join-token-protection-and-rotation.md", "status": "pending", "dependsOn": ["M08-01"], "attempts": 0, "required": true },
+    { "id": "M08-09", "file": "stories/M08-09-network-profile-and-firewall-readiness.md", "status": "pending", "dependsOn": ["M08-03"], "attempts": 0, "required": true },
+    { "id": "M08-10", "file": "stories/M08-10-load-balancer-provider.md", "status": "pending", "dependsOn": ["M08-04"], "attempts": 0, "required": true },
+    { "id": "M08-11", "file": "stories/M08-11-ingress-ha-and-certificate-quorum.md", "status": "pending", "dependsOn": ["M08-10"], "attempts": 0, "required": true },
+    { "id": "M08-12", "file": "stories/M08-12-cluster-readiness-and-ha-claim.md", "status": "pending", "dependsOn": ["M08-05", "M08-11"], "attempts": 0, "required": true },
+    { "id": "M08-13", "file": "stories/M08-13-node-failure-and-capacity.md", "status": "pending", "dependsOn": ["M08-06"], "attempts": 0, "required": true },
+    { "id": "M08-14", "file": "stories/M08-14-cluster-and-nodes-ui.md", "status": "pending", "dependsOn": ["M08-12", "M08-13"], "attempts": 0, "required": true }
+  ]
+}

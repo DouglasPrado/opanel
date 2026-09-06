@@ -1,0 +1,22 @@
+{
+  "milestone": "M04",
+  "name": "Ingress, Default Domains & TLS",
+  "status": "pending",
+  "dependencies": ["M02", "M03"],
+  "stories": [
+    { "id": "M04-01", "file": "stories/M04-01-ingress-role-and-traefik-deployment.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M04-02", "file": "stories/M04-02-ingress-network-attachment.md", "status": "pending", "dependsOn": ["M04-01"], "attempts": 0, "required": true },
+    { "id": "M04-03", "file": "stories/M04-03-service-ports-and-discovery.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M04-04", "file": "stories/M04-04-domain-and-domain-binding.md", "status": "pending", "dependsOn": ["M04-03"], "attempts": 0, "required": true },
+    { "id": "M04-05", "file": "stories/M04-05-ingress-reconciler.md", "status": "pending", "dependsOn": ["M04-02", "M04-04"], "attempts": 0, "required": true },
+    { "id": "M04-06", "file": "stories/M04-06-platform-default-domain.md", "status": "pending", "dependsOn": ["M04-05"], "attempts": 0, "required": true },
+    { "id": "M04-07", "file": "stories/M04-07-dns-provider-abstraction.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M04-08", "file": "stories/M04-08-certificate-model-and-encrypted-keys.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M04-09", "file": "stories/M04-09-certificate-manager-acme-dns01.md", "status": "pending", "dependsOn": ["M04-07", "M04-08"], "attempts": 0, "required": true },
+    { "id": "M04-10", "file": "stories/M04-10-certificate-distribution-and-activation.md", "status": "pending", "dependsOn": ["M04-09"], "attempts": 0, "required": true },
+    { "id": "M04-11", "file": "stories/M04-11-certificate-renewal.md", "status": "pending", "dependsOn": ["M04-10"], "attempts": 0, "required": true },
+    { "id": "M04-12", "file": "stories/M04-12-edge-policies-and-trusted-proxies.md", "status": "pending", "dependsOn": ["M04-05"], "attempts": 0, "required": true },
+    { "id": "M04-13", "file": "stories/M04-13-edge-health-and-diagnostics.md", "status": "pending", "dependsOn": ["M04-06", "M04-10"], "attempts": 0, "required": true },
+    { "id": "M04-14", "file": "stories/M04-14-websocket-sse-grpc-presets.md", "status": "pending", "dependsOn": ["M04-12"], "attempts": 0, "required": true }
+  ]
+}

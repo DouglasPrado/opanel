@@ -1,0 +1,22 @@
+{
+  "milestone": "M06",
+  "name": "Release, Deployment, Rollback & Promotion",
+  "status": "pending",
+  "dependencies": ["M02", "M03", "M05"],
+  "stories": [
+    { "id": "M06-01", "file": "stories/M06-01-immutable-release.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M06-02", "file": "stories/M06-02-deployment-state-machine.md", "status": "pending", "dependsOn": ["M06-01"], "attempts": 0, "required": true },
+    { "id": "M06-03", "file": "stories/M06-03-config-resolution-and-secret-materialization.md", "status": "pending", "dependsOn": ["M06-02"], "attempts": 0, "required": true },
+    { "id": "M06-04", "file": "stories/M06-04-rolling-update-policy.md", "status": "pending", "dependsOn": ["M06-03"], "attempts": 0, "required": true },
+    { "id": "M06-05", "file": "stories/M06-05-health-verification-and-convergence.md", "status": "pending", "dependsOn": ["M06-04"], "attempts": 0, "required": true },
+    { "id": "M06-06", "file": "stories/M06-06-automatic-rollback.md", "status": "pending", "dependsOn": ["M06-05"], "attempts": 0, "required": true },
+    { "id": "M06-07", "file": "stories/M06-07-manual-rollback.md", "status": "pending", "dependsOn": ["M06-05"], "attempts": 0, "required": true },
+    { "id": "M06-08", "file": "stories/M06-08-redeploy.md", "status": "pending", "dependsOn": ["M06-05"], "attempts": 0, "required": true },
+    { "id": "M06-09", "file": "stories/M06-09-promotion-same-digest.md", "status": "pending", "dependsOn": ["M06-07", "M06-14"], "attempts": 0, "required": true },
+    { "id": "M06-10", "file": "stories/M06-10-deployment-concurrency-and-supersession.md", "status": "pending", "dependsOn": ["M06-04"], "attempts": 0, "required": true },
+    { "id": "M06-11", "file": "stories/M06-11-auto-deploy-from-webhook.md", "status": "pending", "dependsOn": ["M06-10"], "attempts": 0, "required": true },
+    { "id": "M06-12", "file": "stories/M06-12-deployment-events-and-ui.md", "status": "pending", "dependsOn": ["M06-05"], "attempts": 0, "required": true },
+    { "id": "M06-13", "file": "stories/M06-13-artifact-retention-protection.md", "status": "pending", "dependsOn": ["M06-07"], "attempts": 0, "required": true },
+    { "id": "M06-14", "file": "stories/M06-14-service-lineage.md", "status": "pending", "dependsOn": ["M06-01"], "attempts": 0, "required": true }
+  ]
+}

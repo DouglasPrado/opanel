@@ -1,0 +1,21 @@
+{
+  "milestone": "M13",
+  "name": "Hardening, Performance, Chaos & SLO Validation",
+  "status": "pending",
+  "dependencies": ["M05", "M06", "M08", "M10"],
+  "stories": [
+    { "id": "M13-01", "file": "stories/M13-01-rbac-idor-regression-suite.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M13-02", "file": "stories/M13-02-ssrf-suite.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M13-03", "file": "stories/M13-03-builder-isolation-suite.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M13-04", "file": "stories/M13-04-secret-leakage-scanning.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M13-05", "file": "stories/M13-05-concurrency-fault-injection.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M13-06", "file": "stories/M13-06-performance-lab-and-baseline.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M13-07", "file": "stories/M13-07-operation-engine-throughput.md", "status": "pending", "dependsOn": ["M13-06"], "attempts": 0, "required": true },
+    { "id": "M13-08", "file": "stories/M13-08-edge-load-testing.md", "status": "pending", "dependsOn": ["M13-06"], "attempts": 0, "required": true },
+    { "id": "M13-09", "file": "stories/M13-09-ga-scale-floors.md", "status": "pending", "dependsOn": ["M13-06"], "attempts": 0, "required": true },
+    { "id": "M13-10", "file": "stories/M13-10-chaos-suite.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M13-11", "file": "stories/M13-11-abuse-controls-validation.md", "status": "pending", "dependsOn": ["M13-06"], "attempts": 0, "required": true },
+    { "id": "M13-12", "file": "stories/M13-12-upgrade-compatibility-suite.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M13-13", "file": "stories/M13-13-slo-validation.md", "status": "pending", "dependsOn": ["M13-06", "M13-07"], "attempts": 0, "required": true }
+  ]
+}

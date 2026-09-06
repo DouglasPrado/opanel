@@ -1,0 +1,18 @@
+{
+  "milestone": "M14",
+  "name": "Production Readiness & Release Candidate",
+  "status": "pending",
+  "dependencies": ["M13"],
+  "stories": [
+    { "id": "M14-01", "file": "stories/M14-01-e2e-acceptance-suite.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M14-02", "file": "stories/M14-02-clean-install-and-onboarding.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M14-03", "file": "stories/M14-03-platform-upgrade-and-rollback.md", "status": "pending", "dependsOn": ["M14-02"], "attempts": 0, "required": true },
+    { "id": "M14-04", "file": "stories/M14-04-runbook-exercise-program.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M14-05", "file": "stories/M14-05-full-dr-drill.md", "status": "pending", "dependsOn": ["M14-04"], "attempts": 0, "required": true },
+    { "id": "M14-06", "file": "stories/M14-06-security-go-live-checklist.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M14-07", "file": "stories/M14-07-documentation-set.md", "status": "pending", "dependsOn": ["M14-02", "M14-04"], "attempts": 0, "required": true },
+    { "id": "M14-08", "file": "stories/M14-08-known-limitations-and-waivers.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M14-09", "file": "stories/M14-09-release-process-and-evidence.md", "status": "pending", "dependsOn": ["M14-01"], "attempts": 0, "required": true },
+    { "id": "M14-10", "file": "stories/M14-10-production-readiness-gate.md", "status": "pending", "dependsOn": ["M14-01", "M14-02", "M14-03", "M14-04", "M14-05", "M14-06", "M14-07", "M14-08", "M14-09"], "attempts": 0, "required": true }
+  ]
+}

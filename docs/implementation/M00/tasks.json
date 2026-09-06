@@ -1,0 +1,26 @@
+{
+  "milestone": "M00",
+  "name": "Foundation",
+  "status": "pending",
+  "dependencies": [],
+  "stories": [
+    { "id": "M00-01", "file": "stories/M00-01-repository-and-rails-skeleton.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M00-02", "file": "stories/M00-02-postgresql-and-migrations.md", "status": "pending", "dependsOn": ["M00-01"], "attempts": 0, "required": true },
+    { "id": "M00-03", "file": "stories/M00-03-solid-queue-baseline.md", "status": "pending", "dependsOn": ["M00-02"], "attempts": 0, "required": true },
+    { "id": "M00-04", "file": "stories/M00-04-inertia-react-vite-tailwind.md", "status": "pending", "dependsOn": ["M00-01"], "attempts": 0, "required": true },
+    { "id": "M00-05", "file": "stories/M00-05-component-library-import-and-inventory.md", "status": "pending", "dependsOn": ["M00-04"], "attempts": 0, "required": true },
+    { "id": "M00-06", "file": "stories/M00-06-local-development-environment.md", "status": "pending", "dependsOn": ["M00-02", "M00-03", "M00-04"], "attempts": 0, "required": true },
+    { "id": "M00-07", "file": "stories/M00-07-backend-test-harness.md", "status": "pending", "dependsOn": ["M00-02"], "attempts": 0, "required": true },
+    { "id": "M00-08", "file": "stories/M00-08-frontend-and-e2e-test-harness.md", "status": "pending", "dependsOn": ["M00-04"], "attempts": 0, "required": true },
+    { "id": "M00-09", "file": "stories/M00-09-lint-format-typecheck.md", "status": "pending", "dependsOn": ["M00-01", "M00-04"], "attempts": 0, "required": true },
+    { "id": "M00-10", "file": "stories/M00-10-security-scanning-baseline.md", "status": "pending", "dependsOn": ["M00-09"], "attempts": 0, "required": true },
+    { "id": "M00-11", "file": "stories/M00-11-ci-pipeline-and-gates.md", "status": "pending", "dependsOn": ["M00-07", "M00-08", "M00-09", "M00-10"], "attempts": 0, "required": true },
+    { "id": "M00-12", "file": "stories/M00-12-quality-gate-scripts.md", "status": "pending", "dependsOn": ["M00-11"], "attempts": 0, "required": true },
+    { "id": "M00-13", "file": "stories/M00-13-architecture-fitness-functions.md", "status": "pending", "dependsOn": ["M00-07"], "attempts": 0, "required": true },
+    { "id": "M00-14", "file": "stories/M00-14-autonomous-loop-scaffolding.md", "status": "pending", "dependsOn": ["M00-12"], "attempts": 0, "required": true },
+    { "id": "M00-15", "file": "stories/M00-15-structured-logging-and-health.md", "status": "pending", "dependsOn": ["M00-01", "M00-03"], "attempts": 0, "required": true },
+    { "id": "M00-16", "file": "stories/M00-16-configuration-and-secrets-management.md", "status": "pending", "dependsOn": ["M00-01"], "attempts": 0, "required": true },
+    { "id": "M00-17", "file": "stories/M00-17-swarm-lab-harness.md", "status": "pending", "dependsOn": ["M00-07"], "attempts": 0, "required": true },
+    { "id": "M00-18", "file": "stories/M00-18-documentation-templates.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true }
+  ]
+}

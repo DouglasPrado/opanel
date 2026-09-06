@@ -1,0 +1,31 @@
+{
+  "milestone": "M01",
+  "name": "First Vertical Slice",
+  "status": "pending",
+  "dependencies": ["M00"],
+  "stories": [
+    { "id": "M01-01", "file": "stories/M01-01-user-and-authentication.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M01-02", "file": "stories/M01-02-team-and-ownership-constraint.md", "status": "pending", "dependsOn": ["M01-01"], "attempts": 0, "required": true },
+    { "id": "M01-03", "file": "stories/M01-03-instance-role-and-bootstrap.md", "status": "pending", "dependsOn": ["M01-02"], "attempts": 0, "required": true },
+    { "id": "M01-04", "file": "stories/M01-04-authorization-foundation.md", "status": "pending", "dependsOn": ["M01-02", "M01-03"], "attempts": 0, "required": true },
+    { "id": "M01-05", "file": "stories/M01-05-audit-log-foundation.md", "status": "pending", "dependsOn": ["M01-04"], "attempts": 0, "required": true },
+    { "id": "M01-06", "file": "stories/M01-06-app-shell-and-auth-ui.md", "status": "pending", "dependsOn": ["M01-04"], "attempts": 0, "required": true },
+    { "id": "M01-07", "file": "stories/M01-07-project-entity.md", "status": "pending", "dependsOn": ["M01-04", "M01-05"], "attempts": 0, "required": true },
+    { "id": "M01-08", "file": "stories/M01-08-cluster-and-swarm-bootstrap.md", "status": "pending", "dependsOn": ["M01-04", "M01-05"], "attempts": 0, "required": true },
+    { "id": "M01-09", "file": "stories/M01-09-swarm-executor.md", "status": "pending", "dependsOn": ["M01-08"], "attempts": 0, "required": true },
+    { "id": "M01-10", "file": "stories/M01-10-node-registration-and-observation.md", "status": "pending", "dependsOn": ["M01-09"], "attempts": 0, "required": true },
+    { "id": "M01-11", "file": "stories/M01-11-environment-entity.md", "status": "pending", "dependsOn": ["M01-07", "M01-08"], "attempts": 0, "required": true },
+    { "id": "M01-12", "file": "stories/M01-12-service-desired-state.md", "status": "pending", "dependsOn": ["M01-11"], "attempts": 0, "required": true },
+    { "id": "M01-13", "file": "stories/M01-13-operation-and-outbox-transaction.md", "status": "pending", "dependsOn": ["M01-12"], "attempts": 0, "required": true },
+    { "id": "M01-14", "file": "stories/M01-14-outbox-dispatcher-and-recovery-sweep.md", "status": "pending", "dependsOn": ["M01-13"], "attempts": 0, "required": true },
+    { "id": "M01-15", "file": "stories/M01-15-resource-locks-leases-fencing.md", "status": "pending", "dependsOn": ["M01-13"], "attempts": 0, "required": true },
+    { "id": "M01-16", "file": "stories/M01-16-swarm-ownership-labels.md", "status": "pending", "dependsOn": ["M01-09"], "attempts": 0, "required": true },
+    { "id": "M01-17", "file": "stories/M01-17-environment-network-reconciler.md", "status": "pending", "dependsOn": ["M01-14", "M01-15", "M01-16"], "attempts": 0, "required": true },
+    { "id": "M01-18", "file": "stories/M01-18-service-reconciler.md", "status": "pending", "dependsOn": ["M01-17"], "attempts": 0, "required": true },
+    { "id": "M01-19", "file": "stories/M01-19-actual-state-and-derived-status.md", "status": "pending", "dependsOn": ["M01-18"], "attempts": 0, "required": true },
+    { "id": "M01-20", "file": "stories/M01-20-service-live-logs.md", "status": "pending", "dependsOn": ["M01-09", "M01-19"], "attempts": 0, "required": true },
+    { "id": "M01-21", "file": "stories/M01-21-scale-service.md", "status": "pending", "dependsOn": ["M01-19"], "attempts": 0, "required": true },
+    { "id": "M01-22", "file": "stories/M01-22-product-ui-projects-environments-services.md", "status": "pending", "dependsOn": ["M01-06", "M01-19", "M01-21"], "attempts": 0, "required": true },
+    { "id": "M01-23", "file": "stories/M01-23-vertical-slice-e2e-acceptance.md", "status": "pending", "dependsOn": ["M01-20", "M01-21", "M01-22"], "attempts": 0, "required": true }
+  ]
+}

@@ -4,6 +4,26 @@ Opanel is a cluster-first PaaS built on Docker Swarm. This file says how to *ope
 
 @docs/AGENT_RULES.md
 
+## Fixed Role — IMPLEMENTER
+
+Claude is the **IMPLEMENTER**. Claude implements Stories and, when the
+orchestrator requests it, fixes blocking findings from an independent Codex
+review.
+
+Claude is never the independent Milestone reviewer. It must not:
+
+- create or overwrite `CODEX_REVIEW_<NN>.md`;
+- emit `ACCEPTED` or `NOT_ACCEPTED` as a review verdict;
+- set `review-state.json` to `reviewing`, `fix_required`, `accepted` or
+  `human_acceptance`;
+- replace the Codex review with a subagent, fresh Claude context or self-review;
+- modify the orchestrator, its runners, schemas, hook or review/fix role prompts
+  while executing a Milestone or fixing review findings.
+
+Claude may request independent review only after implementation or fixes are
+complete by setting `review-state.json.status` to `ready_for_review`. The Stop
+hook then hands control to the deterministic orchestrator.
+
 ## Start Here
 
 - The product is named **Opanel**. Never write `OpenEL`.
@@ -74,7 +94,7 @@ Never make a test pass by deleting it, weakening an assertion, disabling a lint 
 
 ## Review
 
-Self-review the diff against the Story, the architecture, security and tests before committing. Classify findings Critical / High / Medium / Low. For substantial Stories, use a separate context (subagent or fresh session) as reviewer; the reviewer does not edit code.
+Self-review the diff against the Story, the architecture, security and tests before committing. This is an implementation quality check, not the independent Milestone review. Do not create a Codex verdict and do not use a Claude subagent or fresh Claude session to replace Codex.
 
 `Critical = 0` and `High = 0` are required before DONE and before merge.
 
@@ -84,11 +104,23 @@ When running under `/goal`:
 
 - Work Story by Story; do not jump ahead.
 - Keep the milestone's `docs/implementation/<milestone>/tasks.json` accurate — status, attempts, commit hash.
+- Read `docs/implementation/<milestone>/review-state.json` before acting. Work on
+  the original Goal only in `implementing`; work from the latest Codex review
+  only in `fixing`.
 - Commit each completed Story as a checkpoint.
 - Respect the retry budget: a new, informative failure justifies another attempt; the same failure without progress means change strategy once, then mark `BLOCKED`.
 - Use `BLOCKED` (with a reproducible reason) rather than looping or inventing a workaround, and continue with independent Stories.
 - Never report success you have not demonstrated. Produce evidence: commands run, exit codes, tests, acceptance criteria mapped.
-- Finish a Milestone by generating its report and handing control back for human acceptance.
+- Finish initial implementation by generating `MILESTONE_REPORT.md` with
+  `Status: READY_FOR_REVIEW`, setting `review-state.json.status` to
+  `ready_for_review`, and stopping. Do not start the next Milestone.
+- In `fixing`, read the latest `CODEX_REVIEW_<NN>.md`, follow
+  `docs/goals/FIX_REVIEW_FINDINGS.md`, correct only blocking findings, generate
+  `FIX_REPORT_<NN>.md`, run the required tests and gates, set
+  `review-state.json.status` to `ready_for_review`, and stop.
+- Never declare human acceptance. Only the orchestrator may move an accepted
+  Codex verdict to `human_acceptance`, and only a human may release the next
+  Milestone.
 
 Do not finish a Story until: implementation complete, tests green, quality gates green, self-review complete, acceptance criteria satisfied.
 
@@ -123,9 +155,11 @@ docs/AGENT_RULES.md
    ↓
 current milestone in docs/implementation/
    ↓
+docs/implementation/<milestone>/review-state.json
+   ↓
 docs/implementation/<milestone>/tasks.json
    ↓
-current Story
+current Story or latest CODEX_REVIEW_<NN>.md when status is fixing
    ↓
 git log / git status
 ```

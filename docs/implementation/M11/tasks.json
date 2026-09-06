@@ -1,0 +1,22 @@
+{
+  "milestone": "M11",
+  "name": "Governance, Instance Administration & Quotas",
+  "status": "pending",
+  "dependencies": ["M01", "M03"],
+  "stories": [
+    { "id": "M11-01", "file": "stories/M11-01-team-invitations.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M11-02", "file": "stories/M11-02-membership-lifecycle.md", "status": "pending", "dependsOn": ["M11-01"], "attempts": 0, "required": true },
+    { "id": "M11-03", "file": "stories/M11-03-ownership-transfer.md", "status": "pending", "dependsOn": ["M11-02"], "attempts": 0, "required": true },
+    { "id": "M11-04", "file": "stories/M11-04-ownership-recovery.md", "status": "pending", "dependsOn": ["M11-03"], "attempts": 0, "required": true },
+    { "id": "M11-05", "file": "stories/M11-05-mfa-totp.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M11-06", "file": "stories/M11-06-session-management.md", "status": "pending", "dependsOn": ["M11-05"], "attempts": 0, "required": true },
+    { "id": "M11-07", "file": "stories/M11-07-api-tokens-and-service-accounts.md", "status": "pending", "dependsOn": ["M11-05"], "attempts": 0, "required": true },
+    { "id": "M11-08", "file": "stories/M11-08-environment-scoped-permissions.md", "status": "pending", "dependsOn": ["M11-02"], "attempts": 0, "required": true },
+    { "id": "M11-09", "file": "stories/M11-09-quota-model.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M11-10", "file": "stories/M11-10-quota-enforcement.md", "status": "pending", "dependsOn": ["M11-09"], "attempts": 0, "required": true },
+    { "id": "M11-11", "file": "stories/M11-11-audit-log-ui.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M11-12", "file": "stories/M11-12-instance-administration.md", "status": "pending", "dependsOn": ["M11-04", "M11-08"], "attempts": 0, "required": true },
+    { "id": "M11-13", "file": "stories/M11-13-security-dashboard.md", "status": "pending", "dependsOn": ["M11-05", "M11-07", "M11-11"], "attempts": 0, "required": true },
+    { "id": "M11-14", "file": "stories/M11-14-rate-limiting.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "milestone": "M07",
+  "name": "Custom Domains & DNS Providers",
+  "status": "pending",
+  "dependencies": ["M04"],
+  "stories": [
+    { "id": "M07-01", "file": "stories/M07-01-custom-domain-onboarding.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M07-02", "file": "stories/M07-02-dns-verification-checker.md", "status": "pending", "dependsOn": ["M07-01"], "attempts": 0, "required": true },
+    { "id": "M07-03", "file": "stories/M07-03-managed-dns-records.md", "status": "pending", "dependsOn": ["M07-02"], "attempts": 0, "required": true },
+    { "id": "M07-04", "file": "stories/M07-04-certificate-strategy-per-hostname.md", "status": "pending", "dependsOn": ["M07-02"], "attempts": 0, "required": true },
+    { "id": "M07-05", "file": "stories/M07-05-domain-removal-safeguards.md", "status": "pending", "dependsOn": ["M07-04"], "attempts": 0, "required": true },
+    { "id": "M07-06", "file": "stories/M07-06-domain-ownership-verification.md", "status": "pending", "dependsOn": ["M07-02"], "attempts": 0, "required": true },
+    { "id": "M07-07", "file": "stories/M07-07-per-domain-edge-policies.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M07-08", "file": "stories/M07-08-http01-fallback-challenge.md", "status": "pending", "dependsOn": ["M07-02"], "attempts": 0, "required": true },
+    { "id": "M07-09", "file": "stories/M07-09-dual-stack-ipv6-capability.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M07-10", "file": "stories/M07-10-customer-wildcard-and-delegated-zones.md", "status": "pending", "dependsOn": ["M07-03", "M07-04"], "attempts": 0, "required": true }
+  ]
+}

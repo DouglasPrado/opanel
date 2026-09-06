@@ -1,0 +1,24 @@
+{
+  "milestone": "M12",
+  "name": "MCP & Agent Operations",
+  "status": "pending",
+  "dependencies": ["M06", "M11"],
+  "stories": [
+    { "id": "M12-01", "file": "stories/M12-01-oauth-resource-server.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M12-02", "file": "stories/M12-02-client-registration.md", "status": "pending", "dependsOn": ["M12-01"], "attempts": 0, "required": true },
+    { "id": "M12-03", "file": "stories/M12-03-mcp-gateway-skeleton.md", "status": "pending", "dependsOn": ["M12-01"], "attempts": 0, "required": true },
+    { "id": "M12-04", "file": "stories/M12-04-agent-connection-and-boundary.md", "status": "pending", "dependsOn": ["M12-03"], "attempts": 0, "required": true },
+    { "id": "M12-05", "file": "stories/M12-05-presets-and-effective-authorization.md", "status": "pending", "dependsOn": ["M12-04"], "attempts": 0, "required": true },
+    { "id": "M12-06", "file": "stories/M12-06-read-only-tools.md", "status": "pending", "dependsOn": ["M12-05"], "attempts": 0, "required": true },
+    { "id": "M12-07", "file": "stories/M12-07-observability-tools.md", "status": "pending", "dependsOn": ["M12-06"], "attempts": 0, "required": true },
+    { "id": "M12-08", "file": "stories/M12-08-safe-write-tools.md", "status": "pending", "dependsOn": ["M12-06"], "attempts": 0, "required": true },
+    { "id": "M12-09", "file": "stories/M12-09-approval-model.md", "status": "pending", "dependsOn": ["M12-08"], "attempts": 0, "required": true },
+    { "id": "M12-10", "file": "stories/M12-10-delivery-tools.md", "status": "pending", "dependsOn": ["M12-09"], "attempts": 0, "required": true },
+    { "id": "M12-11", "file": "stories/M12-11-operations-tools.md", "status": "pending", "dependsOn": ["M12-10"], "attempts": 0, "required": true },
+    { "id": "M12-12", "file": "stories/M12-12-privileged-tools.md", "status": "pending", "dependsOn": ["M12-11"], "attempts": 0, "required": true },
+    { "id": "M12-13", "file": "stories/M12-13-resources-and-prompts.md", "status": "pending", "dependsOn": ["M12-06"], "attempts": 0, "required": true },
+    { "id": "M12-14", "file": "stories/M12-14-mcp-audit-metrics-rate-limiting.md", "status": "pending", "dependsOn": ["M12-06"], "attempts": 0, "required": true },
+    { "id": "M12-15", "file": "stories/M12-15-agents-mcp-ui.md", "status": "pending", "dependsOn": ["M12-09", "M12-14"], "attempts": 0, "required": true },
+    { "id": "M12-16", "file": "stories/M12-16-stdio-bridge.md", "status": "pending", "dependsOn": ["M12-06"], "attempts": 0, "required": true }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "criticalCount",
+    "highCount",
+    "mediumCount",
+    "lowCount",
+    "findings",
+    "reportMarkdown"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["ACCEPTED", "NOT_ACCEPTED"]
+    },
+    "criticalCount": { "type": "integer", "minimum": 0 },
+    "highCount": { "type": "integer", "minimum": 0 },
+    "mediumCount": { "type": "integer", "minimum": 0 },
+    "lowCount": { "type": "integer", "minimum": 0 },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "severity",
+          "story",
+          "file",
+          "problem",
+          "impact",
+          "evidence",
+          "recommendation"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "severity": {
+            "type": "string",
+            "enum": ["Critical", "High", "Medium", "Low"]
+          },
+          "story": { "type": "string" },
+          "file": { "type": "string" },
+          "problem": { "type": "string", "minLength": 1 },
+          "impact": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 },
+          "recommendation": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reportMarkdown": { "type": "string", "minLength": 1 }
+  }
+}

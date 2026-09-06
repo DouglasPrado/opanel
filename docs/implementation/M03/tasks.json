@@ -1,0 +1,21 @@
+{
+  "milestone": "M03",
+  "name": "Vault, Encryption & Secret Distribution",
+  "status": "pending",
+  "dependencies": ["M01", "M02"],
+  "stories": [
+    { "id": "M03-01", "file": "stories/M03-01-encryption-envelope.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M03-02", "file": "stories/M03-02-recovery-key-generation-and-verification.md", "status": "pending", "dependsOn": ["M03-01"], "attempts": 0, "required": true },
+    { "id": "M03-03", "file": "stories/M03-03-recovery-key-rotation.md", "status": "pending", "dependsOn": ["M03-02"], "attempts": 0, "required": true },
+    { "id": "M03-04", "file": "stories/M03-04-step-up-authentication.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M03-05", "file": "stories/M03-05-secret-and-secret-version.md", "status": "pending", "dependsOn": ["M03-01"], "attempts": 0, "required": true },
+    { "id": "M03-06", "file": "stories/M03-06-service-secret-binding.md", "status": "pending", "dependsOn": ["M03-05"], "attempts": 0, "required": true },
+    { "id": "M03-07", "file": "stories/M03-07-swarm-secret-materialization.md", "status": "pending", "dependsOn": ["M03-06"], "attempts": 0, "required": true },
+    { "id": "M03-08", "file": "stories/M03-08-secret-version-promotion-and-rollback.md", "status": "pending", "dependsOn": ["M03-07"], "attempts": 0, "required": true },
+    { "id": "M03-09", "file": "stories/M03-09-secret-reveal.md", "status": "pending", "dependsOn": ["M03-04", "M03-05"], "attempts": 0, "required": true },
+    { "id": "M03-10", "file": "stories/M03-10-redaction-boundary.md", "status": "pending", "dependsOn": ["M03-05"], "attempts": 0, "required": true },
+    { "id": "M03-11", "file": "stories/M03-11-environment-variables.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M03-12", "file": "stories/M03-12-vault-ui.md", "status": "pending", "dependsOn": ["M03-08", "M03-09", "M03-11"], "attempts": 0, "required": true },
+    { "id": "M03-13", "file": "stories/M03-13-recovery-readiness-state.md", "status": "pending", "dependsOn": ["M03-03"], "attempts": 0, "required": true }
+  ]
+}

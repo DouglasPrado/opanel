@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "milestone",
+    "status",
+    "reviewAttempt",
+    "fixAttempt",
+    "maxReviewAttempts",
+    "maxFixAttempts",
+    "lastReviewer",
+    "verdict"
+  ],
+  "properties": {
+    "milestone": { "type": "string", "pattern": "^M[0-9]{2}$" },
+    "status": {
+      "type": "string",
+      "enum": [
+        "implementing",
+        "ready_for_review",
+        "reviewing",
+        "fix_required",
+        "fixing",
+        "accepted",
+        "blocked",
+        "human_acceptance"
+      ]
+    },
+    "reviewAttempt": { "type": "integer", "minimum": 0 },
+    "fixAttempt": { "type": "integer", "minimum": 0 },
+    "maxReviewAttempts": { "type": "integer", "minimum": 1 },
+    "maxFixAttempts": { "type": "integer", "minimum": 1 },
+    "lastReviewer": { "type": ["string", "null"] },
+    "verdict": {
+      "type": ["string", "null"],
+      "enum": ["ACCEPTED", "NOT_ACCEPTED", null]
+    }
+  }
+}

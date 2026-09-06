@@ -1,0 +1,23 @@
+{
+  "milestone": "M09",
+  "name": "Observability, Alerts, Incidents & Autoscaling",
+  "status": "pending",
+  "dependencies": ["M02", "M06"],
+  "stories": [
+    { "id": "M09-01", "file": "stories/M09-01-telemetry-identity.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M09-02", "file": "stories/M09-02-metrics-collectors.md", "status": "pending", "dependsOn": ["M09-01"], "attempts": 0, "required": true },
+    { "id": "M09-03", "file": "stories/M09-03-metrics-backend-abstraction.md", "status": "pending", "dependsOn": ["M09-02"], "attempts": 0, "required": true },
+    { "id": "M09-04", "file": "stories/M09-04-metrics-ui.md", "status": "pending", "dependsOn": ["M09-03"], "attempts": 0, "required": true },
+    { "id": "M09-05", "file": "stories/M09-05-historical-logs-pipeline.md", "status": "pending", "dependsOn": ["M09-01"], "attempts": 0, "required": true },
+    { "id": "M09-06", "file": "stories/M09-06-log-search-and-export.md", "status": "pending", "dependsOn": ["M09-05"], "attempts": 0, "required": true },
+    { "id": "M09-07", "file": "stories/M09-07-runtime-events-timeline.md", "status": "pending", "dependsOn": ["M09-01"], "attempts": 0, "required": true },
+    { "id": "M09-08", "file": "stories/M09-08-alert-rules.md", "status": "pending", "dependsOn": ["M09-03", "M09-07"], "attempts": 0, "required": true },
+    { "id": "M09-09", "file": "stories/M09-09-alert-instances-dedup-and-mute.md", "status": "pending", "dependsOn": ["M09-08"], "attempts": 0, "required": true },
+    { "id": "M09-10", "file": "stories/M09-10-incident-lifecycle.md", "status": "pending", "dependsOn": ["M09-09"], "attempts": 0, "required": true },
+    { "id": "M09-11", "file": "stories/M09-11-notification-providers.md", "status": "pending", "dependsOn": ["M09-09"], "attempts": 0, "required": true },
+    { "id": "M09-12", "file": "stories/M09-12-autoscaling-policy-and-controller.md", "status": "pending", "dependsOn": ["M09-03"], "attempts": 0, "required": true },
+    { "id": "M09-13", "file": "stories/M09-13-autoscaling-safety-rules.md", "status": "pending", "dependsOn": ["M09-12"], "attempts": 0, "required": true },
+    { "id": "M09-14", "file": "stories/M09-14-terminal-exec.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M09-15", "file": "stories/M09-15-sli-slo-and-error-budget.md", "status": "pending", "dependsOn": ["M09-03", "M09-08"], "attempts": 0, "required": true }
+  ]
+}

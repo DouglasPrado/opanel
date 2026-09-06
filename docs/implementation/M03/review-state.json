@@ -1,0 +1,18 @@
+{
+  "milestone": "M03",
+  "status": "implementing",
+  "reviewAttempt": 0,
+  "fixAttempt": 0,
+  "maxReviewAttempts": 3,
+  "maxFixAttempts": 3,
+  "lastReviewer": null,
+  "verdict": null,
+  "criticalCount": null,
+  "highCount": null,
+  "mediumCount": null,
+  "lowCount": null,
+  "lastError": null,
+  "blockedReason": null,
+  "acceptedAt": null,
+  "updatedAt": null
+}

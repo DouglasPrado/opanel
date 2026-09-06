@@ -1,0 +1,24 @@
+{
+  "milestone": "M05",
+  "name": "Source, Build & Artifacts",
+  "status": "pending",
+  "dependencies": ["M02", "M03"],
+  "stories": [
+    { "id": "M05-01", "file": "stories/M05-01-source-connection-github-app.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M05-02", "file": "stories/M05-02-repository-binding-and-service-source.md", "status": "pending", "dependsOn": ["M05-01"], "attempts": 0, "required": true },
+    { "id": "M05-03", "file": "stories/M05-03-short-lived-installation-tokens.md", "status": "pending", "dependsOn": ["M05-01"], "attempts": 0, "required": true },
+    { "id": "M05-04", "file": "stories/M05-04-webhook-verification-and-dedup.md", "status": "pending", "dependsOn": ["M05-01"], "attempts": 0, "required": true },
+    { "id": "M05-05", "file": "stories/M05-05-source-revision-resolution.md", "status": "pending", "dependsOn": ["M05-02", "M05-03"], "attempts": 0, "required": true },
+    { "id": "M05-06", "file": "stories/M05-06-build-entity-and-state-machine.md", "status": "pending", "dependsOn": ["M05-05"], "attempts": 0, "required": true },
+    { "id": "M05-07", "file": "stories/M05-07-builder-pool-isolation.md", "status": "pending", "dependsOn": ["M05-06"], "attempts": 0, "required": true },
+    { "id": "M05-08", "file": "stories/M05-08-railpack-automatic-build.md", "status": "pending", "dependsOn": ["M05-07"], "attempts": 0, "required": true },
+    { "id": "M05-09", "file": "stories/M05-09-dockerfile-build-strategy.md", "status": "pending", "dependsOn": ["M05-07"], "attempts": 0, "required": true },
+    { "id": "M05-10", "file": "stories/M05-10-build-args-and-build-secrets.md", "status": "pending", "dependsOn": ["M05-08", "M05-09"], "attempts": 0, "required": true },
+    { "id": "M05-11", "file": "stories/M05-11-registry-provider-and-connection.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M05-12", "file": "stories/M05-12-artifact-publication-and-digest.md", "status": "pending", "dependsOn": ["M05-10", "M05-11"], "attempts": 0, "required": true },
+    { "id": "M05-13", "file": "stories/M05-13-build-cache.md", "status": "pending", "dependsOn": ["M05-12"], "attempts": 0, "required": true },
+    { "id": "M05-14", "file": "stories/M05-14-build-logs.md", "status": "pending", "dependsOn": ["M05-06"], "attempts": 0, "required": true },
+    { "id": "M05-15", "file": "stories/M05-15-build-cancellation-timeout-cleanup.md", "status": "pending", "dependsOn": ["M05-07"], "attempts": 0, "required": true },
+    { "id": "M05-16", "file": "stories/M05-16-adversarial-build-corpus.md", "status": "pending", "dependsOn": ["M05-10", "M05-15"], "attempts": 0, "required": true }
+  ]
+}

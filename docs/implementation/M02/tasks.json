@@ -1,0 +1,21 @@
+{
+  "milestone": "M02",
+  "name": "Runtime Operations & Drift Control",
+  "status": "pending",
+  "dependencies": ["M01"],
+  "stories": [
+    { "id": "M02-01", "file": "stories/M02-01-restart-service.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M02-02", "file": "stories/M02-02-resource-limits-and-reservations.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true },
+    { "id": "M02-03", "file": "stories/M02-03-placement-and-node-labels.md", "status": "pending", "dependsOn": ["M02-02"], "attempts": 0, "required": true },
+    { "id": "M02-04", "file": "stories/M02-04-health-policy.md", "status": "pending", "dependsOn": ["M02-01"], "attempts": 0, "required": true },
+    { "id": "M02-05", "file": "stories/M02-05-restart-policy-and-crash-loop.md", "status": "pending", "dependsOn": ["M02-04"], "attempts": 0, "required": true },
+    { "id": "M02-06", "file": "stories/M02-06-drift-detection-and-platform-wins.md", "status": "pending", "dependsOn": ["M02-03", "M02-04"], "attempts": 0, "required": true },
+    { "id": "M02-07", "file": "stories/M02-07-adopt-runtime-state.md", "status": "pending", "dependsOn": ["M02-06"], "attempts": 0, "required": true },
+    { "id": "M02-08", "file": "stories/M02-08-pause-and-scale-to-zero.md", "status": "pending", "dependsOn": ["M02-01"], "attempts": 0, "required": true },
+    { "id": "M02-09", "file": "stories/M02-09-resource-deletion-lifecycle.md", "status": "pending", "dependsOn": ["M02-08"], "attempts": 0, "required": true },
+    { "id": "M02-10", "file": "stories/M02-10-operations-center.md", "status": "pending", "dependsOn": ["M02-01"], "attempts": 0, "required": true },
+    { "id": "M02-11", "file": "stories/M02-11-realtime-sse-updates.md", "status": "pending", "dependsOn": ["M02-10"], "attempts": 0, "required": true },
+    { "id": "M02-12", "file": "stories/M02-12-docker-events-and-reconcile-cadence.md", "status": "pending", "dependsOn": ["M02-06"], "attempts": 0, "required": true },
+    { "id": "M02-13", "file": "stories/M02-13-idempotency-key-support.md", "status": "pending", "dependsOn": [], "attempts": 0, "required": true }
+  ]
+}

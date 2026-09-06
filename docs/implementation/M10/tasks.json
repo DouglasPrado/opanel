@@ -1,0 +1,193 @@
+{
+  "milestone": "M10",
+  "name": "Backup, Restore & Disaster Recovery",
+  "status": "pending",
+  "dependencies": [
+    "M03",
+    "M06"
+  ],
+  "stories": [
+    {
+      "id": "M10-01",
+      "file": "stories/M10-01-backup-storage-provider.md",
+      "status": "pending",
+      "dependsOn": [],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-02",
+      "file": "stories/M10-02-backup-policy-and-retention-model.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-01"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-03",
+      "file": "stories/M10-03-backup-run-artifact-manifest.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-02"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-04",
+      "file": "stories/M10-04-backup-encryption.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-03"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-05",
+      "file": "stories/M10-05-platform-database-backup.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-04"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-06",
+      "file": "stories/M10-06-vault-encryption-state-backup.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-04"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-07",
+      "file": "stories/M10-07-certificate-backup.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-04"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-08",
+      "file": "stories/M10-08-swarm-raft-state-backup.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-04"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-09",
+      "file": "stories/M10-09-environment-snapshot.md",
+      "status": "pending",
+      "dependsOn": [],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-10",
+      "file": "stories/M10-10-cluster-snapshot.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-09"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-11",
+      "file": "stories/M10-11-restore-engine.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-05"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-12",
+      "file": "stories/M10-12-environment-restore.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-09",
+        "M10-11"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-13",
+      "file": "stories/M10-13-clean-rebuild-orchestration.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-06",
+        "M10-07",
+        "M10-11"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-14",
+      "file": "stories/M10-14-fast-swarm-restore.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-08",
+        "M10-11"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-15",
+      "file": "stories/M10-15-retention-engine.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-03"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-16",
+      "file": "stories/M10-16-restore-verification-drills.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-11",
+        "M10-13"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-17",
+      "file": "stories/M10-17-protection-readiness-dashboard.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-16"
+      ],
+      "attempts": 0,
+      "required": true
+    },
+    {
+      "id": "M10-18",
+      "file": "stories/M10-18-environment-cluster-migration.md",
+      "status": "pending",
+      "dependsOn": [
+        "M10-11",
+        "M10-12"
+      ],
+      "attempts": 0,
+      "required": true
+    }
+  ]
+}
