@@ -76,16 +76,21 @@ check_no_stray_files() {
 # `--no-verify` is never automatic and an agent may not disable a hook to unblock
 # a Story (Annex I §12.2). This proves nothing in the repository *runs* it.
 #
-# Scoped to what executes — scripts, hooks, workflows, task definitions. Prose
-# that names the flag in order to forbid it is not a use of it, and a checker
-# that cannot tell the difference makes the rule unwritable.
+# Matched next to a `git` invocation rather than anywhere in the file. Scoping to
+# executable files was not enough: the hook and the post-commit gate both name the
+# flag in order to forbid it, and a checker that reports the sentence explaining
+# the rule is a checker people learn to ignore. What a *use* looks like is
+# `git commit --no-verify` — the flag and the command it is passed to.
+#
+# No `\b`: git grep -E is POSIX ERE, where that is a literal `b` rather than a
+# word boundary, and the pattern silently matched nothing.
 check_no_verify_absent() {
   local hits
-  hits="$(git grep -l -- '--no-verify' -- \
+  hits="$(git grep -lE 'git[ ,"'"'"'][^#]*--no-verify' -- \
     'bin/*' '.githooks/*' '.github/**' 'lib/**' 'config/**' 'package.json' 'Rakefile' \
     ':!bin/gate' 2>/dev/null || true)"
   [ -z "$hits" ] || {
-    echo "--no-verify is used by: $(echo "$hits" | tr '\n' ' ')" >&2
+    echo "--no-verify is passed to git by: $(echo "$hits" | tr '\n' ' ')" >&2
     return 1
   }
   return 0

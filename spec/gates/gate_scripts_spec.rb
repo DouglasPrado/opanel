@@ -33,6 +33,23 @@ RSpec.describe "The local gates", :slow do
     report.fetch("checks").find { |entry| entry["check"] == name }
   end
 
+  # Genuinely staged, not `--intent-to-add`: the gate reads
+  # `git diff --cached`, which does not list an intent-to-add entry, so a
+  # probe added that way would never reach the check it is meant to trip.
+  def with_staged(path, contents)
+    full = File.join(GATE_ROOT, path)
+    FileUtils.mkdir_p(File.dirname(full))
+    File.write(full, contents)
+    Open3.capture2e("git", "add", "--force", path, chdir: GATE_ROOT)
+    yield
+  ensure
+    Open3.capture2e("git", "rm", "--cached", "--force", "--quiet", path, chdir: GATE_ROOT)
+    FileUtils.rm_f(full)
+    directory = File.dirname(full)
+    FileUtils.rmdir(directory) if Dir.exist?(directory) && Dir.empty?(directory)
+  end
+
+
   describe "the entry points" do
     it "offers local, pre-commit and post-commit, and refuses anything else" do
       output, status = gate("nonsense")
@@ -77,22 +94,6 @@ RSpec.describe "The local gates", :slow do
   # command the gate actually runs, so a change to the gate's wiring breaks these
   # rather than sliding past them.
   describe "each Pre-commit item rejects what it exists to catch" do
-    # Genuinely staged, not `--intent-to-add`: the gate reads
-    # `git diff --cached`, which does not list an intent-to-add entry, so a
-    # probe added that way would never reach the check it is meant to trip.
-    def with_staged(path, contents)
-      full = File.join(GATE_ROOT, path)
-      FileUtils.mkdir_p(File.dirname(full))
-      File.write(full, contents)
-      Open3.capture2e("git", "add", "--force", path, chdir: GATE_ROOT)
-      yield
-    ensure
-      Open3.capture2e("git", "rm", "--cached", "--force", "--quiet", path, chdir: GATE_ROOT)
-      FileUtils.rm_f(full)
-      directory = File.dirname(full)
-      FileUtils.rmdir(directory) if Dir.exist?(directory) && Dir.empty?(directory)
-    end
-
     it "rejects unformatted Ruby" do
       with_staged("lib/opanel/gate_probe_format.rb", "x  =  1\nputs   x\n") do
         _output, status = Open3.capture2e("bin/format", "--check", chdir: GATE_ROOT)
@@ -278,10 +279,30 @@ RSpec.describe "The local gates", :slow do
         .to include("record_pre_commit_evidence")
     end
 
-    it "is refused by the repository: nothing that runs uses --no-verify" do
+    it "is refused by the repository: nothing that runs passes --no-verify to git" do
       report, _status = gate_json("post-commit", "--story", "M00-11")
 
       expect(check(report, "no-verify-absent")["result"]).to eq("pass")
+    end
+
+    # The check has to tell a use from a mention. Both the hook and the
+    # post-commit gate name the flag in order to forbid it, and a checker that
+    # reports the sentence explaining the rule is one people learn to ignore.
+    it "is not tripped by prose that names the flag in order to forbid it" do
+      expect(File.read(File.join(GATE_ROOT, ".githooks/pre-commit"))).to include("--no-verify")
+
+      report, _status = gate_json("post-commit", "--story", "M00-11")
+
+      expect(check(report, "no-verify-absent")["result"]).to eq("pass")
+    end
+
+    it "is tripped by a script that actually passes it to git" do
+      with_staged("bin/gate-probe-bypass", "#!/usr/bin/env bash\ngit commit --no-verify\n") do
+        report, _status = gate_json("post-commit", "--story", "M00-11")
+
+        expect(check(report, "no-verify-absent")["result"]).to eq("fail")
+        expect(check(report, "no-verify-absent")["reason"]).to include("gate-probe-bypass")
+      end
     end
   end
 
