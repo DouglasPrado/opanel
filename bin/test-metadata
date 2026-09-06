@@ -1,0 +1,57 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Writes the metadata that turns a test run into release evidence (Annex D §24).
+#
+#   bin/test-metadata <exit-status> <duration-ms> <suite-type> <parallel?>
+#
+# "the suite passed" is not evidence. Which commit, on which branch, in which
+# environment, against which database, how long it took and how many examples ran
+# — that is. Called by bin/test; not meant to be run by hand.
+
+require "json"
+require "time"
+
+status, duration_ms, suite_type, parallel = ARGV
+root = File.expand_path("..", __dir__)
+Dir.chdir(root)
+
+def git(command)
+  value = `git #{command} 2>/dev/null`.strip
+  value.empty? ? nil : value
+end
+
+# Summed from the JUnit reports rather than recounted, so the numbers cannot
+# disagree with what the runner reported. A parallel run writes one file per
+# worker.
+def junit_counts(glob)
+  reports = Dir.glob(glob)
+  return {} if reports.empty?
+
+  %w[tests failures errors skipped].to_h do |attribute|
+    total = reports.sum do |path|
+      File.read(path, 4096).to_s[/#{attribute}="(\d+)"/, 1].to_i
+    end
+    [ attribute, total ]
+  end.merge("reports" => reports.length)
+end
+
+metadata = {
+  suite: "rspec",
+  type: suite_type,
+  result: status.to_i.zero? ? "pass" : "fail",
+  exit_status: status.to_i,
+  duration_ms: duration_ms.to_i,
+  parallel: parallel == "yes",
+  environment: ENV.fetch("RAILS_ENV", "test"),
+  database: ENV.fetch("OPANEL_TEST_DATABASE_NAME", "opanel_test"),
+  commit: git("rev-parse HEAD"),
+  branch: git("rev-parse --abbrev-ref HEAD"),
+  dirty: !git("status --porcelain").nil?,
+  ruby: RUBY_VERSION,
+  finished_at: Time.now.utc.iso8601
+}.merge(junit_counts("tmp/test-results/rspec*.xml"))
+
+path = "tmp/test-results/rspec-metadata.json"
+File.write(path, JSON.pretty_generate(metadata))
+puts "test evidence: #{path} (#{metadata[:result]}, #{metadata['tests']} example(s), #{metadata[:duration_ms]}ms)"

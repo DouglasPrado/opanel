@@ -4,3 +4,7 @@
 require_relative "config/application"
 
 Rails.application.load_tasks
+
+# parallel:prepare / parallel:create, used by `bin/test --parallel` to give every
+# worker its own database.
+require "parallel_tests/tasks"

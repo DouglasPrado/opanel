@@ -24,10 +24,13 @@ development:
   database: <%= ENV.fetch("OPANEL_DATABASE_NAME", "opanel_development") %>
 
 # The test database is distinct from development and is recreated at will.
-# Parallel workers get their own suffixed database, so the name here is a prefix.
+#
+# TEST_ENV_NUMBER is set by parallel_tests for every worker after the first, so
+# each one gets its own database. Without the suffix a "parallel" run is several
+# workers writing over each other, which fails intermittently and blames the code.
 test:
   <<: *default
-  database: <%= ENV.fetch("OPANEL_TEST_DATABASE_NAME", "opanel_test") %>
+  database: <%= ENV.fetch("OPANEL_TEST_DATABASE_NAME", "opanel_test") %><%= ENV["TEST_ENV_NUMBER"] %>
 
 # CI runs the suite with eager loading on, against its own ephemeral database.
 # Keeping it a separate environment means a CI-only load failure cannot hide

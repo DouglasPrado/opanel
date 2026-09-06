@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Backend suite: RSpec against real PostgreSQL.
+#
+#   bin/test                       # every type
+#   bin/test --type integration    # one type: unit|integration|request|policy|contract|security
+#   bin/test --parallel            # one database per worker
+#   bin/test --changed             # only the specs that differ from the merge base
+#   bin/test --seed 12345          # reproduce an ordering failure
+#   bin/test --format json         # gate-shaped output
+#   bin/test spec/integration/...  # a path
+#
+# Order is random and the seed is reported, so a spec that depends on execution
+# order fails here rather than in CI three weeks later — and the failure is
+# reproducible with --seed.
+#
+# Every run writes tmp/test-results/rspec.xml (JUnit) and rspec-metadata.json
+# naming the commit, the branch, the environment, the type and the duration. A
+# test result without that is not release evidence (Annex D §24).
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+source bin/_gate_lib.sh
+
+format="text"
+parallel="no"
+scope="all"
+type="all"
+paths=""
+seed=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --type) type="$2"; shift ;;
+    --type=*) type="${1#--type=}" ;;
+    --parallel) parallel="yes" ;;
+    --changed) scope="changed" ;;
+    --seed) seed="$2"; shift ;;
+    --format) format="$2"; shift ;;
+    --format=*) format="${1#--format=}" ;;
+    --json) format="json" ;;
+    --*) echo "unknown option: $1" >&2; exit 2 ;;
+    *) paths="$paths $1" ;;
+  esac
+  shift
+done
+
+if [ "$type" != "all" ]; then
+  type_paths="$(ruby lib/gates/suite_types.rb "$type")" || exit 2
+  paths="$paths $type_paths"
+fi
+
+if [ "$scope" = "changed" ] && [ -z "${paths// /}" ]; then
+  paths="$(gate_files changed '^spec/.*_spec\.rb$' | tr '\n' ' ')"
+  if [ -z "${paths// /}" ]; then
+    echo "bin/test: no spec file changed"
+    exit 0
+  fi
+fi
+
+mkdir -p tmp/test-results
+rm -f tmp/test-results/rspec*.xml
+
+# The JUnit formatter is configured in spec_helper so every parallel worker writes
+# to its own file instead of overwriting one.
+export OPANEL_JUNIT=1
+
+seed_args=""
+[ -n "$seed" ] && seed_args="--seed $seed"
+
+started="$(gate_now_ms)"
+
+# shellcheck disable=SC2086
+if [ "$parallel" = "yes" ]; then
+  # One database per worker, suffixed by TEST_ENV_NUMBER — which the namespace
+  # helper also reads, so two workers cannot collide on a generated name.
+  run=(bundle exec parallel_test --type rspec -o "--format progress $seed_args" -- $paths)
+else
+  run=(bundle exec rspec --format progress $seed_args $paths)
+fi
+
+if [ "$format" = "text" ]; then
+  "${run[@]}"
+  status=$?
+  bin/test-metadata "$status" "$(( $(gate_now_ms) - started ))" "$type" "$parallel"
+  exit $status
+fi
+
+gate_begin "test" "$format"
+gate_run "rspec" "${run[@]}"
+bin/test-metadata "$GATE_FAILURES" "$(( $(gate_now_ms) - started ))" "$type" "$parallel" >/dev/null
+gate_finish

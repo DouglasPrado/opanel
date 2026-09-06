@@ -24,4 +24,8 @@ RSpec.configure do |config|
 
   config.use_transactional_fixtures = true
   config.fixture_paths = [ Rails.root.join("spec/fixtures") ]
+
+  # The seed is printed by the progress formatter and recorded here too, so a
+  # CI log that scrolled past it still says how to reproduce the run.
+  config.before(:suite) { Rails.logger.info(event: "suite.started", seed: RSpec.configuration.seed) }
 end

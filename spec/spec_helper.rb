@@ -20,4 +20,13 @@ RSpec.configure do |config|
   # exposes it, and the seed is printed so the failure is reproducible.
   config.order = :random
   Kernel.srand config.seed
+
+  # JUnit output is opt-in so an interactive run stays quiet, and the file name
+  # carries the worker number so parallel workers do not overwrite each other's
+  # report.
+  # Plain Ruby: this file is framework-agnostic and loads before Rails.
+  unless ENV["OPANEL_JUNIT"].to_s.empty?
+    require "rspec_junit_formatter"
+    config.add_formatter("RspecJunitFormatter", "tmp/test-results/rspec#{ENV['TEST_ENV_NUMBER']}.xml")
+  end
 end

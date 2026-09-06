@@ -40,6 +40,15 @@ group :development, :test do
   # Test runner for unit/integration/request/policy/contract suites (SC-03).
   gem "rspec-rails", "~> 8.0"
 
+  # Minimal, linted object construction for the test suite (SC-03).
+  gem "factory_bot_rails", require: false
+
+  # Parallel suite execution with one database per worker.
+  gem "parallel_tests", require: false
+
+  # JUnit output the CI consumes.
+  gem "rspec_junit_formatter", require: false
+
   # Ruby style and lint. Omakase is the Rails default ruleset; the project rules
   # that specialize it live in .rubocop.yml.
   gem "rubocop-rails-omakase", require: false

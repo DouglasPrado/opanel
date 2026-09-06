@@ -99,7 +99,6 @@ class ClassifiedReporter implements Reporter {
     writeFileSync(path, JSON.stringify(summary, null, 2));
 
     if (summary.total > 0) {
-      // eslint-disable-next-line no-console -- M00-08: the reporter's job is to print
       console.log(
         `\ne2e retries: ${summary.assertion} assertion, ${summary.infrastructure} infrastructure, ` +
           `${summary.unknown} unclassified — see ${path}`,
