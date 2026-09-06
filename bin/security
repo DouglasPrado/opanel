@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Security scan: secrets, dependencies, static analysis.
+#
+#   bin/security                 # everything
+#   bin/security --fast          # secret scan only — what the pre-commit gate runs
+#   bin/security --history       # also scan the branch history
+#   bin/security --waivers       # list waivers and what is about to expire
+#   bin/security --format json
+#
+# Policy (Annex C §21.1, Annex D §17.1):
+#
+#   * A **secret** blocks, always. A secret that reached the repository is
+#     compromised and needs rotation, not a `git rm`.
+#   * A **new Critical or High** in a dependency or in static analysis blocks.
+#   * Medium and Low are reported and tracked.
+#   * A finding is silenced only by a waiver with an owner and an expiry, and an
+#     expired waiver blocks again automatically. See config/security/waivers.yml.
+#
+# **The report never prints the secret it found** — file, line and rule only.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+source bin/_gate_lib.sh
+
+format="text"
+mode="all"
+history="no"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --fast) mode="fast" ;;
+    --history) history="yes" ;;
+    --waivers) mode="waivers" ;;
+    --format) format="$2"; shift ;;
+    --format=*) format="${1#--format=}" ;;
+    --json) format="json" ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+if [ "$mode" = "waivers" ]; then
+  exec bin/security-waivers --format "$format"
+fi
+
+gate_begin "security" "$format"
+
+# --- Waivers -----------------------------------------------------------------
+# First: a malformed or expired waiver is itself a finding, and the scanners
+# below consult the same file.
+gate_run "waivers" bin/security-waivers --check
+
+# --- Secrets -----------------------------------------------------------------
+# gitleaks is a binary rather than a gem. Its absence is a setup failure and must
+# say so — a secret scan that silently does not run is worse than none.
+if ! command -v gitleaks > /dev/null 2>&1; then
+  gate_fail "secret-scan" "gitleaks is not installed. Install it (brew install gitleaks) — a secret scan that does not run is not a pass."
+else
+  gate_run "secret-scan" gitleaks dir . \
+    --config config/security/gitleaks.toml \
+    --redact \
+    --no-banner \
+    --exit-code 1
+
+  if [ "$history" = "yes" ]; then
+    # The history matters as much as the tree: a secret removed in a later commit
+    # is still in the history, and still compromised.
+    gate_run "secret-scan-history" gitleaks git . \
+      --config config/security/gitleaks.toml \
+      --redact \
+      --no-banner \
+      --exit-code 1
+  fi
+fi
+
+if [ "$mode" = "fast" ]; then
+  gate_finish
+fi
+
+# --- Dependencies ------------------------------------------------------------
+
+gate_run "bundler-audit" bundle exec bundle-audit check --update --config config/bundler-audit.yml
+
+# npm audit exits non-zero for any severity; --audit-level makes the policy
+# explicit rather than accidental.
+gate_run "npm-audit" npm audit --audit-level=high
+
+# --- Static analysis ---------------------------------------------------------
+# Informative in M00 (there is almost no code for it to judge yet), blocking for
+# new Critical/High from M01. `--no-exit-on-warn` is what makes it informative,
+# and removing it is the one-line change that flips the policy.
+
+gate_run "brakeman" bundle exec brakeman --quiet --no-pager --no-exit-on-warn \
+  --output /dev/stdout --format plain
+
+gate_finish

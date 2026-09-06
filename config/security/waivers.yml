@@ -1,0 +1,36 @@
+# Security waivers.
+#
+# A finding can be accepted. It cannot be accepted forever and it cannot be
+# accepted anonymously (Annex D §24.1, Annex I §16.3).
+#
+# Every waiver declares:
+#
+#   id             a stable identifier, referenced from the Story Report
+#   tool           secret-scan | bundler-audit | npm-audit | brakeman
+#   finding        the advisory id, rule id or warning type being waived
+#   risk           what could happen if this is wrong
+#   owner          a person, not a team and not an agent
+#   justification  why it is acceptable *here*, not why it is inconvenient
+#   mitigation     what reduces the risk in the meantime
+#   expires_at     the date it stops being acceptable (YYYY-MM-DD)
+#   approved_by    required for secret-scan: an agent may not waive it
+#
+# **An expired waiver blocks again, automatically.** Renewing one is a deliberate
+# act with a new date and a fresh look, not a file nobody opens.
+#
+# `bin/security --waivers` lists them and warns about any expiring within a
+# fortnight.
+
+waivers: []
+# Example — delete when the first real one is added:
+#
+#   - id: "npm-audit-2026-001"
+#     tool: "npm-audit"
+#     finding: "GHSA-xxxx-xxxx-xxxx"
+#     risk: "Prototype pollution in a transitive build-time dependency."
+#     owner: "douglas"
+#     justification: >-
+#       Reachable only from the bundler's own config loader, which never sees
+#       user input. No patched version is published yet.
+#     mitigation: "Pinned to the last unaffected minor; upstream issue tracked."
+#     expires_at: "2026-10-15"

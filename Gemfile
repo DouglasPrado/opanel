@@ -37,6 +37,9 @@ group :development, :test do
   # Audits gems for known security defects (use config/bundler-audit.yml to ignore issues)
   gem "bundler-audit", require: false
 
+  # Static analysis for Rails: injection, mass assignment, unsafe redirects.
+  gem "brakeman", require: false
+
   # Test runner for unit/integration/request/policy/contract suites (SC-03).
   gem "rspec-rails", "~> 8.0"
 

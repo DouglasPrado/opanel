@@ -1,0 +1,85 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Security waivers: list them, and refuse the ones that are not really waivers.
+#
+#   bin/security-waivers            # list, and warn about what expires soon
+#   bin/security-waivers --check    # exit non-zero if any is invalid or expired
+#   bin/security-waivers --format json
+#
+# An expired waiver blocks again automatically. That is the mechanism: without
+# it, the file becomes a list of things nobody has looked at since, and the
+# scanner it silences becomes decoration (Annex D §24.1).
+
+require "json"
+require_relative "../lib/gates/security_waivers"
+
+format = "text"
+check = false
+
+ARGV.each_with_index do |argument, index|
+  case argument
+  when "--check" then check = true
+  when "--json", "--format=json" then format = "json"
+  when "--format=text" then format = "text"
+  when "--format" then format = ARGV[index + 1].to_s
+  when "text", "json" then next
+  else
+    warn "unknown option: #{argument}"
+    exit 2
+  end
+end
+
+format = "text" unless %w[text json].include?(format)
+
+root = File.expand_path("..", __dir__)
+path = File.join(root, "config/security/waivers.yml")
+
+begin
+  waivers = Opanel::Gates::SecurityWaivers.load(path)
+rescue Opanel::Gates::SecurityWaivers::InvalidWaiver => error
+  if format == "json"
+    puts JSON.pretty_generate(check: "security-waivers", result: "fail", error: error.message)
+  else
+    puts "security-waivers: FAIL — #{error.message}"
+  end
+  exit 1
+end
+
+expired = waivers.expired
+soon = waivers.expiring_soon
+active = waivers.active
+
+if format == "json"
+  puts JSON.pretty_generate(
+    check: "security-waivers",
+    result: expired.empty? ? "pass" : "fail",
+    active: active.map(&:to_h),
+    expired: expired.map(&:to_h),
+    expiring_soon: soon.map { |waiver| waiver.to_h.merge(days_left: waiver.days_left) }
+  )
+else
+  if waivers.waivers.empty?
+    puts "security-waivers: PASS (none — every finding is either fixed or blocking)"
+  else
+    active.each do |waiver|
+      puts "  active   #{waiver.id} (#{waiver.tool}/#{waiver.finding}) " \
+           "owner=#{waiver.owner} expires=#{waiver.expires_at}"
+    end
+    soon.each do |waiver|
+      puts "  WARNING  #{waiver.id} expires in #{waiver.days_left} day(s) — renew it deliberately or fix it"
+    end
+    expired.each do |waiver|
+      puts "  EXPIRED  #{waiver.id} (#{waiver.tool}/#{waiver.finding}) " \
+           "owner=#{waiver.owner} expired=#{waiver.expires_at}"
+    end
+  end
+
+  unless expired.empty?
+    puts "security-waivers: FAIL — #{expired.length} expired waiver(s). " \
+         "An expired waiver blocks again: fix the finding, or renew it with a new date and a fresh look."
+  end
+end
+
+exit(expired.empty? ? 0 : 1) if check
+exit 0

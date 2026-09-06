@@ -1,0 +1,67 @@
+# Secret scan configuration.
+#
+# The scan runs over the working tree **and** over the branch history: a secret
+# removed in a later commit is still in the history, and a secret that reached a
+# repository is compromised rather than misplaced — it needs rotation, not a
+# `git rm` (Annex C §21.1).
+#
+# The allowlist below is the only way to silence a match, and every entry carries
+# a written reason. A regex with no reason is rejected in review: an unexplained
+# allowlist entry is indistinguishable from a real secret somebody hid.
+
+title = "Opanel"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Paths and patterns that cannot contain a real secret, each with the reason."
+
+paths = [
+  # Lockfiles: integrity hashes look like high-entropy strings and are public by
+  # construction.
+  '''package-lock\.json''',
+  '''Gemfile\.lock''',
+  # Vendored dependencies and build output are not our code.
+  '''vendor/bundle/.*''',
+  '''node_modules/.*''',
+  '''public/vite.*/.*''',
+  '''tmp/.*''',
+  # The versioned example declares keys and holds no value; a spec asserts every
+  # sensitive key in it is empty.
+  '''\.env\.example''',
+  # The imported component library's icon set is a wall of base64-ish SVG paths.
+  '''app/frontend/components/ui/icons/.*''',
+]
+
+# Test fixtures that exist in order to *be* detected. The guardrail, redaction
+# and artifact specs plant known-fake credentials on purpose, and a scan that
+# finds them is the scan working.
+#
+# Listed value by value rather than by file: allowlisting spec/security/ wholesale
+# would also hide a real secret that ended up there, which is precisely the case
+# worth catching. Every value below is either AWS's own published example key or
+# a sequential placeholder that could not be a live credential.
+regexes = [
+  # The redaction mask itself.
+  '''\[REDACTED\]''',
+  # AWS's documented example access key.
+  '''AKIAIOSFODNN7EXAMPLE''',
+  # Sequential placeholders: ghp_0123…, sk_live_0123…, 0123456789abcdef.
+  '''0123456789abcdef''',
+  '''xoxb-1234567890-abcdefghij''',
+  '''sk_live_abcdef1234567890''',
+  # The JWT fixture — a signature that verifies against nothing.
+  '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NX0''',
+  # Obviously-fake values used in redaction assertions.
+  '''hunter2''',
+  '''probe-token-abc123''',
+  '''probe-session-xyz789''',
+  '''s3cr3t''',
+  '''tok_abcdef123456''',
+  '''opk_9f2c8a1b7d3e5f60''',
+  '''RK-4f2a-91bd-cc03''',
+  '''Zm9vYmFyYmF6cXV4''',
+  '''argument-abc123''',
+  '''e2e-probe-token-abc123''',
+]
