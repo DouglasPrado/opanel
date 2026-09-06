@@ -1,0 +1,51 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Workspace guardrail (Annex H §3.2): no production credential in the workspace.
+#
+#   bin/workspace-guardrail
+#   bin/workspace-guardrail --format json
+#
+# Run by bin/setup before anything else and by bin/stop-gate before a Milestone
+# can close. It reports the variable or the file and the pattern that matched,
+# never the value.
+
+require "json"
+require_relative "../lib/gates/workspace_guardrail"
+
+format = "text"
+
+ARGV.each do |argument|
+  case argument
+  when "--json" then format = "json"
+  when "--format=json" then format = "json"
+  when "--format=text" then format = "text"
+  else
+    warn "unknown option: #{argument}"
+    exit 2
+  end
+end
+
+root = File.expand_path("..", __dir__)
+findings = Opanel::Gates::WorkspaceGuardrail.new(root: root).findings
+
+if format == "json"
+  puts JSON.pretty_generate(
+    check: "workspace-guardrail",
+    result: findings.empty? ? "pass" : "fail",
+    rule: { Opanel::Gates::WorkspaceGuardrail::RULE => Opanel::Gates::WorkspaceGuardrail::RULE_DESCRIPTION },
+    findings: findings.map(&:to_h)
+  )
+elsif findings.empty?
+  puts "workspace-guardrail: PASS (no production credential in the workspace)"
+else
+  findings.each do |finding|
+    puts "workspace-guardrail: FAIL [#{finding.rule}] #{finding.source}"
+    puts "  #{finding.detail}"
+    puts "  remedy: #{finding.remedy}"
+  end
+  puts "workspace-guardrail: #{findings.length} finding(s). " \
+       "The autonomous workspace must hold no production credential (Annex H §3.2)."
+end
+
+exit(findings.empty? ? 0 : 1)

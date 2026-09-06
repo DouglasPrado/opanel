@@ -18,6 +18,18 @@ require "action_view/railtie"
 # you've limited to :test, :development, or :production.
 Bundler.require(*Rails.groups)
 
+# Configuration is validated before the application class exists.
+#
+# Missing or malformed configuration has to stop the boot, not surface on the
+# first request that happens to need the key — a process that starts with a key
+# missing is a process running on whatever default was lying around, which is the
+# opposite of "secure by default" (Annex I §2).
+#
+# Required directly rather than autoloaded: Zeitwerk is not set up this early, and
+# this check has to run before anything else can depend on the configuration.
+require_relative "../lib/opanel/configuration"
+Opanel::Configuration.validate_or_abort!(environment: ENV.fetch("RAILS_ENV", "development"))
+
 module Opanel
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
@@ -30,7 +42,7 @@ module Opanel
     # the bin/ scripts and by their specs so they run without booting Rails —
     # the Pre-commit Gate has to afford them on every commit — which means
     # Zeitwerk must not also manage them.
-    config.autoload_lib(ignore: %w[assets tasks gates rubocop])
+    config.autoload_lib(ignore: %w[assets tasks gates rubocop opanel/configuration.rb])
 
     # app/frontend/ holds the React/TypeScript tree bundled by Vite. Rails treats
     # every app/* directory as an autoload path, so Zeitwerk has to be told to
