@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# The three local gates of Annex I — §11 Local, §12 Pre-commit, §14 Post-commit.
+#
+#   bin/gate local                     # before declaring the implementation ready
+#   bin/gate pre-commit                # what the git hook runs
+#   bin/gate post-commit --story M00-12
+#   bin/gate <gate> --format json      # for the Stop Gate (M00-14)
+#
+# "Pronto" stops being an opinion here: each check runs a command and reports its
+# name, result, duration and — when red — a reason specific enough for the
+# autonomous loop to act on without guessing (Annex H §4.1). A gate that prints
+# only a stack trace forces the next reader to rediscover what failed.
+#
+# The Story is taken from --story or OPANEL_STORY. It is what the boundary and
+# the state checks compare against; without it those checks say so rather than
+# passing quietly.
+#
+# **This script may not be edited to make a Story pass.** Changing a gate needs
+# its own Story or ADR (Annex I §21.2), bin/merge-gate refuses a diff that
+# touches it without naming one, and .github/CODEOWNERS requires a human review.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+source bin/_gate_lib.sh
+
+gate="${1:-}"
+[ $# -gt 0 ] && shift
+format="text"
+story="${OPANEL_STORY:-}"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --format) format="$2"; shift ;;
+    --format=*) format="${1#--format=}" ;;
+    --json) format="json" ;;
+    --story) story="$2"; shift ;;
+    --story=*) story="${1#--story=}" ;;
+    --*) echo "unknown option: $1" >&2; exit 2 ;;
+    *) echo "unexpected argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+# Files that should never be committed: build output, editor droppings, local
+# databases, dumps. Not a style preference — a stray artifact is how a credential
+# or a customer's data reaches a repository by accident.
+STRAY='(^|/)(\.DS_Store|Thumbs\.db|.*\.swp|.*\.orig|.*\.rej|.*~)$|^(node_modules|tmp|log|coverage|public/vite|vendor/bundle|storage)/|\.(sqlite3?|dump|sql\.gz|pem|key|p12|pfx)$'
+
+staged_files() {
+  git diff --name-only --diff-filter=ACMR --cached
+}
+
+check_boundary() {
+  local files
+  files="$(staged_files)"
+  [ -n "$files" ] || files="$(git show --name-only --format= HEAD)"
+
+  printf '%s\n' "$files" | ruby -r./lib/gates/story_boundary -e '
+    files = $stdin.read.split("\n").reject(&:empty?)
+    result = Opanel::Gates::StoryBoundary.check(ENV["OPANEL_GATE_STORY"], files, Dir.pwd)
+    warn(result.reason) unless result.pass?
+    exit(result.status == :fail ? 1 : 0)
+  '
+}
+
+check_no_stray_files() {
+  local stray
+  stray="$(staged_files | grep -E "$STRAY" || true)"
+  [ -z "$stray" ] || {
+    echo "generated or temporary files are staged: $(echo "$stray" | tr '\n' ' ')" >&2
+    return 1
+  }
+  return 0
+}
+
+# `--no-verify` is never automatic and an agent may not disable a hook to unblock
+# a Story (Annex I §12.2). This proves nothing in the repository *runs* it.
+#
+# Scoped to what executes — scripts, hooks, workflows, task definitions. Prose
+# that names the flag in order to forbid it is not a use of it, and a checker
+# that cannot tell the difference makes the rule unwritable.
+check_no_verify_absent() {
+  local hits
+  hits="$(git grep -l -- '--no-verify' -- \
+    'bin/*' '.githooks/*' '.github/**' 'lib/**' 'config/**' 'package.json' 'Rakefile' \
+    ':!bin/gate' 2>/dev/null || true)"
+  [ -z "$hits" ] || {
+    echo "--no-verify is used by: $(echo "$hits" | tr '\n' ' ')" >&2
+    return 1
+  }
+  return 0
+}
+
+# Written by the pre-commit gate, keyed by the tree it checked. The post-commit
+# gate reads it to tell a verified commit from a bypassed one.
+record_pre_commit_evidence() {
+  local tree
+  tree="$(git write-tree 2>/dev/null)" || return 0
+  mkdir -p tmp/gate
+  printf '{"tree":"%s","at":"%s","gate":"pre-commit"}\n' \
+    "$tree" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "tmp/gate/pre-commit-$tree.json"
+}
+
+post_commit_check() {
+  ruby lib/gates/post_commit.rb "$1" --story "$story"
+}
+
+export OPANEL_GATE_STORY="$story"
+
+case "$gate" in
+  # Annex I §11.1 — before declaring the implementation ready. Scoped to the
+  # diff, because the point is to be cheap enough to run on every Story.
+  local)
+    gate_begin "gate:local" "$format"
+    gate_run "format" bin/format --check --changed
+    gate_run "lint" bin/lint --changed
+    gate_run "typecheck" bin/typecheck
+    gate_run "tests" bin/test --changed
+    gate_run "migrations" bin/migration-gate
+    if git diff --name-only "$(git merge-base HEAD "${OPANEL_GATE_BASE:-main}" 2>/dev/null || echo HEAD)" \
+        | grep -qE '^(app/contracts/|app/controllers/api/|config/ci/jobs\.yml)'; then
+      gate_run "contracts" bin/test --type contract
+    else
+      gate_skip "contracts" "no contract changed"
+    fi
+    gate_run "security" bin/security --fast
+    gate_run "fitness" bin/fitness
+    gate_finish
+    ;;
+
+  # Annex I §12.1 — the eight items, in order. Fast enough to run on every
+  # commit: a pre-commit gate that takes a minute gets bypassed, and a bypassed
+  # gate protects nothing.
+  pre-commit)
+    gate_begin "gate:pre-commit" "$format"
+    gate_run "format" bin/format --check --changed
+    gate_run "lint" bin/lint --changed
+    gate_run "typecheck" bin/typecheck
+    # `--fast` drops the `:slow` gate suites, which run other gates against
+    # planted failures and cost tens of seconds. CI runs them on every push, so
+    # the check moved rather than disappeared (Annex I §12.1, §21.2).
+    gate_run "tests" bin/test --changed --fast
+    # Mandatory and not skippable. A secret that reached the repository is
+    # compromised and needs rotation, not a `git rm`. Scoped to the diff for
+    # speed; the `security-fast` CI job scans the whole tree and the history.
+    gate_run "secret-scan" bin/security --fast --staged
+    gate_run "migrations" bin/migration-gate
+    gate_run "no-stray-files" check_no_stray_files
+    gate_run "diff-boundary" check_boundary
+    record_pre_commit_evidence
+    gate_finish
+    ;;
+
+  # Annex I §14.2 — the six checks, plus the one that catches a bypass.
+  post-commit)
+    gate_begin "gate:post-commit" "$format"
+    gate_run "diff-review" post_commit_check diff-review
+    gate_run "acceptance-mapping" post_commit_check acceptance-mapping
+    gate_run "reviewer-findings" post_commit_check reviewer-findings
+    gate_run "fitness" post_commit_check fitness
+    gate_run "tests" post_commit_check tests
+    gate_run "state" post_commit_check state
+    gate_run "pre-commit-executed" post_commit_check pre-commit-executed
+    gate_run "no-verify-absent" check_no_verify_absent
+    gate_finish
+    ;;
+
+  *)
+    cat >&2 <<'USAGE'
+usage: bin/gate <local|pre-commit|post-commit> [--story <id>] [--format json]
+
+  local        Annex I §11.1 — before declaring the implementation ready
+  pre-commit   Annex I §12.1 — the eight items; what the git hook runs
+  post-commit  Annex I §14.2 — the six checks, plus bypass detection
+USAGE
+    exit 2
+    ;;
+esac

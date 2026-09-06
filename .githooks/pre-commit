@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Pre-commit Gate — Annex I §12.1.
+#
+# Installed by `bin/install-hooks` via core.hooksPath, so this file is versioned
+# and a change to it is reviewable — unlike a copy in .git/hooks, which drifts
+# silently.
+#
+# If this is slow enough to be annoying, that is a defect in the gate, not a
+# reason to bypass it: the budget is documented in
+# docs/engineering/quality-gates.md and a check that outgrows it moves to CI. It
+# is never removed, and the ruleset is never loosened to buy time.
+#
+# `--no-verify` is never automatic, and an agent may not disable this hook to
+# unblock a Story (Annex I §12.2). A deliberate human bypass needs a recorded
+# reason, and the gate runs again before merge — `bin/gate post-commit` reports
+# any commit whose tree no hook ever checked.
+exec bin/gate pre-commit

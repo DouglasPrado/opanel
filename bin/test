@@ -5,6 +5,7 @@
 #   bin/test --type integration    # one type: unit|integration|request|policy|contract|security
 #   bin/test --parallel            # one database per worker
 #   bin/test --changed             # only the specs that differ from the merge base
+#   bin/test --fast                # skip :slow examples — what the pre-commit gate runs
 #   bin/test --seed 12345          # reproduce an ordering failure
 #   bin/test --format json         # gate-shaped output
 #   bin/test spec/integration/...  # a path
@@ -24,6 +25,7 @@ source bin/_gate_lib.sh
 format="text"
 parallel="no"
 scope="all"
+fast="no"
 type="all"
 paths=""
 seed=""
@@ -34,6 +36,7 @@ while [ $# -gt 0 ]; do
     --type=*) type="${1#--type=}" ;;
     --parallel) parallel="yes" ;;
     --changed) scope="changed" ;;
+    --fast) fast="yes" ;;
     --seed) seed="$2"; shift ;;
     --format) format="$2"; shift ;;
     --format=*) format="${1#--format=}" ;;
@@ -58,11 +61,27 @@ if [ "$scope" = "changed" ] && [ -z "${paths// /}" ]; then
 fi
 
 mkdir -p tmp/test-results
-rm -f tmp/test-results/rspec*.xml
+
+# Every invocation is its own run, with its own JUnit files.
+#
+# Deliberately regenerated rather than inherited: the gate suites spawn nested
+# `bin/test` runs against planted failures, and with one shared filename the
+# child's report overwrote the parent's — so a full run's evidence became a
+# one-example probe's, and the numbers no longer described the run that produced
+# them.
+OPANEL_TEST_RUN_ID="$$-$(date +%s)"
+export OPANEL_TEST_RUN_ID
+rm -f "tmp/test-results/rspec-$OPANEL_TEST_RUN_ID"*.xml
 
 # The JUnit formatter is configured in spec_helper so every parallel worker writes
 # to its own file instead of overwriting one.
 export OPANEL_JUNIT=1
+
+# --fast drops the `:slow` examples — the gate suites, which shell out to
+# RuboCop, gitleaks and RSpec itself against planted failures. The Pre-commit
+# Gate uses it to stay inside its budget; CI never does, so the check moves
+# rather than disappearing (Annex I §12.1, §21.2).
+[ "$fast" = "yes" ] && export OPANEL_FAST_TESTS=1
 
 seed_args=""
 [ -n "$seed" ] && seed_args="--seed $seed"

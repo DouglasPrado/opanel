@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Installs the git hooks. Run by bin/setup; safe to run again.
+#
+#   bin/install-hooks
+#   bin/install-hooks --check     # report without writing
+#
+# The hooks live in .githooks/ and are versioned, so everyone gets the same ones
+# and a change to them is reviewable. `core.hooksPath` points git at that
+# directory rather than copying into .git/hooks, where the copies would drift
+# from the originals silently.
+#
+# The local hook is not the only defence — CI repeats every critical check
+# (Annex I §12.2). It exists to catch the defect while the context is still in
+# someone's head, and before the commit becomes a checkpoint of the autonomous
+# loop.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+
+check_only="no"
+[ "${1:-}" = "--check" ] && check_only="yes"
+
+expected=".githooks"
+current="$(git config --get core.hooksPath || true)"
+
+if [ "$check_only" = "yes" ]; then
+  if [ "$current" = "$expected" ]; then
+    echo "install-hooks: core.hooksPath is $expected"
+    exit 0
+  fi
+  echo "install-hooks: core.hooksPath is '${current:-unset}', expected '$expected'" >&2
+  echo "  run bin/install-hooks" >&2
+  exit 1
+fi
+
+git config core.hooksPath "$expected"
+chmod +x "$expected"/* 2>/dev/null || true
+
+echo "install-hooks: core.hooksPath -> $expected"
+for hook in "$expected"/*; do
+  [ -f "$hook" ] && echo "  $(basename "$hook")"
+done

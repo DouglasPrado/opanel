@@ -1,0 +1,96 @@
+# The declared boundary of each Story in this Milestone.
+#
+# "Changes outside the declared boundary are a review finding even when the code
+# is correct" (AGENT_RULES, "Scope Discipline"). That rule needs something to
+# compare against, so a Story declares the paths it may touch **before** editing:
+# a boundary written afterwards only describes what happened.
+#
+# `bin/gate pre-commit --story <id>` and `bin/gate post-commit --story <id>` read
+# this. A Story with no entry here fails the boundary check rather than passing
+# it — a check satisfied by never declaring anything reports green over exactly
+# the scope creep it exists to catch.
+#
+# Patterns are shell globs matched against repository-relative paths (`**`
+# crosses directories). The pack's own bookkeeping — tasks.json, reports, review,
+# evidence, this file — is always allowed and does not need declaring.
+#
+# Widening a boundary is a deliberate act: do it in the commit that needs it, and
+# say why in the Story report. Widening it silently to make a gate pass is the
+# thing this prevents.
+
+boundaries:
+  M00-11:
+    - .github/**
+    - config/ci/**
+    - config/ci.rb
+    - lib/gates/ci_pipeline.rb
+    - bin/ci-job
+    - bin/merge-gate
+    - bin/flaky-rate
+    - bin/_gate_lib.sh
+    - spec/gates/ci_pipeline_spec.rb
+    - spec/policies/**
+    - spec/contracts/**
+    - docs/engineering/ci-pipeline.md
+    - docs/engineering/quality-gates.md
+    # The `static` job runs lint over the whole repository for the first time and
+    # found five layout offences left by M00-13. Fixing them is what makes the
+    # job green; excluding them would be editing a gate to pass.
+    - lib/gates/fitness_functions.rb
+    - spec/gates/fitness_functions_spec.rb
+    # bin/flaky-rate reads the JUnit output back, which needs rexml.
+    - Gemfile
+    - Gemfile.lock
+
+  M00-12:
+    - bin/gate
+    - bin/install-hooks
+    - .githooks/**
+    - lib/gates/story_boundary.rb
+    - lib/gates/post_commit.rb
+    - bin/setup
+    - spec/gates/gate_scripts_spec.rb
+    - docs/engineering/quality-gates.md
+    # Widened deliberately, with the reason, rather than silently.
+    #
+    # AC9 requires a measured pre-commit budget, and the first measurement was
+    # 13s — bypass territory, and the Story's own failure scenario names the
+    # remedy ("escopo incremental por diff; check pesado migra para CI, nunca é
+    # removido"). Applying it reaches four files that M00-12 does not own:
+    #
+    #   bin/security       `--staged` scans the staged diff (9.2s -> 0.2s). The
+    #                      CI job still scans the whole tree and the history.
+    #   bin/test           `--fast` drops the `:slow` gate suites, which shell
+    #                      out to other gates. CI still runs them.
+    #   spec/spec_helper   where `:slow` is defined, and where the JUnit file
+    #                      name is built.
+    #   bin/test-metadata  the same run id, so the evidence describes the run
+    #                      that produced it.
+    - bin/security
+    - bin/test
+    - bin/test-metadata
+    - spec/spec_helper.rb
+    - spec/gates/**
+
+  M00-14:
+    - bin/pack
+    - bin/stop-gate
+    - lib/gates/pack.rb
+    - lib/gates/stop_gate.rb
+    - config/pack/**
+    - spec/gates/pack_spec.rb
+    - spec/gates/stop_gate_spec.rb
+    - docs/implementation/README.md
+    - docs/engineering/autonomous-loop.md
+
+  M00-17:
+    - config/architecture/docker-lab.yml
+    - lib/gates/swarm_lab.rb
+    - bin/swarm-lab
+    - spec/support/swarm_lab.rb
+    - spec/integration/swarm_lab_spec.rb
+    - config/architecture/fitness.yml
+
+  M00-18:
+    - docs/templates/**
+    - docs/engineering/**

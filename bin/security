@@ -3,6 +3,7 @@
 #
 #   bin/security                 # everything
 #   bin/security --fast          # secret scan only — what the pre-commit gate runs
+#   bin/security --staged        # scan the staged diff — what the pre-commit gate runs
 #   bin/security --history       # also scan the branch history
 #   bin/security --waivers       # list waivers and what is about to expire
 #   bin/security --format json
@@ -25,10 +26,12 @@ source bin/_gate_lib.sh
 format="text"
 mode="all"
 history="no"
+scope="all"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --fast) mode="fast" ;;
+    --staged) scope="staged" ;;
     --history) history="yes" ;;
     --waivers) mode="waivers" ;;
     --format) format="$2"; shift ;;
@@ -56,11 +59,25 @@ gate_run "waivers" bin/security-waivers --check
 if ! command -v gitleaks > /dev/null 2>&1; then
   gate_fail "secret-scan" "gitleaks is not installed. Install it (brew install gitleaks) — a secret scan that does not run is not a pass."
 else
-  gate_run "secret-scan" gitleaks dir . \
-    --config config/security/gitleaks.toml \
-    --redact \
-    --no-banner \
-    --exit-code 1
+  # Whole tree by default. `--staged` scans the staged diff instead, which is
+  # exactly the question a pre-commit gate asks — "is there a secret in what I am
+  # about to commit?" — and is what keeps that gate inside its budget. A gate slow
+  # enough to be annoying gets bypassed, and a bypassed gate protects nothing
+  # (Annex I §12.1). **CI always scans the whole tree and the history**: the scope
+  # moves, the check does not.
+  if [ "$scope" = "staged" ]; then
+    gate_run "secret-scan-staged" gitleaks git --staged . \
+      --config config/security/gitleaks.toml \
+      --redact \
+      --no-banner \
+      --exit-code 1
+  else
+    gate_run "secret-scan" gitleaks dir . \
+      --config config/security/gitleaks.toml \
+      --redact \
+      --no-banner \
+      --exit-code 1
+  fi
 
   if [ "$history" = "yes" ]; then
     # The history matters as much as the tree: a secret removed in a later commit

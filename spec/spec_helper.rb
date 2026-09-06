@@ -21,12 +21,27 @@ RSpec.configure do |config|
   config.order = :random
   Kernel.srand config.seed
 
-  # JUnit output is opt-in so an interactive run stays quiet, and the file name
-  # carries the worker number so parallel workers do not overwrite each other's
-  # report.
+  # `:slow` examples shell out to other gates — they run RuboCop, gitleaks and
+  # RSpec itself against planted failures, which is the only way to prove a gate
+  # can fail, and costs tens of seconds.
+  #
+  # `bin/test --fast` excludes them so the Pre-commit Gate stays inside its
+  # budget (Annex I §12.1: a gate that is expensive gets bypassed, and a
+  # bypassed gate protects nothing). **CI always runs them** — the check moves,
+  # it is never removed (Annex I §21.2). Nothing else may be tagged `:slow`:
+  # a slow test that is merely slow is a test to fix.
+  config.filter_run_excluding(:slow) unless ENV["OPANEL_FAST_TESTS"].to_s.empty?
+
+  # JUnit output is opt-in so an interactive run stays quiet. The file name
+  # carries the run id and the worker number, so neither two parallel workers nor
+  # a nested `bin/test` overwrite each other's report.
   # Plain Ruby: this file is framework-agnostic and loads before Rails.
   unless ENV["OPANEL_JUNIT"].to_s.empty?
     require "rspec_junit_formatter"
-    config.add_formatter("RspecJunitFormatter", "tmp/test-results/rspec#{ENV['TEST_ENV_NUMBER']}.xml")
+    run_id = ENV.fetch("OPANEL_TEST_RUN_ID", "adhoc")
+    config.add_formatter(
+      "RspecJunitFormatter",
+      "tmp/test-results/rspec-#{run_id}#{ENV['TEST_ENV_NUMBER']}.xml"
+    )
   end
 end

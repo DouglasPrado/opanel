@@ -23,7 +23,9 @@ end
 
 # Summed from the JUnit reports rather than recounted, so the numbers cannot
 # disagree with what the runner reported. A parallel run writes one file per
-# worker.
+# worker, and every invocation has its own run id — a nested `bin/test` used to
+# overwrite the outer run's report, which made the counts describe a different
+# run than the result did.
 def junit_counts(glob)
   reports = Dir.glob(glob)
   return {} if reports.empty?
@@ -50,7 +52,7 @@ metadata = {
   dirty: !git("status --porcelain").nil?,
   ruby: RUBY_VERSION,
   finished_at: Time.now.utc.iso8601
-}.merge(junit_counts("tmp/test-results/rspec*.xml"))
+}.merge(junit_counts("tmp/test-results/rspec-#{ENV.fetch('OPANEL_TEST_RUN_ID', 'adhoc')}*.xml"))
 
 path = "tmp/test-results/rspec-metadata.json"
 File.write(path, JSON.pretty_generate(metadata))
