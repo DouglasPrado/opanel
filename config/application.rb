@@ -37,6 +37,16 @@ module Opanel
     # stay out of it explicitly.
     Rails.autoloaders.main.ignore(Rails.root.join("app/frontend"))
 
+    # Solid Queue in every environment, including development and test. An
+    # in-process adapter would let a job pass locally and then fail against a real
+    # queue — exactly the class of defect the queue is supposed to surface.
+    #
+    # The queue lives in the primary database. It is still not a source of truth:
+    # PostgreSQL holds the Operation, and the recovery sweep of M01-15 re-enqueues
+    # what the broker loses. Sharing the database removes an operational moving
+    # part; separating it later is a schema change, not a design change.
+    config.active_job.queue_adapter = :solid_queue
+
     # Configuration for the application, engines, and railties goes here.
     #
     # These settings can be overridden in specific environments using the files

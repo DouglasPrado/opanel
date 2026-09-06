@@ -1,0 +1,43 @@
+# Solid Queue worker topology over the six logical queues of doc 07 §9.1.
+# The names are declared once in lib/opanel/queues.rb and a spec fails if this
+# file and that constant ever disagree.
+#
+# The queues are split across worker groups so a slow cluster operation cannot
+# starve a deployment, and so the concurrency profile of each queue is set
+# independently rather than by one blind global pool.
+default: &default
+  dispatchers:
+    - polling_interval: 1
+      batch_size: 500
+  workers:
+    # High concurrency across Services; serialization per resource is the
+    # Operation Engine's job (M01-16), not the worker pool's.
+    - queues: [ deployments, runtime ]
+      threads: 3
+      processes: <%= ENV.fetch("OPANEL_JOB_CONCURRENCY", 1) %>
+      polling_interval: 1
+
+    # Cluster work is deliberately low-concurrency: some of it is exclusive.
+    # Certificates parallelize per domain.
+    - queues: [ cluster, certificates ]
+      threads: 2
+      processes: 1
+      polling_interval: 1
+
+    # Backup/DR is bounded by storage, and system sweeps are scheduler-controlled.
+    - queues: [ backup-dr, system ]
+      threads: 2
+      processes: 1
+      polling_interval: 1
+
+development:
+  <<: *default
+
+test:
+  <<: *default
+
+ci:
+  <<: *default
+
+production:
+  <<: *default

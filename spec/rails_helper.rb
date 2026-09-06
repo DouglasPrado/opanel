@@ -16,6 +16,8 @@ rescue ActiveRecord::PendingMigrationError => error
   abort "#{error.message}\nRun `bin/rails db:prepare` before the suite."
 end
 
+Dir[Rails.root.join("spec/support/**/*.rb")].sort.each { |file| require file }
+
 RSpec.configure do |config|
   config.infer_spec_type_from_file_location!
   config.filter_rails_from_backtrace!

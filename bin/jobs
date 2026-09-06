@@ -1,0 +1,45 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Solid Queue worker supervisor — a process of its own, never the web server.
+#
+#   bin/jobs                                  # supervisor with the configured workers
+#   OPANEL_JOB_SUPERVISOR_MODE=fork bin/jobs  # force forked workers
+#
+# ## Why the mode is chosen here rather than left to the gem's default
+#
+# Solid Queue defaults to `fork`: the supervisor forks one process per worker
+# group, so a worker that dies is replaced without taking the others down. That is
+# the better mode and it is what CI and Linux hosts use.
+#
+# On macOS it crashes. A forked child segfaults inside libpq the moment it opens a
+# connection — `PG::Connection.connect_start`, before any Opanel code runs. It
+# reproduces in a dozen lines with no Rails involved:
+#
+#   require "pg"
+#   PG.connect(hostaddr: "127.0.0.1", dbname: "opanel_test")
+#   fork { PG.connect(hostaddr: "127.0.0.1", dbname: "opanel_test") }  # SIGSEGV
+#
+# Verified against Ruby 4.0.6 with pg 1.6.3, both the precompiled arm64-darwin
+# build and one compiled against Homebrew's libpq, with and without
+# OBJC_DISABLE_INITIALIZE_FORK_SAFETY, and with `hostaddr` set to skip hostname
+# resolution. It is a platform incompatibility, not something the application can
+# configure its way out of.
+#
+# So macOS gets `async`, where workers are threads inside this supervisor process.
+# The trade-off is real and deliberate: no per-worker isolation, and a worker that
+# takes the process down takes its siblings with it. That is acceptable for local
+# development and it does not change the delivery semantics — the job still runs in
+# a separate OS process from Puma, and a crash still leaves the work recoverable
+# from PostgreSQL.
+#
+# Revisit when workers are actually deployed: production runs Linux and should run
+# `fork`.
+mode = ENV.fetch("OPANEL_JOB_SUPERVISOR_MODE") do
+  RUBY_PLATFORM.include?("darwin") ? "async" : "fork"
+end
+
+require_relative "../config/environment"
+require "solid_queue/cli"
+
+SolidQueue::Cli.start([ "start", "--mode", mode, *ARGV ])
