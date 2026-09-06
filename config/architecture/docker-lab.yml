@@ -1,0 +1,38 @@
+# The disposable Docker/Swarm laboratory (Annex H §12.2, Annex D §7).
+#
+# Runtime behaviour is tested against a real Engine, never against a mock: a mock
+# agrees with whatever the code believes, which is exactly the belief under test.
+# The lab is created and destroyed by `bin/swarm-lab`.
+#
+# The version is recorded here because the compatibility suite of M13-12 needs to
+# know what was actually exercised, and because "it worked on my machine" is not a
+# statement about the Engine API.
+
+engine:
+  # The minimum the platform is developed against. Swarm service update
+  # semantics and the `--detach=false` rollout behaviour differ below this.
+  minimum_version: "24.0"
+  # What this repository has actually been exercised against. Updated when the
+  # lab is verified on a new Engine, not aspirationally.
+  verified_against: "29.7.2"
+  api_minimum: "1.44"
+
+lab:
+  # Every resource the lab creates carries this label, and `bin/swarm-lab` refuses
+  # to mutate a daemon whose node does not. This is the guardrail: it is a property
+  # of the daemon, not an environment variable, so it cannot be switched off by
+  # exporting something.
+  label: "opanel.lab"
+  # Networks, services and secrets created by the harness are prefixed with this
+  # and a per-run suffix, so a leaked resource says what created it and two runs
+  # cannot collide.
+  resource_prefix: "opanel-lab"
+
+  # The image the harness runs when it needs a service that does nothing. It has
+  # to be present locally: the lab is deliberately usable without registry access,
+  # and a suite that silently depends on Docker Hub fails for reasons that have
+  # nothing to do with the code. Override with OPANEL_LAB_IMAGE.
+  #
+  # When it is missing the :swarm examples are skipped with instructions — never
+  # reported as passing.
+  image: "busybox:latest"

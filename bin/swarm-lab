@@ -1,0 +1,160 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The disposable Docker/Swarm laboratory.
+#
+#   bin/swarm-lab up       # create it (idempotent)
+#   bin/swarm-lab down     # destroy it (idempotent)
+#   bin/swarm-lab status   # version, nodes, harness services, orphans
+#   bin/swarm-lab reset    # remove everything the harness left behind
+#
+# `up` and `down` are idempotent: running either twice exits 0 and leaves the
+# same state. A lab you are afraid to re-create is a lab that accumulates state,
+# and a test that depends on inherited state is a test that passes for the wrong
+# reason.
+#
+# **Every mutation checks first that this daemon is the lab**, by looking for a
+# node label this tool applied. There is deliberately no environment variable
+# that skips it: the autonomous workspace may never reach a real cluster
+# (Annex H §12.2), and a guardrail that can be exported away is not one.
+
+require "json"
+require_relative "../lib/gates/swarm_lab"
+
+ROOT = File.expand_path("..", __dir__)
+Dir.chdir(ROOT)
+
+LAB = Opanel::Gates::SwarmLab
+LABEL = LAB.label(ROOT)
+PREFIX = LAB.resource_prefix(ROOT)
+
+command = ARGV.shift || "status"
+format = ARGV.include?("--format=json") || ARGV.include?("--json") ? "json" : "text"
+
+def die(message, code: 1)
+  warn message
+  exit code
+end
+
+def require_docker!
+  return if LAB.available?
+
+  die(<<~MESSAGE.strip, code: 2)
+    The Docker daemon is not reachable.
+
+    Start Docker and try again. The suites that need the lab are skipped
+    explicitly when it is unavailable — they are never reported as passing.
+  MESSAGE
+end
+
+case command
+when "up"
+  require_docker!
+
+  unless LAB.version_supported?(ROOT)
+    current = LAB.docker!("info", "--format", "{{.ServerVersion}}")
+    die("Docker #{current} is older than the minimum this platform is developed against " \
+        "(#{LAB.minimum_version(ROOT)}). See config/architecture/docker-lab.yml.", code: 2)
+  end
+
+  state = JSON.parse(LAB.docker!("info", "--format", "{{json .Swarm}}"))["LocalNodeState"]
+
+  if state == "active"
+    if LAB.lab_daemon?(ROOT)
+      puts "swarm-lab: already up (idempotent)"
+    else
+      # An active swarm that is not ours is the case the guardrail exists for.
+      die(<<~MESSAGE.strip)
+        This daemon already runs a Swarm that is not the Opanel lab.
+
+        It carries no `#{LABEL}=true` node label, so it may be a real cluster.
+        Refusing to touch it. Point DOCKER_HOST at a disposable daemon.
+      MESSAGE
+    end
+  else
+    LAB.docker!("swarm", "init", "--advertise-addr", "127.0.0.1")
+    puts "swarm-lab: swarm initialised"
+  end
+
+  # The label is what makes this daemon identifiable as the lab. Applied last, so
+  # a half-created lab is not mistaken for a real one.
+  node_id = LAB.docker!("node", "inspect", "self", "--format", "{{.ID}}")
+  LAB.docker!("node", "update", "--label-add", "#{LABEL}=true", node_id)
+
+  status = LAB.status(ROOT)
+  puts "swarm-lab: up (Docker #{status.engine_version}, Engine API #{status.api_version}, " \
+       "#{status.node_count} node(s))"
+
+when "down"
+  unless LAB.available?
+    # Nothing to destroy, and nothing to complain about: `down` on a machine with
+    # no Docker is already the desired state.
+    puts "swarm-lab: down (the Docker daemon is not reachable)"
+    exit 0
+  end
+
+  state = JSON.parse(LAB.docker!("info", "--format", "{{json .Swarm}}"))["LocalNodeState"]
+
+  if state != "active"
+    puts "swarm-lab: already down (idempotent)"
+    exit 0
+  end
+
+  begin
+    LAB.assert_lab!(ROOT)
+  rescue Opanel::Gates::SwarmLab::NotTheLab => error
+    die(error.message)
+  end
+
+  # Remove what the harness created before leaving the swarm, so nothing is
+  # orphaned in a daemon that is about to forget it managed them.
+  LAB.orphaned_resources(ROOT).each do |kind, names|
+    names.each { |name| LAB.docker(kind.chomp("s"), "rm", name) }
+  end
+
+  LAB.docker!("swarm", "leave", "--force")
+  puts "swarm-lab: down"
+
+when "reset"
+  require_docker!
+
+  begin
+    LAB.assert_lab!(ROOT)
+  rescue Opanel::Gates::SwarmLab::NotTheLab => error
+    die(error.message)
+  end
+
+  removed = LAB.orphaned_resources(ROOT).sum do |kind, names|
+    names.each { |name| LAB.docker(kind.chomp("s"), "rm", name) }
+    names.length
+  end
+
+  puts "swarm-lab: reset (#{removed} leftover resource(s) removed)"
+
+when "status"
+  status = LAB.status(ROOT)
+
+  if format == "json"
+    puts JSON.pretty_generate(status.to_h.compact)
+  elsif !status.available?
+    puts "swarm-lab: unavailable — #{status.reason}"
+  else
+    puts "swarm-lab: #{status.lab? ? 'up' : 'not the lab'}"
+    puts "  engine        #{status.engine_version} (Engine API #{status.api_version})"
+    puts "  swarm         #{status.swarm_state}, #{status.node_count} node(s)"
+    puts "  services      #{status.services.empty? ? 'none' : status.services.join(', ')}"
+
+    orphans = (status.orphans || {}).reject { |_kind, names| names.empty? }
+    if orphans.empty?
+      puts "  orphans       none"
+    else
+      orphans.each { |kind, names| puts "  orphan #{kind.ljust(8)} #{names.join(', ')}" }
+      puts "  → bin/swarm-lab reset removes them; no test may depend on inherited state"
+    end
+  end
+
+  exit(status.available? ? 0 : 2)
+
+else
+  die("usage: bin/swarm-lab up|down|status|reset [--json]", code: 2)
+end
