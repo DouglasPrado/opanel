@@ -16,6 +16,11 @@ gem "puma", ">= 5.0"
 # PostgreSQL remains the source of truth about an Operation.
 gem "solid_queue"
 
+# The Control Plane UI: a single Rails application serving React/TypeScript pages
+# over Inertia, bundled by Vite (SC-01). Not a separate frontend application.
+gem "inertia_rails", "~> 3.22"
+gem "vite_rails", "~> 3.11"
+
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"
 

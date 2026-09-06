@@ -37,6 +37,11 @@ module Opanel
     # stay out of it explicitly.
     Rails.autoloaders.main.ignore(Rails.root.join("app/frontend"))
 
+    # Unhandled failures render an Inertia page carrying the request id instead of
+    # Rails' static HTML, so a user can quote an id that exists in the server log
+    # and no internal detail reaches the browser (doc 09 §28, Annex C §17).
+    config.exceptions_app = ->(env) { ErrorsController.action(:show).call(env) }
+
     # Solid Queue in every environment, including development and test. An
     # in-process adapter would let a job pass locally and then fail against a real
     # queue — exactly the class of defect the queue is supposed to surface.
