@@ -1,0 +1,71 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Migration Gate (Annex I §8.2). Runs without booting Rails so the Pre-commit Gate
+# can afford it on every commit.
+#
+#   bin/migration-gate                 # every migration in db/migrate
+#   bin/migration-gate <path>...       # only these files
+#   bin/migration-gate --format json   # machine-readable, for bin/gate and the Stop Gate
+
+require "json"
+require_relative "../lib/gates/migration_gate"
+
+format = "text"
+paths = []
+arguments = ARGV.dup
+
+until arguments.empty?
+  argument = arguments.shift
+
+  case argument
+  when "--json" then format = "json"
+  when "--format" then format = arguments.shift
+  when /\A--format=(.+)\z/ then format = Regexp.last_match(1)
+  when /\A--/
+    warn "unknown option: #{argument}"
+    exit 2
+  else
+    paths << argument
+  end
+end
+
+unless %w[text json].include?(format)
+  warn "unknown format: #{format.inspect} (expected text or json)"
+  exit 2
+end
+
+root = File.expand_path("..", __dir__)
+paths = Dir.glob(File.join(root, "db/migrate/*.rb")).sort if paths.empty?
+paths = paths.select { |path| File.file?(path) }
+
+started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+violations = Opanel::Gates::MigrationGate.check_paths(paths)
+duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+relative = ->(path) { path.start_with?(root) ? path.delete_prefix("#{root}/") : path }
+
+if format == "json"
+  puts JSON.pretty_generate(
+    check: "migration-gate",
+    result: violations.empty? ? "pass" : "fail",
+    duration_ms: (duration * 1000).round,
+    files_checked: paths.length,
+    rules: Opanel::Gates::MigrationGate::RULES,
+    violations: violations.map { |violation| violation.to_h.merge(file: relative.call(violation.file)) }
+  )
+else
+  if violations.empty?
+    puts "migration-gate: PASS (#{paths.length} migration(s), #{(duration * 1000).round}ms)"
+  else
+    violations.each do |violation|
+      location = [ relative.call(violation.file), violation.line ].compact.join(":")
+      puts "migration-gate: FAIL [#{violation.rule}] #{location}"
+      puts "  #{violation.message}"
+      puts "  remedy: #{violation.remedy}"
+    end
+    puts "migration-gate: #{violations.length} violation(s) in #{paths.length} migration(s)"
+  end
+end
+
+exit(violations.empty? ? 0 : 1)

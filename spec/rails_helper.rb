@@ -7,10 +7,19 @@ abort("The Rails environment is running in production mode!") if Rails.env.produ
 
 require "rspec/rails"
 
-# M00-01 deliberately does not touch the database: PostgreSQL connection policy,
-# migrations and the schema-maintenance hook belong to M00-02, and the full test
-# harness to M00-07.
+# Tests run against real PostgreSQL, never SQLite (Annex D §5). A schema that has
+# drifted from db/schema.rb aborts the run instead of producing a green suite
+# against the wrong shape.
+begin
+  ActiveRecord::Migration.maintain_test_schema!
+rescue ActiveRecord::PendingMigrationError => error
+  abort "#{error.message}\nRun `bin/rails db:prepare` before the suite."
+end
+
 RSpec.configure do |config|
   config.infer_spec_type_from_file_location!
   config.filter_rails_from_backtrace!
+
+  config.use_transactional_fixtures = true
+  config.fixture_paths = [ Rails.root.join("spec/fixtures") ]
 end

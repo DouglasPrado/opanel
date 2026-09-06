@@ -25,8 +25,12 @@ module Opanel
 
     # Please, add to the `ignore` list any other `lib` subdirectories that do
     # not contain `.rb` files, or that should not be reloaded or eager loaded.
-    # Common ones are `templates`, `generators`, or `middleware`, for example.
-    config.autoload_lib(ignore: %w[assets tasks])
+    #
+    # lib/gates/ holds the quality-gate checkers. They are required directly by
+    # the bin/ scripts and by their specs so they run without booting Rails —
+    # the Pre-commit Gate has to afford them on every commit — which means
+    # Zeitwerk must not also manage them.
+    config.autoload_lib(ignore: %w[assets tasks gates])
 
     # app/frontend/ holds the React/TypeScript tree bundled by Vite. Rails treats
     # every app/* directory as an autoload path, so Zeitwerk has to be told to
