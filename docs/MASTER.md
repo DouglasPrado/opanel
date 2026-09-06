@@ -12,10 +12,14 @@ Os arquivos Markdown são a versão otimizada para uso dentro do repositório po
 
 ## Regra de precedência
 
-1. A Story atual define o escopo da mudança.
-2. A arquitetura aprovada define os invariantes do sistema.
-3. Os anexos de engenharia definem processo, qualidade, segurança e operação.
-4. Quando houver conflito real entre especificação e implementação, não redesenhe silenciosamente: registre o conflito e, quando necessário, crie um ADR.
+1. A arquitetura aprovada (Partes 01-10 e anexos normativos) define os invariantes do sistema.
+2. A Story atual e os ADRs aceitos definem o escopo da mudança.
+3. Os anexos de engenharia definem processo, qualidade, segurança e operação — em especial o Anexo I.
+4. `docs/AGENT_RULES.md` define como a especificação vira código.
+5. As instruções do harness (`CLAUDE.md`, `AGENTS.md`) adaptam a operação à ferramenta.
+6. A preferência do agente só vale quando nada acima decide o assunto.
+
+Um nível inferior pode especializar um superior; nunca contradizê-lo. Quando houver conflito real entre especificação e implementação, não redesenhe silenciosamente: registre o conflito e, quando necessário, crie um ADR. O detalhamento está em `AGENT_RULES.md`.
 
 ## Arquitetura principal
 
@@ -42,16 +46,34 @@ Os arquivos Markdown são a versão otimizada para uso dentro do repositório po
 - [H — Autonomous Development Loop](annexes/H-autonomous-development-loop.md)
 - [I — Engineering Playbook e Quality Gates](annexes/I-engineering-playbook-quality-gates.md)
 
-## Uso por agentes
+## Execução por agentes
+
+Este `MASTER.md` é o **mapa da especificação**: ele responde "qual documento decide este assunto?". Ele não contém as regras de implementação.
+
+`docs/AGENT_RULES.md` é o conjunto de **regras normativas para implementação**: invariantes de arquitetura, disciplina de escopo, backend, frontend, banco, segurança, testes, dependências, gates e tratamento de conflitos. É agnóstico de ferramenta.
+
+| Arquivo | Papel |
+|---|---|
+| [`MASTER.md`](MASTER.md) | Mapa da especificação e invariantes globais. |
+| [`AGENT_RULES.md`](AGENT_RULES.md) | Regras normativas para qualquer agente de código. |
+| [`../CLAUDE.md`](../CLAUDE.md) | Adapter do Claude Code. |
+| [`../AGENTS.md`](../AGENTS.md) | Adapter do Codex e de agentes compatíveis. |
+| [`decisions/`](decisions/) | ADRs e pendências documentais. |
+| [`implementation/`](implementation/) | Implementation Pack: milestones e Stories. |
 
 Antes de implementar uma Story:
 
 1. leia este `MASTER.md`;
-2. leia apenas os documentos referenciados pela Story;
-3. siga os Anexos G, H e I para processo de desenvolvimento, autonomia e quality gates;
-4. siga os Anexos C e D para segurança e testes;
-5. não invente arquitetura nova para resolver uma tarefa local;
-6. registre qualquer decisão arquitetural nova em `docs/decisions/` como ADR.
+2. leia `AGENT_RULES.md`;
+3. leia a Story por completo;
+4. leia apenas os documentos referenciados pela Story;
+5. inspecione a implementação existente antes de propor mudanças;
+6. siga os Anexos G, H e I para processo de desenvolvimento, autonomia e quality gates;
+7. siga os Anexos C e D para segurança e testes;
+8. não invente arquitetura nova para resolver uma tarefa local;
+9. registre qualquer decisão arquitetural nova em `docs/decisions/` como ADR.
+
+Divergências conhecidas entre a especificação convertida e as decisões atuais estão registradas em [`decisions/pending-documentation-updates.md`](decisions/pending-documentation-updates.md). Consulte esse arquivo antes de tratar uma afirmação de stack de um documento antigo como vigente.
 
 ## Próxima camada
 
