@@ -72,12 +72,13 @@
     {
       "id": "M00-07",
       "file": "stories/M00-07-backend-test-harness.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-02"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "d10e688"
     },
     {
       "id": "M00-08",
@@ -158,23 +159,24 @@
     {
       "id": "M00-15",
       "file": "stories/M00-15-structured-logging-and-health.md",
-      "status": "pending",
+      "status": "in_progress",
       "dependsOn": [
         "M00-01",
         "M00-03"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "required": true
     },
     {
       "id": "M00-16",
       "file": "stories/M00-16-configuration-and-secrets-management.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-01"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "4070dab"
     },
     {
       "id": "M00-17",
