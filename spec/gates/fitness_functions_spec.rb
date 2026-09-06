@@ -216,7 +216,8 @@ RSpec.describe Opanel::Gates::FitnessFunctions do
 
   describe "AF-07 — critical mutations have a Policy" do
     let(:metadata) do
-      { "critical_mutations" => [ { "command" => "DeleteService", "policy" => "ServicePolicy", "action" => "destroy?" } ] }
+      { "critical_mutations" => [ { "command" => "DeleteService", "policy" => "ServicePolicy",
+"action" => "destroy?" } ] }
     end
 
     it "detects a declared mutation with no policy" do
@@ -305,7 +306,7 @@ RSpec.describe Opanel::Gates::FitnessFunctions do
         "app/frontend/components/features/deploy/Badge.tsx" => "export function Badge() {}\n"
       )
 
-      in_repository(files ) do |results|
+      in_repository(files) do |results|
         expect(result_for(results, "AF-10").status).to eq("fail")
         expect(result_for(results, "AF-10").violations.first.detail).to match(/duplicates the `badge`/)
       end
@@ -335,7 +336,7 @@ RSpec.describe Opanel::Gates::FitnessFunctions do
         "app/frontend/components/features/deploy/Badge.tsx" => "export function Badge() {}\n"
       }
 
-      in_repository(files, metadata: { "waivers" => [ waiver ] } ) do |results|
+      in_repository(files, metadata: { "waivers" => [ waiver ] }) do |results|
         expect(result_for(results, "AF-10").status).to eq("pass")
         expect(result_for(results, "AF-10").waived).to eq(1)
       end

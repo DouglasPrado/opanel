@@ -1,0 +1,108 @@
+# Nightly stage — Annex D §20.
+#
+# Full Swarm + build corpus + load smoke + chaos subset.
+#
+# **These slots are empty.** They exist now so the cadence exists as soon as
+# there is something to put in it, and so a later Milestone adds commands to
+# config/ci/jobs.yml rather than reopening the question of where its suite
+# belongs. M00 builds the harness; it does not invent the suites.
+#
+# An empty slot reports `empty`, never `pass` — a job that says green while
+# running nothing is a false statement about the build, and a false green is
+# worse than a missing check because nobody goes looking for it.
+
+name: Nightly
+
+on:
+  schedule:
+    # 03:00 UTC — after the working day in every timezone the team is in, and
+    # long before the next one starts.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    name: ${{ matrix.job }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - swarm-full
+          - build-corpus
+          - load-smoke
+          - chaos-subset
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      RAILS_ENV: test
+      OPANEL_DATABASE_HOST: 127.0.0.1
+      OPANEL_DATABASE_PORT: '5432'
+      OPANEL_DATABASE_USERNAME: postgres
+      OPANEL_DATABASE_PASSWORD: postgres
+      SECRET_KEY_BASE: ci-only-not-a-secret-0000000000000000000000000000000000000000000000000000000000000000
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: ${{ matrix.job }}
+        run: bin/ci-job "${{ matrix.job }}" --out "tmp/ci-results/${{ matrix.job }}.json"
+      - uses: ./.github/actions/archive
+        if: always()
+        with:
+          job: ${{ matrix.job }}
+
+  # Flakiness is only visible across runs: one result file cannot show that a
+  # test passed once and failed once. This reads the archived runs of the last
+  # week and reports the rate and the top offenders (Annex D §20.1). It measures;
+  # it never retries — a suite that passes on the third attempt has stopped
+  # telling anyone anything.
+  flaky-rate:
+    name: flaky-rate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version-file: .ruby-version
+          bundler-cache: true
+
+      - name: Collect the last week of archived runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p tmp/history
+          runs="$(gh run list --workflow CI --status completed --limit 40 --json databaseId --jq '.[].databaseId')"
+          for run in $runs; do
+            gh run download "$run" --dir "tmp/history/$run" 2>/dev/null || true
+          done
+
+      - name: Flaky rate and top offenders
+        run: bin/flaky-rate --format json tmp/history | tee tmp/flaky-rate.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flaky-rate-${{ github.run_id }}
+          path: tmp/flaky-rate.json
+          if-no-files-found: ignore
+          retention-days: 90

@@ -1,0 +1,32 @@
+name: 'Set up Opanel'
+description: >
+  Ruby, Node and the repository's dependencies. One place, so seven jobs cannot
+  disagree about which Ruby they are on — a version skew between jobs produces
+  failures that look like flaky tests and are not.
+
+runs:
+  using: composite
+  steps:
+    - name: Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        # .ruby-version is the single declaration; bundler-cache reuses
+        # vendor/bundle, which .bundle/config already points at.
+        ruby-version-file: .ruby-version
+        bundler-cache: true
+
+    - name: Node
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+
+    - name: Install npm dependencies
+      shell: bash
+      run: npm ci --no-audit --no-fund
+
+    # Every job gets its own PostgreSQL service, including the ones that do not
+    # need it. A conditional here would be one more way for two jobs to differ.
+    - name: Prepare the database
+      shell: bash
+      run: bin/rails db:test:prepare

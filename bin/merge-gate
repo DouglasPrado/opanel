@@ -1,0 +1,323 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Merge Gate — Annex I §15.2.
+#
+#   bin/merge-gate
+#   bin/merge-gate --format json
+#   bin/merge-gate --base origin/main --results tmp/ci-results
+#
+# The checklist of §15.2, executed rather than affirmed. Every item runs a
+# command and uses its exit code: a gate satisfied by someone ticking a box is
+# not a gate, and the autonomous loop would tick every box (Annex H §4.1).
+#
+# Two consequences worth being explicit about:
+#
+#   * CI green is checked **by job name**, against config/ci/jobs.yml. Not
+#     "most checks passed", not "nothing red" — the named jobs, each present and
+#     each passing. A job that vanished from the run fails this gate, so an
+#     agent cannot unblock a merge by deleting the job that was failing.
+#
+#   * What cannot be verified here fails closed. Required approvals live in
+#     GitHub branch protection; without `gh` this gate reports that it could not
+#     verify them and exits non-zero. Missing evidence is never read as consent.
+
+require "json"
+require "open3"
+require_relative "../lib/gates/ci_pipeline"
+
+module MergeGate
+  # Changing any of these changes how the repository judges itself, so it may
+  # not ride along inside an unrelated Story (Annex I §21.2). The commit or PR
+  # has to name the Story or ADR that authorises it.
+  PIPELINE_PATHS = %w[
+    .github/workflows/
+    config/ci/
+    config/architecture/
+    config/security/
+    bin/ci-job
+    bin/merge-gate
+    bin/gate
+    bin/fitness
+    bin/security
+    lib/gates/
+  ].freeze
+
+  # A change here alters a contract, so the documentation or an ADR has to move
+  # with it (Annex I §15.2, AGENT_RULES "Documentation").
+  CONTRACT_PATHS = %w[
+    db/migrate/
+    app/contracts/
+    app/controllers/api/
+    config/ci/jobs.yml
+    lib/opanel/configuration.rb
+  ].freeze
+
+  AUTHORISATION_REFERENCE = /\b(M\d{2}-\d{2}|ADR-\d{4})\b/
+
+  Check = Struct.new(:name, :result, :duration_ms, :reason, keyword_init: true) do
+    def passed? = result == "pass"
+  end
+
+  class Runner
+    def initialize(base:, results_dir:, root: Dir.pwd)
+      @base = base
+      @results_dir = results_dir
+      @root = root
+      @checks = []
+    end
+
+    attr_reader :checks
+
+    def run
+      check("base-branch-current") { base_branch_current }
+      check("ci-green") { ci_green }
+      check("critical-zero") { findings_zero("critical") }
+      check("high-zero") { findings_zero("high") }
+      check("migration-rollout-safe") { migration_rollout_safe }
+      check("rollback-known") { rollback_known }
+      check("story-status-consistent") { story_status_consistent }
+      check("documentation-current") { documentation_current }
+      check("pipeline-change-authorised") { pipeline_change_authorised }
+      check("required-approvals") { required_approvals }
+      self
+    end
+
+    def passed? = checks.all?(&:passed?)
+
+    private
+
+    def check(name)
+      started = now_ms
+      reason = yield
+      @checks << Check.new(
+        name: name, result: reason.nil? ? "pass" : "fail",
+        duration_ms: now_ms - started, reason: reason
+      )
+    rescue StandardError => error
+      @checks << Check.new(
+        name: name, result: "fail", duration_ms: now_ms - started,
+        reason: "the check itself failed: #{error.class}: #{error.message}"
+      )
+    end
+
+    def now_ms = Process.clock_gettime(Process::CLOCK_MONOTONIC, :millisecond)
+
+    def sh(*command)
+      stdout, stderr, status = Open3.capture3(*command, chdir: @root)
+      [ stdout.strip, stderr.strip, status.success? ]
+    end
+
+    def changed_files
+      @changed_files ||= begin
+        stdout, _stderr, ok = sh("git", "diff", "--name-only", "#{@base}...HEAD")
+        ok ? stdout.split("\n") : []
+      end
+    end
+
+    def touched?(prefixes)
+      changed_files.any? { |file| prefixes.any? { |prefix| file.start_with?(prefix) } }
+    end
+
+    # --- the checklist --------------------------------------------------------
+
+    def base_branch_current
+      _stdout, _stderr, exists = sh("git", "rev-parse", "--verify", @base)
+      return "the base branch #{@base} is not available — fetch it first" unless exists
+
+      _stdout, _stderr, ancestor = sh("git", "merge-base", "--is-ancestor", @base, "HEAD")
+      return nil if ancestor
+
+      "HEAD is behind #{@base}; rebase or merge the base branch before merging"
+    end
+
+    def ci_green
+      required = Opanel::Gates::CiPipeline.required_for_merge(@root)
+      missing = []
+      failed = []
+
+      required.each do |job|
+        path = File.join(File.expand_path(@results_dir, @root), "#{job}.json")
+        unless File.exist?(path)
+          missing << job
+          next
+        end
+
+        result = JSON.parse(File.read(path))["result"]
+        failed << "#{job} (#{result})" unless result == "pass"
+      end
+
+      problems = []
+      unless missing.empty?
+        problems << "no result for #{missing.join(', ')} — a required job that did not run " \
+                    "is not a job that passed"
+      end
+      problems << "red: #{failed.join(', ')}" unless failed.empty?
+      problems.empty? ? nil : problems.join("; ")
+    end
+
+    # Severity comes from the security scan and from any review findings file
+    # the Milestone produced. Both are read; neither is trusted to be present
+    # and green by default.
+    def findings_zero(severity)
+      counts = []
+
+      security = File.join(@root, "tmp/security/report.json")
+      if File.exist?(security)
+        report = JSON.parse(File.read(security))
+        found = report.fetch("findings", []).count { |f| f["severity"].to_s.downcase == severity }
+        counts << "#{found} in the security scan" if found.positive?
+      end
+
+      Dir.glob(File.join(@root, "docs/implementation/*/review/*.json")).each do |path|
+        findings = JSON.parse(File.read(path)).fetch("findings", [])
+        found = findings.count do |finding|
+          finding["severity"].to_s.downcase == severity && finding["status"].to_s != "resolved"
+        end
+        counts << "#{found} unresolved in #{path.delete_prefix("#{@root}/")}" if found.positive?
+      end
+
+      counts.empty? ? nil : "#{severity.capitalize} must be 0: #{counts.join(', ')}"
+    end
+
+    def migration_rollout_safe
+      return nil unless touched?(%w[db/migrate/])
+
+      _stdout, stderr, ok = sh("bin/migration-gate")
+      ok ? nil : "the Migration Gate is red: #{stderr.lines.first&.strip}"
+    end
+
+    # "Rollback or forward-fix known" is exactly the Migration Gate's
+    # REVERSIBILITY rule: a migration either reverses, or says how a bad rollout
+    # is corrected forward. So this asks that gate about the migrations in *this*
+    # diff rather than restating the rule — a second copy of it would drift, and
+    # the stricter copy would demand a forward-fix marker on migrations that
+    # simply reverse.
+    def rollback_known
+      migrations = changed_files.select { |file| file.start_with?("db/migrate/") }
+                                .select { |file| File.exist?(File.join(@root, file)) }
+      return nil if migrations.empty?
+
+      stdout, stderr, _ok = sh("bin/migration-gate", "--format", "json", *migrations)
+      return "could not run the Migration Gate: #{stderr.lines.first&.strip}" if stdout.empty?
+
+      violations = JSON.parse(stdout).fetch("violations", [])
+                       .select { |violation| violation["rule"] == "REVERSIBILITY" }
+      return nil if violations.empty?
+
+      "no rollback or forward-fix recorded: " +
+        violations.map { |violation| "#{violation['file']} — #{violation['remedy']}" }.join("; ")
+    end
+
+    def story_status_consistent
+      problems = []
+
+      Dir.glob(File.join(@root, "docs/implementation/*/tasks.json")).sort.each do |path|
+        pack = JSON.parse(File.read(path))
+        relative = path.delete_prefix("#{@root}/")
+
+        pack.fetch("stories", []).each do |story|
+          next unless story["status"] == "done"
+
+          commit = story["commit"]
+          if commit.nil? || commit.empty?
+            problems << "#{relative}: #{story['id']} is done with no commit"
+            next
+          end
+
+          _stdout, _stderr, exists = sh("git", "cat-file", "-e", "#{commit}^{commit}")
+          next if exists
+
+          problems << "#{relative}: #{story['id']} names commit #{commit}, " \
+                      "which is not in this repository"
+        end
+      end
+
+      problems.empty? ? nil : problems.join("; ")
+    end
+
+    def documentation_current
+      return nil unless touched?(CONTRACT_PATHS)
+
+      documented = changed_files.any? do |file|
+        file.start_with?("docs/") && !file.start_with?("docs/implementation/")
+      end
+      return nil if documented
+
+      "a contract changed (#{changed_files.select { |f| CONTRACT_PATHS.any? { |p| f.start_with?(p) } }.join(', ')}) " \
+        "but no documentation or ADR moved with it"
+    end
+
+    def pipeline_change_authorised
+      touched = changed_files.select { |file| PIPELINE_PATHS.any? { |prefix| file.start_with?(prefix) } }
+      return nil if touched.empty?
+
+      subjects, _stderr, _ok = sh("git", "log", "--format=%s%n%b", "#{@base}...HEAD")
+      return nil if subjects.match?(AUTHORISATION_REFERENCE)
+
+      "the pipeline or a gate changed (#{touched.join(', ')}) without naming the Story or ADR " \
+        "that authorises it — a gate may not change as a side effect of another Story"
+    end
+
+    # Branch protection owns this. Without `gh` the gate cannot see it, and
+    # unverifiable is not the same as satisfied.
+    def required_approvals
+      _stdout, _stderr, available = sh("sh", "-c", "command -v gh")
+      unless available
+        return "cannot verify required approvals without the `gh` CLI — " \
+               "this gate does not assume an unverified control is satisfied"
+      end
+
+      # In CI the pull request is named explicitly; locally `gh` infers it from
+      # the branch.
+      pull_request = ENV["OPANEL_PR_NUMBER"].to_s
+      arguments = [ "gh", "pr", "view" ]
+      arguments << pull_request unless pull_request.empty?
+      stdout, stderr, ok = sh(*arguments, "--json", "reviewDecision", "--jq", ".reviewDecision")
+      return "could not read the review decision: #{stderr.lines.first&.strip}" unless ok
+      return nil if stdout == "APPROVED"
+
+      "the pull request is #{stdout.empty? ? 'not reviewed' : stdout}"
+    end
+  end
+end
+
+# --- CLI ----------------------------------------------------------------------
+
+format = "text"
+base = ENV.fetch("OPANEL_MERGE_BASE", "origin/main")
+results_dir = "tmp/ci-results"
+
+arguments = ARGV.dup
+until arguments.empty?
+  case (argument = arguments.shift)
+  when "--format" then format = arguments.shift
+  when "--json" then format = "json"
+  when "--base" then base = arguments.shift
+  when "--results" then results_dir = arguments.shift
+  else
+    warn "unknown option: #{argument}"
+    exit 2
+  end
+end
+
+root = File.expand_path("..", __dir__)
+runner = MergeGate::Runner.new(base: base, results_dir: results_dir, root: root).run
+
+if format == "json"
+  puts JSON.generate(
+    gate: "merge-gate",
+    result: runner.passed? ? "pass" : "fail",
+    checks: runner.checks.map(&:to_h)
+  )
+else
+  puts "MERGE ALLOWED ONLY IF"
+  runner.checks.each do |check|
+    mark = check.passed? ? "[x]" : "[ ]"
+    puts format("  %s %-28s %s", mark, check.name, check.passed? ? "" : check.reason)
+  end
+  puts
+  puts runner.passed? ? "merge-gate: PASS" : "merge-gate: FAIL"
+end
+
+exit(runner.passed? ? 0 : 1)

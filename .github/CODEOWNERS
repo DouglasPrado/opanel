@@ -1,0 +1,22 @@
+# The pipeline and the gates judge every other change, so a change to them needs
+# a human who is looking at it as a change to the rules — not as a detail of the
+# Story that happened to touch it (Annex I §21.2, AGENT_RULES "Quality Gates").
+#
+# bin/merge-gate enforces the same thing without GitHub's help: a diff touching
+# any of these fails the gate unless a commit names the Story or ADR that
+# authorises it.
+
+/.github/            @DouglasPrado
+/config/ci/          @DouglasPrado
+/config/architecture/ @DouglasPrado
+/config/security/    @DouglasPrado
+/lib/gates/          @DouglasPrado
+/bin/ci-job          @DouglasPrado
+/bin/merge-gate      @DouglasPrado
+/bin/fitness         @DouglasPrado
+/bin/security        @DouglasPrado
+
+# The rules themselves.
+/docs/AGENT_RULES.md @DouglasPrado
+/docs/annexes/       @DouglasPrado
+/docs/decisions/     @DouglasPrado

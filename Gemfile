@@ -52,6 +52,13 @@ group :development, :test do
   # JUnit output the CI consumes.
   gem "rspec_junit_formatter", require: false
 
+  # Reads that JUnit output back: bin/flaky-rate measures flakiness across
+  # archived runs, which needs the per-test outcomes only the XML carries.
+  # Ruby's own XML parser, pure Ruby, no native extension — it was stdlib until
+  # Ruby 3.0 and became a bundled gem, so this line is the unbundling catching
+  # up rather than a new dependency in any real sense.
+  gem "rexml", require: false
+
   # Ruby style and lint. Omakase is the Rails default ruleset; the project rules
   # that specialize it live in .rubocop.yml.
   gem "rubocop-rails-omakase", require: false

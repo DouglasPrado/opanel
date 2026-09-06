@@ -1,0 +1,233 @@
+# The PR and Merge stages — Annex D §20, Annex I §15.
+#
+#   pull request          static + unit + integration + contract
+#                         + security-fast + frontend + migrations
+#   targeting main        the above, plus e2e-critical and swarm-smoke
+#
+# One workflow rather than two, because the Merge Gate has to read the result of
+# every required job and cross-workflow results are a plumbing problem, not a
+# quality one. The stages stay distinct where it matters: config/ci/jobs.yml says
+# which stage a job belongs to, and the merge-stage matrix only runs against the
+# default branch.
+#
+# Every job runs `bin/ci-job <name>`; what a job contains lives in
+# config/ci/jobs.yml. This file only schedules. Nothing CI runs is defined here,
+# so anything CI runs can be reproduced locally by name — "green on my machine,
+# red in CI" is a difference between two definitions, and there is only one.
+#
+# Job names are a contract. The Merge Gate requires them by name (Annex I §15.2):
+# a renamed or deleted job turns the gate red rather than quietly removing a
+# check, so an agent cannot unblock itself by dropping whatever was failing.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-stage:
+    # The job's own name, so branch protection and bin/merge-gate can require
+    # `static`, `unit`, `integration`… by name.
+    name: ${{ matrix.job }}
+    runs-on: ubuntu-latest
+    strategy:
+      # One red job must not hide the state of the others. A cancelled run
+      # reports nothing, and the report is the point.
+      fail-fast: false
+      matrix:
+        job:
+          - static
+          - unit
+          - integration
+          - contract
+          - security-fast
+          - frontend
+          - migrations
+
+    services:
+      postgres:
+        # An ephemeral database per job. Two jobs then cannot truncate each
+        # other's tables — a collision that presents as a flaky test and is not
+        # one (Annex D §20.1).
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      RAILS_ENV: test
+      OPANEL_DATABASE_HOST: 127.0.0.1
+      OPANEL_DATABASE_PORT: '5432'
+      OPANEL_DATABASE_USERNAME: postgres
+      OPANEL_DATABASE_PASSWORD: postgres
+      # Not a secret and not a production value: it exists so the test
+      # environment boots. No production credential is ever present in CI
+      # (Annex C §21, Annex H §3.2).
+      SECRET_KEY_BASE: ci-only-not-a-secret-0000000000000000000000000000000000000000000000000000000000000000
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The secret scan reads history; a shallow clone would scan almost
+          # nothing and report clean.
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup
+
+      - name: gitleaks
+        if: matrix.job == 'security-fast'
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz"
+          sudo tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: ${{ matrix.job }}
+        run: bin/ci-job "${{ matrix.job }}" --out "tmp/ci-results/${{ matrix.job }}.json"
+
+      - uses: ./.github/actions/archive
+        if: always()
+        with:
+          job: ${{ matrix.job }}
+
+  # What needs a real Engine and a real browser. Here rather than on every push
+  # because it is slow, not because it is optional: the Merge Gate requires both
+  # by name.
+  merge-stage:
+    name: ${{ matrix.job }}
+    runs-on: ubuntu-latest
+    if: github.base_ref == 'main' || github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - e2e-critical
+          - swarm-smoke
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      RAILS_ENV: test
+      OPANEL_DATABASE_HOST: 127.0.0.1
+      OPANEL_DATABASE_PORT: '5432'
+      OPANEL_DATABASE_USERNAME: postgres
+      OPANEL_DATABASE_PASSWORD: postgres
+      SECRET_KEY_BASE: ci-only-not-a-secret-0000000000000000000000000000000000000000000000000000000000000000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup
+
+      - name: Playwright browsers
+        if: matrix.job == 'e2e-critical'
+        run: npx playwright install --with-deps chromium
+
+      # The lab image has to be present on the node: the harness deliberately
+      # does not depend on registry access at test time, so it is pulled once,
+      # here.
+      - name: Lab image
+        if: matrix.job == 'swarm-smoke'
+        run: |
+          docker pull "$(ruby -ryaml -e 'print YAML.safe_load_file("config/architecture/docker-lab.yml").dig("lab", "image")')"
+
+      - name: ${{ matrix.job }}
+        run: bin/ci-job "${{ matrix.job }}" --out "tmp/ci-results/${{ matrix.job }}.json"
+
+      # The lab is disposable. It comes down whatever happened, so a crashed run
+      # cannot leave a Swarm behind for the next one to inherit.
+      - name: Tear the lab down
+        if: always() && matrix.job == 'swarm-smoke'
+        run: bin/swarm-lab down || true
+
+      - uses: ./.github/actions/archive
+        if: always()
+        with:
+          job: ${{ matrix.job }}
+
+  # The PR Gate. Branch protection requires this single check, and this check
+  # requires every named job — "nothing red" is not the condition, "each of
+  # these green" is. Skipped and cancelled are not success.
+  pr-gate:
+    name: pr-gate
+    runs-on: ubuntu-latest
+    needs: [pr-stage]
+    if: always()
+    steps:
+      - name: Every required job reported success
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS"
+          echo "$RESULTS" | ruby -rjson -e '
+            needs = JSON.parse($stdin.read)
+            red = needs.reject { |_name, job| job["result"] == "success" }
+            if red.empty?
+              puts "pr-gate: PASS"
+            else
+              abort("pr-gate: FAIL — #{red.map { |name, job| "#{name} (#{job["result"]})" }.join(", ")}")
+            end
+          '
+
+  # The Merge Gate (Annex I §15.2), executed rather than affirmed: every item
+  # runs a command and uses its exit code. It runs on the pull request, because
+  # it decides whether a merge is *allowed* — after a push to main the merge has
+  # already happened and there is nothing left to gate.
+  merge-gate:
+    name: merge-gate
+    runs-on: ubuntu-latest
+    needs: [pr-stage, merge-stage]
+    if: always() && github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version-file: .ruby-version
+          bundler-cache: true
+
+      # The results of the runs that produced them. The gate reads results; it
+      # does not trust a summary of them.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: evidence-*-${{ github.run_id }}-*
+          merge-multiple: true
+          path: .
+
+      - name: Merge Gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPANEL_PR_NUMBER: ${{ github.event.number }}
+        run: bin/merge-gate --base "origin/${{ github.base_ref }}"

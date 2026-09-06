@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Runs one CI job, as defined in config/ci/jobs.yml.
+#
+#   bin/ci-job static
+#   bin/ci-job integration --format json
+#   bin/ci-job static --out tmp/ci-results/static.json   # readable log + machine result
+#   bin/ci-job --list
+#   bin/ci-job --stage pr            # every job of a stage, in order
+#
+# The GitHub workflows call exactly this, so a job can be reproduced locally by
+# name. "It only fails in CI" is nearly always a difference between what CI runs
+# and what the developer ran; there is no such difference here.
+#
+# Each command inside a job reports its own name, result, duration and reason
+# (bin/_gate_lib.sh), so a red job says which check failed rather than handing
+# over a wall of output.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+source bin/_gate_lib.sh
+
+format="text"
+mode="job"
+stage=""
+job=""
+out=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --format) format="$2"; shift ;;
+    --format=*) format="${1#--format=}" ;;
+    --json) format="json" ;;
+    --out) out="$2"; shift ;;
+    --out=*) out="${1#--out=}" ;;
+    --list) mode="list" ;;
+    --stage) mode="stage"; stage="$2"; shift ;;
+    --stage=*) mode="stage"; stage="${1#--stage=}" ;;
+    --*) echo "unknown option: $1" >&2; exit 2 ;;
+    *) job="$1" ;;
+  esac
+  shift
+done
+
+pipeline() { ruby -r./lib/gates/ci_pipeline -e "$1"; }
+
+if [ "$mode" = "list" ]; then
+  pipeline 'Opanel::Gates::CiPipeline.jobs.each { |j|
+    printf("  %-16s %-8s %s\n", j.name, j.stage, j.empty? ? "(empty — populated by #{j.populated_by})" : j.description)
+  }'
+  exit 0
+fi
+
+if [ "$mode" = "stage" ]; then
+  names="$(pipeline "puts Opanel::Gates::CiPipeline.stage_jobs('$stage').map(&:name)")" || exit 2
+  failures=0
+  for name in $names; do
+    bin/ci-job "$name" --format "$format" ${out:+--out "$(dirname "$out")/$name.json"} \
+      || failures=$((failures + 1))
+  done
+  [ "$failures" -eq 0 ] || exit 1
+  exit 0
+fi
+
+if [ -z "$job" ]; then
+  echo "usage: bin/ci-job <job> | --stage <pr|merge|nightly|rc> | --list" >&2
+  exit 2
+fi
+
+definition="$(pipeline "
+  job = Opanel::Gates::CiPipeline.job('$job')
+  abort(\"unknown job: $job\") unless job
+  job.commands.each { |label, command| puts \"#{label}\t#{command}\" }
+")" || exit 2
+
+# An empty slot is reported as empty and exits 0 — it is a declared gap, not a
+# passing check. It never claims to have tested anything.
+if [ -z "$definition" ]; then
+  populated_by="$(pipeline "print Opanel::Gates::CiPipeline.job('$job').populated_by")"
+  empty_json="$(printf '{"gate":"ci-job:%s","result":"empty","populated_by":"%s","checks":[]}' "$job" "$populated_by")"
+  if [ -n "$out" ]; then
+    mkdir -p "$(dirname "$out")"
+    printf '%s\n' "$empty_json" > "$out"
+  fi
+  if [ "$format" = "json" ]; then
+    printf '%s\n' "$empty_json"
+  else
+    echo "ci-job:$job: EMPTY — no checks yet, populated by $populated_by"
+  fi
+  exit 0
+fi
+
+gate_begin "ci-job:$job" "$format"
+
+while IFS="$(printf '\t')" read -r label command; do
+  [ -n "$label" ] || continue
+  # shellcheck disable=SC2086  # the command is repository-defined, not user input
+  gate_run "$label" bash -c "$command"
+done <<< "$definition"
+
+# The log stays readable and the machine result is written alongside it: the
+# Merge Gate reads the file, a person reads the log, and neither is asked to
+# parse the other. Both come from the same run — the job is never executed twice
+# to produce two shapes of the same answer.
+[ -n "$out" ] && gate_write_json "$out"
+
+gate_finish

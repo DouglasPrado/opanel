@@ -1,0 +1,152 @@
+# The CI pipeline, declared once (Annex D §20, Annex I §15).
+#
+# This file is the pipeline. `.github/workflows/*.yml` only schedules the jobs
+# named here and calls `bin/ci-job <name>`; `bin/ci` runs the PR stage locally.
+# The point is that "what CI runs" and "what I can run here" cannot drift apart:
+# a green local run that fails in CI teaches people to distrust both.
+#
+# **Job names are a contract.** The Merge Gate requires them by name, not by
+# "most checks passed", so renaming one is a pipeline change and needs its own
+# Story or ADR (Annex I §21.2). `bin/merge-gate` verifies the names it requires
+# still exist here, and spec/gates/ci_pipeline_spec.rb fails if a required job
+# disappears — an agent cannot unblock itself by deleting a job.
+#
+# Stages follow Annex D §20:
+#
+#   pr       static + unit + integration + contract + security fast + frontend
+#   merge    the PR stage, plus Docker/Swarm smoke and the critical journeys
+#   nightly  the broad suite — slots exist now, populated by later Milestones
+#   rc       release candidate — same, empty until M13
+#
+# Every job gets its own ephemeral PostgreSQL, so two jobs cannot collide on a
+# database — a collision presents as a flaky test and is not one.
+
+jobs:
+  static:
+    stage: pr
+    description: "Format, lint, types, suppressions and the architecture invariants."
+    commands:
+      - ["format", "bin/format --check"]
+      - ["lint", "bin/lint"]
+      - ["typecheck", "bin/typecheck"]
+      - ["suppressions", "bin/suppression-gate"]
+      - ["fitness", "bin/fitness"]
+
+  unit:
+    stage: pr
+    description: "Domain rules, state machines, policies and the repository's own checks."
+    commands:
+      - ["unit", "bin/test --type unit"]
+
+  integration:
+    stage: pr
+    description: "Real PostgreSQL: constraints, transactions, locks, idempotency, the full Rack stack."
+    commands:
+      - ["integration", "bin/test --type integration"]
+      - ["request", "bin/test --type request"]
+      - ["policy", "bin/test --type policy"]
+
+  contract:
+    stage: pr
+    description: "API, event and provider contracts."
+    commands:
+      - ["contract", "bin/test --type contract"]
+
+  security-fast:
+    stage: pr
+    description: "Secret scan, dependency audit, static analysis and the workspace guardrail."
+    commands:
+      - ["workspace-guardrail", "bin/workspace-guardrail"]
+      - ["scan", "bin/security"]
+      - ["waivers", "bin/security-waivers"]
+      - ["controls", "bin/test --type security"]
+
+  frontend:
+    stage: pr
+    description: "Vitest component tests over app/frontend."
+    commands:
+      - ["components", "bin/test:js"]
+
+  migrations:
+    stage: pr
+    description: "Migration Gate: reversibility, contract phase and index safety."
+    commands:
+      - ["migration-gate", "bin/migration-gate"]
+      - ["schema-loads", "bin/rails db:test:prepare"]
+
+  e2e-critical:
+    stage: merge
+    description: "The critical browser journeys, against the real application."
+    commands:
+      - ["journeys", "bin/test:e2e"]
+
+  swarm-smoke:
+    stage: merge
+    description: "Docker/Swarm smoke against a real Engine in the disposable lab."
+    commands:
+      - ["lab-up", "bin/swarm-lab up"]
+      - ["lab", "bin/test spec/integration/swarm_lab_spec.rb"]
+      - ["lab-down", "bin/swarm-lab down"]
+
+  # --- Slots ------------------------------------------------------------------
+  #
+  # Declared here so the cadence of Annex D §20 exists as soon as there is
+  # something to put in it, and so a later Milestone adds commands rather than
+  # arguing about where its suite belongs. They are deliberately empty and say
+  # so: an empty job reports `empty`, never `pass`, because a slot that reports
+  # green while testing nothing is worse than no slot at all.
+
+  swarm-full:
+    stage: nightly
+    description: "The full Swarm suite."
+    populated_by: "M13-12"
+    commands: []
+
+  build-corpus:
+    stage: nightly
+    description: "The Railpack build corpus across languages and frameworks."
+    populated_by: "M04-11"
+    commands: []
+
+  load-smoke:
+    stage: nightly
+    description: "Load smoke against the SLOs."
+    populated_by: "M13-04"
+    commands: []
+
+  chaos-subset:
+    stage: nightly
+    description: "The chaos subset: node loss, partition, registry outage."
+    populated_by: "M13-08"
+    commands: []
+
+  performance:
+    stage: rc
+    description: "The performance suite and the NFR/SLO budgets."
+    populated_by: "M13-04"
+    commands: []
+
+  security-deep:
+    stage: rc
+    description: "Deep security: authenticated scanning, SSRF corpus, secret lifecycle."
+    populated_by: "M13-06"
+    commands: []
+
+  restore-upgrade:
+    stage: rc
+    description: "Restore and upgrade rehearsal — required before a release."
+    populated_by: "M12-09"
+    commands: []
+
+# The Merge Gate requires these by name (Annex I §15.2). A merge is allowed only
+# when every one of them is green — not when a majority is.
+required_for_merge:
+  - static
+  - unit
+  - integration
+  - contract
+  - security-fast
+  - frontend
+  - migrations
+  - e2e-critical
+  - swarm-smoke

@@ -254,13 +254,15 @@ module Opanel
 
           mutations.filter_map do |mutation|
             policy_file = File.join(root, "app/policies", "#{underscore(mutation['policy'])}.rb")
-            next if File.exist?(policy_file) && read(policy_file).match?(/def\s+#{Regexp.escape(mutation['action'].to_s.delete('?'))}\??/)
+            action = Regexp.escape(mutation["action"].to_s.delete("?"))
+            next if File.exist?(policy_file) && read(policy_file).match?(/def\s+#{action}\??/)
 
             Violation.new(
               function: id,
               file: "app/policies/#{underscore(mutation['policy'])}.rb",
               line: nil,
-              detail: "#{mutation['command']} is declared critical but #{mutation['policy']}##{mutation['action']} does not exist",
+              detail: "#{mutation['command']} is declared critical but " \
+                      "#{mutation['policy']}##{mutation['action']} does not exist",
               remedy: "authorization is server-side and contextual, and every new mutation needs a " \
                       "negative test including a cross-team attempt (Annex C §7.3)."
             )

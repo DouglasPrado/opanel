@@ -105,6 +105,39 @@ with open(path, "w") as handle:
 PY
 }
 
+# gate_write_json <path>
+#
+# The machine-readable result, written to a file without ending the run and
+# regardless of the display format. CI needs both: a log a person can read while
+# the job is running, and a result the Merge Gate can require by name. Rendering
+# one from the other, or running the gate twice to get both, is how they start
+# disagreeing.
+gate_write_json() {
+  local path="$1" duration result
+  duration=$(( $(gate_now_ms) - GATE_STARTED_AT ))
+  if [ "$GATE_FAILURES" -eq 0 ]; then result="pass"; else result="fail"; fi
+
+  mkdir -p "$(dirname "$path")"
+  python3 - "$GATE_RESULTS_FILE" "$GATE_NAME" "$result" "$duration" "$path" <<'PY'
+import json, sys
+
+results, name, result, duration, destination = sys.argv[1:6]
+try:
+    with open(results) as handle:
+        checks = json.load(handle)
+except (FileNotFoundError, json.JSONDecodeError):
+    checks = []
+
+with open(destination, "w") as handle:
+    json.dump({
+        "gate": name,
+        "result": result,
+        "duration_ms": int(duration),
+        "checks": checks,
+    }, handle, indent=2)
+PY
+}
+
 gate_finish() {
   local duration result
   duration=$(( $(gate_now_ms) - GATE_STARTED_AT ))

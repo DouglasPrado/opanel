@@ -1,0 +1,33 @@
+name: 'Archive evidence'
+description: >
+  Keeps the run's evidence: the job result, the test reports, the security
+  reports and the gate output (Annex D §24). A test result nobody kept is not
+  evidence, and "it was green last week" is not a statement anyone can check.
+
+inputs:
+  job:
+    description: 'The CI job whose evidence this is.'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Traces, screenshots and videos record whatever was on screen and on the
+    # wire, which is why they are useful and why they cannot be uploaded
+    # unexamined (Annex C §17.1). A hit that cannot be masked deletes the
+    # artifact and fails: losing a diagnostic is recoverable, publishing a
+    # credential is not — so this runs *before* the upload, never after.
+    - name: Redact before archiving
+      shell: bash
+      run: bin/redact-artifacts tmp/test-results tmp/ci-results tmp/security
+
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: evidence-${{ inputs.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          tmp/ci-results/
+          tmp/test-results/
+          tmp/security/
+        if-no-files-found: ignore
+        retention-days: 30

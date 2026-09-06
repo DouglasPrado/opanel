@@ -15,6 +15,9 @@ skipped.
 | `bin/typecheck` | `tsc --noEmit` over `app/frontend/`. |
 | `bin/migration-gate` | Reversibility, contract phase and index safety (Annex I §8.2). |
 | `bin/suppression-gate` | A silenced rule names the Story or ADR that allows it. |
+| `bin/ci-job <job>` | One CI job, exactly as CI runs it. `--list` shows them all. |
+| `bin/merge-gate` | The Merge Gate checklist of Annex I §15.2, executed. |
+| `bin/flaky-rate` | Flaky rate and top offenders across archived runs. |
 
 Each accepts `--format json` and reports, per check, its name, result, duration
 and the reason it failed. The Stop Gate (M00-14) parses that; a human reads the
@@ -31,17 +34,37 @@ TypeScript resolves the whole program to answer anything about one file.
 
 ## Time budget
 
-Measured on the reference machine (Apple Silicon, warm caches), on a diff of
-**20 files** — a typical Story:
+Measured on the reference machine (Apple Silicon, warm caches). "Typical diff" is
+a handful of files against the merge base — one increment of a Story, which is
+what the hook actually sees:
 
 | Check | Typical diff | Whole repository |
 |---|---|---|
-| `bin/lint` | **1.2 s** | 2.4 s |
-| `bin/format --check` | **0.7 s** | 1.1 s |
-| `bin/typecheck` | 1.6 s | 1.6 s |
+| `bin/format --check` | **0.5 s** | 1.1 s |
+| `bin/lint` | **0.6 s** | 2.9 s |
+| `bin/typecheck` | 1.8 s | 1.8 s |
+| `bin/test --changed --fast` | **0.4 s** | 39 s |
+| `bin/security --fast --staged` | **0.2 s** | 9.2 s |
 | `bin/migration-gate` | < 0.1 s | < 0.1 s |
+| `bin/gate pre-commit` (all eight) | **3.8 s** | — |
 
 **Budget: `bin/gate pre-commit` stays under 10 seconds on a typical diff.**
+Measured at **3.8 s**.
+
+Two of those numbers are the difference between a gate people run and a gate
+people work around, and both were bought by narrowing *scope*, never by removing
+a check:
+
+- the secret scan reads the **staged diff** (`gitleaks git --staged`) rather than
+  the whole tree — which is exactly the question a pre-commit gate asks. The
+  `security-fast` CI job still scans everything, and the history with it;
+- the test step skips `:slow` examples — the gate suites, which run RuboCop,
+  gitleaks and RSpec against planted failures to prove those gates can fail. CI
+  runs them on every push.
+
+`--changed` compares against the merge base, so on a branch that has added four
+hundred specs it selects four hundred specs. That is the branch being large, not
+the gate being slow.
 
 The number matters because of what happens when it is missed. A pre-commit gate
 that takes a minute gets bypassed, and a bypassed gate protects nothing
@@ -53,6 +76,13 @@ Re-measure with:
 ```bash
 OPANEL_GATE_BASE=HEAD bin/lint --changed --format json
 ```
+
+## In CI
+
+The same commands, scheduled by `config/ci/jobs.yml` — see
+[`ci-pipeline.md`](ci-pipeline.md). Nothing runs in CI that cannot be run here by
+name, which is why a local green and a CI red are worth investigating rather
+than shrugging at.
 
 ## Silencing a rule
 

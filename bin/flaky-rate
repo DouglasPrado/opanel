@@ -1,0 +1,144 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Flaky rate and top offenders — Annex D §20.1.
+#
+#   bin/flaky-rate tmp/test-results            # one run
+#   bin/flaky-rate --format json artifacts/    # many archived runs
+#
+# Flakiness is only visible across runs: a test that passed once and failed once
+# on the same commit is the definition, and neither run alone can say so. So this
+# reads the archived JUnit XML of several runs — which is what the pipeline keeps
+# for exactly this reason — and reports every test with a mixed outcome.
+#
+# It measures; it does not retry. Retrying until green converts a real
+# intermittent bug into a slower pipeline and a suite nobody believes, which is
+# why the harness has no retry (Annex D §20.1). What a flaky test gets is a
+# quarantine with an owner and a deadline, and those are listed here too so the
+# declared ones and the observed ones are read side by side.
+
+require "bundler/setup"
+require "json"
+require "rexml/document"
+
+module FlakyRate
+  Observation = Struct.new(:id, :runs, :failures, keyword_init: true) do
+    def flaky? = failures.positive? && failures < runs
+    def failure_rate = (failures.to_f / runs * 100).round(1)
+  end
+
+  module_function
+
+  def scan(paths)
+    files = paths.flat_map do |path|
+      File.directory?(path) ? Dir.glob(File.join(path, "**", "*.xml")) : [ path ]
+    end
+
+    observations = Hash.new { |hash, id| hash[id] = Observation.new(id: id, runs: 0, failures: 0) }
+
+    files.each do |file|
+      document = REXML::Document.new(File.read(file))
+      REXML::XPath.each(document, "//testcase") do |testcase|
+        id = "#{testcase.attributes['classname']}: #{testcase.attributes['name']}"
+        observation = observations[id]
+        observation.runs += 1
+        failed = REXML::XPath.first(testcase, "failure") || REXML::XPath.first(testcase, "error")
+        observation.failures += 1 if failed
+      end
+    rescue REXML::ParseException => error
+      warn "skipping #{file}: #{error.message.lines.first&.strip}"
+    end
+
+    { files: files.length, observations: observations.values }
+  end
+
+  # Declared flakiness: what someone has already admitted to, with an owner and
+  # a date. An expired quarantine is worse than an open one — it means the
+  # deadline passed and nobody looked.
+  def quarantined(root)
+    Dir.glob(File.join(root, "spec/**/*_spec.rb")).flat_map do |path|
+      File.read(path).scan(/quarantine:\s*\{([^}]*)\}/m).map do |(body)|
+        {
+          "file" => path.delete_prefix("#{root}/"),
+          "owner" => body[/owner:\s*["']([^"']+)["']/, 1],
+          "until" => body[/until:\s*["']([^"']+)["']/, 1],
+          "reason" => body[/reason:\s*["']([^"']+)["']/, 1]
+        }
+      end
+    end
+  end
+end
+
+# --- CLI ----------------------------------------------------------------------
+
+format = "text"
+top = 10
+paths = []
+
+arguments = ARGV.dup
+until arguments.empty?
+  case (argument = arguments.shift)
+  when "--format" then format = arguments.shift
+  when "--json" then format = "json"
+  when "--top" then top = arguments.shift.to_i
+  when /\A--/
+    warn "unknown option: #{argument}"
+    exit 2
+  else paths << argument
+  end
+end
+
+paths = [ "tmp/test-results" ] if paths.empty?
+root = File.expand_path("..", __dir__)
+
+missing = paths.reject { |path| File.exist?(path) }
+unless missing.empty?
+  warn "no test results at #{missing.join(', ')} — run bin/test first, or point at archived runs"
+  exit 2
+end
+
+scanned = FlakyRate.scan(paths)
+observations = scanned[:observations]
+flaky = observations.select(&:flaky?).sort_by { |o| -o.failure_rate }
+quarantined = FlakyRate.quarantined(root)
+rate = observations.empty? ? 0.0 : (flaky.length.to_f / observations.length * 100).round(2)
+
+if format == "json"
+  puts JSON.generate(
+    metric: "flaky-rate",
+    runs_scanned: scanned[:files],
+    tests_observed: observations.length,
+    flaky_tests: flaky.length,
+    flaky_rate_percent: rate,
+    top_offenders: flaky.first(top).map { |o|
+      { id: o.id, runs: o.runs, failures: o.failures, failure_rate_percent: o.failure_rate }
+    },
+    quarantined: quarantined
+  )
+else
+  puts "flaky-rate: #{rate}%  (#{flaky.length} of #{observations.length} tests, " \
+       "#{scanned[:files]} result file(s))"
+
+  if scanned[:files] < 2
+    puts
+    puts "  Only #{scanned[:files]} result file: flakiness needs several runs of the same"
+    puts "  test to be visible at all. Point this at the pipeline's archived runs."
+  end
+
+  unless flaky.empty?
+    puts
+    puts "top offenders"
+    flaky.first(top).each do |observation|
+      puts format("  %5.1f%%  %d/%d  %s", observation.failure_rate, observation.failures,
+        observation.runs, observation.id)
+    end
+  end
+
+  unless quarantined.empty?
+    puts
+    puts "quarantined (declared, with an owner and a deadline)"
+    quarantined.each do |entry|
+      puts "  until #{entry['until']}  #{entry['owner']}  #{entry['file']} — #{entry['reason']}"
+    end
+  end
+end

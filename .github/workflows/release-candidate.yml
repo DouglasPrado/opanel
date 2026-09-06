@@ -1,0 +1,115 @@
+# Release Candidate stage — Annex D §20.
+#
+# Full E2E + performance + security + restore/upgrade, all required before a
+# release.
+#
+# **These slots are empty**, like the nightly ones, and for the same reason: the
+# cadence is defined by M00 and the suites are delivered by the Milestones that
+# own them (M12-09, M13-04, M13-06). An empty slot reports `empty`, never `pass`.
+#
+# When they are populated this workflow becomes a release blocker. Until then it
+# says, out loud and on every run, which suites a release is not yet covered by —
+# which is the honest state of the project, and much easier to act on than a
+# green tick that means nothing.
+
+name: Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: 'The release candidate being evaluated (tag or commit).'
+        required: true
+  push:
+    tags:
+      - 'v*-rc*'
+
+permissions:
+  contents: read
+
+jobs:
+  release-candidate:
+    name: ${{ matrix.job }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - e2e-critical
+          - performance
+          - security-deep
+          - restore-upgrade
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      RAILS_ENV: test
+      OPANEL_DATABASE_HOST: 127.0.0.1
+      OPANEL_DATABASE_PORT: '5432'
+      OPANEL_DATABASE_USERNAME: postgres
+      OPANEL_DATABASE_PASSWORD: postgres
+      SECRET_KEY_BASE: ci-only-not-a-secret-0000000000000000000000000000000000000000000000000000000000000000
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Playwright browsers
+        if: matrix.job == 'e2e-critical'
+        run: npx playwright install --with-deps chromium
+
+      - name: ${{ matrix.job }}
+        run: bin/ci-job "${{ matrix.job }}" --out "tmp/ci-results/${{ matrix.job }}.json"
+
+      - uses: ./.github/actions/archive
+        if: always()
+        with:
+          job: ${{ matrix.job }}
+
+  # Release evidence (Annex D §24): what ran, on which commit, with what result.
+  # Assembled from the run's own artifacts rather than written by hand, because
+  # a hand-written record of a test run is a claim about it.
+  evidence:
+    name: release-evidence
+    runs-on: ubuntu-latest
+    needs: [release-candidate]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: evidence-*-${{ github.run_id }}-*
+          merge-multiple: true
+          path: .
+
+      - name: Summarise
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          {
+            echo "## Release candidate evidence"
+            echo
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            for result in tmp/ci-results/*.json; do
+              [ -e "$result" ] || continue
+              ruby -rjson -e '
+                report = JSON.parse(File.read(ARGV[0]))
+                puts "| #{report["gate"]} | #{report["result"]}#{report["populated_by"] ? " (populated by #{report["populated_by"]})" : ""} |"
+              ' "$result"
+            done
+            echo
+            echo "Commit: \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
