@@ -49,12 +49,13 @@
     {
       "id": "M00-05",
       "file": "stories/M00-05-component-library-import-and-inventory.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-04"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "a999b21"
     },
     {
       "id": "M00-06",
@@ -81,23 +82,25 @@
     {
       "id": "M00-08",
       "file": "stories/M00-08-frontend-and-e2e-test-harness.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-04"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "97eabb3"
     },
     {
       "id": "M00-09",
       "file": "stories/M00-09-lint-format-typecheck.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-01",
         "M00-04"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "202c052"
     },
     {
       "id": "M00-10",
