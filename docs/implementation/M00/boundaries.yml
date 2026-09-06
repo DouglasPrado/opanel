@@ -93,3 +93,10 @@ boundaries:
   M00-18:
     - docs/templates/**
     - docs/engineering/**
+    # AC9 requires the gates to name the templates by stable path, and AC10 that
+    # the secret scan provably reaches the report and evidence directories. Both
+    # are assertions about files this Story does not own.
+    - lib/gates/post_commit.rb
+    - lib/gates/stop_gate.rb
+    - spec/documentation/templates_spec.rb
+    - spec/security/security_scan_spec.rb

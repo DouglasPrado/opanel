@@ -107,4 +107,26 @@ RSpec.describe "Operational templates" do
       end
     end
   end
+
+  # AC9. A gate that says "something is missing" leaves the reader to work out
+  # what to write; one that names the template does not.
+  describe "the gates" do
+    ROOT_FOR_GATES = Pathname.new(File.expand_path("../..", __dir__)).freeze
+
+    {
+      "lib/gates/post_commit.rb" => %w[docs/templates/STORY_REPORT.md docs/templates/REVIEW_FINDINGS.md],
+      "lib/gates/stop_gate.rb" => %w[
+        docs/templates/STORY_REPORT.md docs/templates/MILESTONE_REPORT.md
+        docs/templates/REVIEW_FINDINGS.md docs/templates/BLOCKER.md
+      ]
+    }.each do |gate, templates|
+      templates.each do |template|
+        it "#{gate} points at #{File.basename(template)} by stable path" do
+          expect(ROOT_FOR_GATES.join(gate).read).to include(template)
+          expect(ROOT_FOR_GATES.join(template)).to exist,
+            "the gate names a template that is not there"
+        end
+      end
+    end
+  end
 end

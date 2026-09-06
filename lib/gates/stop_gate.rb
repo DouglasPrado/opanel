@@ -25,6 +25,15 @@ module Opanel
         def passed? = result == "pass"
       end
 
+      # Named by stable path, so a red check says what to write rather than only
+      # that something is missing (M00-18 AC9).
+      TEMPLATES = {
+        story_report: "docs/templates/STORY_REPORT.md",
+        milestone_report: "docs/templates/MILESTONE_REPORT.md",
+        review_findings: "docs/templates/REVIEW_FINDINGS.md",
+        blocker: "docs/templates/BLOCKER.md"
+      }.freeze
+
       # Ordered cheapest-first, so a run that is going to fail usually fails in
       # seconds rather than after the whole suite.
       CHECKS = %w[
@@ -136,7 +145,9 @@ module Opanel
           unfinished = required.reject { |story| story["status"] == "done" }
           unless unfinished.empty?
             return "required Stories are not done: " +
-                   unfinished.map { |s| "#{s['id']} (#{s['status']})" }.join(", ")
+                   unfinished.map { |s| "#{s['id']} (#{s['status']})" }.join(", ") +
+                   ". A Story that cannot be finished is blocked, with a qualifier and a " \
+                   "reproducible diagnosis: #{TEMPLATES[:blocker]}"
           end
 
           missing = required.reject do |story|
@@ -146,7 +157,8 @@ module Opanel
           return nil if missing.empty?
 
           "no acceptance mapping for #{missing.map { |s| s['id'] }.join(', ')} — " \
-            "a criterion that points at nothing is not satisfied"
+            "a criterion that points at nothing is not satisfied. " \
+            "Template: #{TEMPLATES[:story_report]}"
         end
 
         # Critical = 0 and High = 0 block DONE and block merge.
@@ -165,20 +177,22 @@ module Opanel
 
           return nil if blocking.empty?
 
-          "Critical and High must be 0: #{blocking.join(', ')}"
+          "Critical and High must be 0: #{blocking.join(', ')}. " \
+            "Severities and their blocking policy: #{TEMPLATES[:review_findings]}"
         end
 
         def milestone_report
           path = File.join(milestone_directory, "MILESTONE_REPORT.md")
           unless File.exist?(path)
             return "no MILESTONE_REPORT.md for #{@milestone} — the Milestone has produced no account " \
-                   "of itself, and the next session has nothing to read"
+                   "of itself, and the next session has nothing to read. " \
+                   "Template: #{TEMPLATES[:milestone_report]}"
           end
 
           contents = File.read(path)
           return nil if contents.match?(/^Status:\s*\S+/)
 
-          "MILESTONE_REPORT.md declares no Status:"
+          "MILESTONE_REPORT.md declares no Status: — see #{TEMPLATES[:milestone_report]}"
         end
       end
     end

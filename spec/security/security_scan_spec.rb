@@ -78,6 +78,39 @@ RSpec.describe "security scanning", type: :security do
       end
     end
 
+    # A Story Report and its evidence are exactly where a credential ends up by
+    # accident: someone pastes the output of a command that printed one. The
+    # scan has to reach those directories, and tmp/ being allowlisted must not
+    # quietly extend to them.
+    it "reaches the report and evidence directories" do
+      planted = "docs/implementation/M00/reports/.scan-probe.md"
+      full = Rails.root.join(planted)
+
+      begin
+        File.write(full, "recovered token: #{planted_github_token}\n")
+        output, status = run(
+          "gitleaks", "dir", ".",
+          "--config", Rails.root.join("config/security/gitleaks.toml").to_s,
+          "--redact", "--no-banner", "--exit-code", "1"
+        )
+
+        expect(status).not_to be_success,
+          "a credential pasted into a Story Report was not detected:\n#{output}"
+        expect(output).not_to include(planted_github_token)
+      ensure
+        FileUtils.rm_f(full)
+      end
+    end
+
+    it "is not allowlisted away from the pack" do
+      allowlist = Rails.root.join("config/security/gitleaks.toml").read
+
+      %w[docs/implementation reports evidence].each do |fragment|
+        expect(allowlist).not_to include(fragment),
+          "#{fragment} is allowlisted, so a credential in a report would not be found"
+      end
+    end
+
     it "passes on this repository, tree and history" do
       _output, status = run("bin/security", "--fast", "--history")
 

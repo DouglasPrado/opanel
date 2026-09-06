@@ -22,6 +22,11 @@ module Opanel
         diff-review acceptance-mapping reviewer-findings fitness tests state pre-commit-executed
       ].freeze
 
+      # Named by stable path, so a red check says what to write rather than only
+      # that something is missing (M00-18 AC9).
+      STORY_REPORT_TEMPLATE = "docs/templates/STORY_REPORT.md"
+      REVIEW_FINDINGS_TEMPLATE = "docs/templates/REVIEW_FINDINGS.md"
+
       # Where the pre-commit hook records that it ran, keyed by the tree it saw.
       # The tree is what makes it evidence rather than a flag: `--no-verify`
       # produces a commit whose tree no hook ever recorded.
@@ -76,12 +81,14 @@ module Opanel
           "reports", "#{story}.md")
         unless File.exist?(report)
           return failed("no report at #{report.sub("#{root}/", '')} — a Story without one has no " \
-                        "record of which criterion is satisfied by what")
+                        "record of which criterion is satisfied by what. " \
+                        "Template: #{STORY_REPORT_TEMPLATE}")
         end
 
         contents = File.read(report)
         unless contents.match?(/acceptance/i)
-          return failed("#{report.sub("#{root}/", '')} maps no acceptance criteria")
+          return failed("#{report.sub("#{root}/", '')} maps no acceptance criteria. " \
+                        "Template: #{STORY_REPORT_TEMPLATE}")
         end
 
         ok
@@ -106,7 +113,8 @@ module Opanel
 
         return ok if blocking.empty?
 
-        failed("Critical and High must be 0 before DONE: #{blocking.join('; ')}")
+        failed("Critical and High must be 0 before DONE: #{blocking.join('; ')}. " \
+               "Severities and their blocking policy: #{REVIEW_FINDINGS_TEMPLATE}")
       end
 
       def fitness(root)
