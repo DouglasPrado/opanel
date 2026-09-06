@@ -27,12 +27,13 @@
     {
       "id": "M00-03",
       "file": "stories/M00-03-solid-queue-baseline.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M00-02"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 1,
+      "required": true,
+      "commit": "2d1d290"
     },
     {
       "id": "M00-04",
