@@ -1,0 +1,83 @@
+# Declarative metadata the architecture fitness functions consume.
+#
+# The rules live in code (lib/gates/fitness_functions.rb); the *facts* they check
+# against live here, because they change as the domain grows and a rule should
+# not have to be edited to learn about a new column or a new mutation.
+#
+# Adding to any list below widens what is enforced. Removing from one narrows it,
+# and that is a gate change: it needs a Story and the Post-commit Gate flags it
+# (Annex I §21.2).
+
+# AF-03 — columns that hold the user's approved intent. A reconciler converges
+# Actual State toward these; it never writes them. Platform Wins is the drift
+# policy, and adopting runtime state is an explicit admin operation.
+#
+# Empty in M00: no domain entity exists yet. M01 fills it as it creates them.
+user_intent_columns: []
+# Example, from M01:
+#   - table: services
+#     columns: [desired_replicas, image_digest, resource_limits, placement_constraints]
+
+# AF-07 — mutations that must have a server-side authorization path. A Command
+# listed here without a Policy is a finding.
+#
+# Empty in M00: no domain mutation exists yet.
+critical_mutations: []
+# Example, from M01:
+#   - command: CreateService
+#     policy: ServicePolicy
+#     action: create?
+
+# AF-06 — field names that carry secret material. A serializer, a log formatter or
+# an audit payload builder that emits one of these in plaintext is a finding.
+sensitive_field_names:
+  - secret_value
+  - plaintext
+  - private_key
+  - recovery_key
+  - master_key
+  - password
+  - passphrase
+  - api_key
+  - access_token
+  - refresh_token
+  - client_secret
+
+# AF-02 — the single boundary allowed to reach the Docker Engine API, plus the
+# test harness that drives the disposable lab.
+#
+# **Adding a path here is a Tier-0 security change** (Annex C §8). It needs an ADR,
+# not a Story.
+docker_boundaries:
+  - app/executors/
+  - spec/support/swarm_lab
+  - bin/swarm-lab
+  - lib/gates/swarm_lab.rb
+
+# Files that contain the patterns *because they are the checkers*. AF-02 would
+# otherwise report the rule for stating the rule, and the guardrail for knowing
+# what DOCKER_HOST is.
+#
+# Kept separate from `docker_boundaries` on purpose: that list grants the
+# privilege and is a Tier-0 change. This one only says "these files talk about
+# Docker, they do not talk to it". Adding to it is still a gate change.
+fitness_self_referential:
+  - lib/gates/fitness_functions.rb
+  - lib/gates/workspace_guardrail.rb
+  - config/architecture/fitness.yml
+
+# Waivers. Same contract as the security waivers: reason, owner, deadline, and the
+# Story that removes it. An expired waiver blocks again automatically.
+#
+# AF-02, AF-06 and AF-07 additionally require recorded human approval — they are
+# the three that are security controls rather than layering rules, and an agent
+# may not waive them (Annex I §16.3).
+waivers: []
+# Example:
+#   - id: "af-10-2026-001"
+#     function: "AF-10"
+#     finding: "features/deploy/StatusPill"
+#     reason: "Intentionally different from ui/badge: it animates between states."
+#     owner: "douglas"
+#     removal_story: "M02-07"
+#     expires_at: "2026-11-01"

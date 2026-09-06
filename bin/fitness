@@ -1,0 +1,87 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Architecture fitness functions AF-01..AF-10 (Annex I §16).
+#
+#   bin/fitness
+#   bin/fitness --format json
+#   bin/fitness --report tmp/test-results/fitness.json
+#
+# Every function is reported individually, whether it passed, failed or was
+# waived. A single "architecture: ok" would hide which invariant is actually
+# being checked — and several of these pass vacuously today, on purpose, so that
+# the *first* file to cross a boundary is caught by the build.
+#
+# Exits non-zero on any unwaived violation.
+
+require "json"
+require "fileutils"
+require_relative "../lib/gates/fitness_functions"
+
+format = "text"
+report_path = nil
+arguments = ARGV.dup
+
+until arguments.empty?
+  argument = arguments.shift
+
+  case argument
+  when "--json" then format = "json"
+  when "--format" then format = arguments.shift
+  when /\A--format=(.+)\z/ then format = Regexp.last_match(1)
+  when "--report" then report_path = arguments.shift
+  when /\A--report=(.+)\z/ then report_path = Regexp.last_match(1)
+  else
+    warn "unknown option: #{argument}"
+    exit 2
+  end
+end
+
+unless %w[text json].include?(format)
+  warn "unknown format: #{format.inspect} (expected text or json)"
+  exit 2
+end
+
+root = File.expand_path("..", __dir__)
+
+begin
+  results = Opanel::Gates::FitnessFunctions.run(root: root)
+rescue Opanel::Gates::FitnessFunctions::InvalidWaiver => error
+  warn "fitness: FAIL — #{error.message}"
+  exit 1
+end
+
+failed = results.reject(&:passed?)
+
+report = {
+  check: "fitness",
+  result: failed.empty? ? "pass" : "fail",
+  functions: results.map(&:to_h)
+}
+
+if report_path
+  FileUtils.mkdir_p(File.dirname(report_path))
+  File.write(report_path, JSON.pretty_generate(report))
+end
+
+if format == "json"
+  puts JSON.pretty_generate(report)
+else
+  results.each do |result|
+    status = result.passed? ? "PASS" : "FAIL"
+    waived = result.waived.positive? ? " (#{result.waived} waived)" : ""
+    printf("  %-7s %-5s %4dms%s  %s\n", result.id, status, result.duration_ms, waived, result.rule)
+
+    result.violations.each do |violation|
+      location = [ violation.file, violation.line ].compact.join(":")
+      puts "      #{location}"
+      puts "      #{violation.detail}"
+      puts "      remedy: #{violation.remedy}"
+    end
+  end
+
+  puts(failed.empty? ? "fitness: PASS (#{results.length} functions)" :
+       "fitness: FAIL (#{failed.map(&:id).join(', ')})")
+end
+
+exit(failed.empty? ? 0 : 1)
