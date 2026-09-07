@@ -14,7 +14,8 @@ skipped.
 | `bin/format` | RuboCop layout autocorrect and Prettier. `--check` reports without writing. |
 | `bin/typecheck` | `tsc --noEmit` over `app/frontend/`. |
 | `bin/migration-gate` | Reversibility, contract phase and index safety (Annex I §8.2). |
-| `bin/suppression-gate` | A silenced rule names the Story or ADR that allows it. |
+| `bin/suppression-gate` | A silenced rule names the Story or ADR that allows it, and a control turned down in configuration has an owned, dated waiver. |
+| `ruby bin/dependency-gate` | A dependency added since the base branch is justified in a Story Report or ADR, and pinned in the lockfile (Annex I §10). |
 | `bin/ci-job <job>` | One CI job, exactly as CI runs it. `--list` shows them all. |
 | `bin/merge-gate` | The Merge Gate checklist of Annex I §15.2, executed. |
 | `bin/flaky-rate` | Flaky rate and top offenders across archived runs. |
@@ -50,6 +51,12 @@ what the hook actually sees:
 
 **Budget: `bin/gate pre-commit` stays under 10 seconds on a typical diff.**
 Measured at **3.8 s**.
+
+> The table above was measured before the fixes of `FIX_REPORT_01.md`, which added
+> the allowlist check to `bin/security --fast` and made `bin/test --changed`
+> select the *related* specs rather than only the changed ones. Both move the
+> number. **Re-measure before trusting it** — a budget nobody has re-run since the
+> code changed is a number, not a measurement.
 
 Two of those numbers are the difference between a gate people run and a gate
 people work around, and both were bought by narrowing *scope*, never by removing
@@ -88,3 +95,12 @@ than shrugging at.
 
 See [`lint-suppressions.md`](lint-suppressions.md). Short version: a suppression
 names a Story or an ADR, or `bin/lint` fails.
+
+A control turned down in a **configuration** file leaves no line to comment on —
+an ESLint rule switched off for a directory, a TypeScript flag left out, an
+accessibility violation added to a baseline. Those go in
+`config/quality/waivers.yml`, on the same contract as the security waivers: risk,
+owner, justification, mitigation and an expiry. `bin/suppression-gate` fails on a
+reduction with no waiver **and on a waiver that has expired**, which is the whole
+mechanism — otherwise a temporary relaxation becomes permanent by nobody
+deciding anything.

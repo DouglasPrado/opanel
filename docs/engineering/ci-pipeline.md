@@ -24,7 +24,7 @@ there is no second definition here for the two to disagree about.
 
 | Stage | Jobs | When |
 |---|---|---|
-| **PR** | `static` `unit` `integration` `contract` `security-fast` `frontend` `migrations` | every pull request |
+| **PR** | `static` `unit` `integration` `contract` `security-fast` `frontend` `migrations` `setup` | every pull request |
 | **Merge** | the PR stage, plus `e2e-critical` `swarm-smoke` | pull requests targeting `main` |
 | **Nightly** | `swarm-full` `build-corpus` `load-smoke` `chaos-subset` | 03:00 UTC |
 | **Release candidate** | `e2e-critical` `performance` `security-deep` `restore-upgrade` | `v*-rc*` tags |
