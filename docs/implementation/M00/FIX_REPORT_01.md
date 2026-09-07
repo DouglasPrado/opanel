@@ -591,6 +591,28 @@ is not reviewed". Não há pull request nem aprovação humana neste ponto do fl
 `documentation-current`, `pipeline-change-authorised`) passam. Não é um defeito e
 não foi contornado.
 
+### Verificação no commit de fechamento
+
+As tabelas acima foram medidas em `77a3cb0`, o último commit que altera código
+executável — os dois seguintes são documentação e estado do pack. O Post-commit
+Gate e o Stop Gate leem `HEAD`, então foram reexecutados depois do commit
+`8346598`, que traz este relatório:
+
+| Comando | Resultado | Exit code |
+|---|---|---|
+| `bin/test` | PASS — 651 examples, 0 failures | `0` |
+| `bin/gate post-commit --story M00-14` | PASS — diff-review, acceptance-mapping, reviewer-findings, fitness, tests, state, pre-commit-executed, no-verify-absent | `0` |
+| `bin/stop-gate M00` | `ok: true` — 10 checks | `0` |
+
+`pre-commit-executed` passa lendo o registro real da árvore deste commit — o
+mesmo check que, antes de M00-R05, era satisfeito por um certificado escrito por
+um gate reprovado. `tests` passa lendo `rspec-metadata.json` com
+`type=all`, `tests=651`, `failures=0` e o commit de `HEAD`.
+
+Este relatório e o próprio commit que o contém são a única coisa que muda depois
+dessa medição; reexecutar os três comandos acima em `HEAD` reproduz o mesmo
+resultado.
+
 ## Findings não corrigidos
 
 Nenhum. O review emitiu 1 Critical e 15 High, todos endereçados acima, e **zero**
