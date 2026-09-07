@@ -1,5 +1,6 @@
 require "rails_helper"
 require "open3"
+require "yaml"
 
 # The environment a clone gets. The properties that matter are that it can be
 # re-run without fear, that a missing prerequisite says which one, and that a
@@ -43,6 +44,34 @@ RSpec.describe "local development environment", type: :integration do
     it "seeds, and says the seeds are synthetic" do
       expect(source).to include("db:seed")
       expect(source).to match(/synthetic/)
+    end
+  end
+
+  # Every example above reads bin/setup's source, which cannot fail the way a
+  # clean clone fails. The positive cycle — one command, then the same command
+  # again — has to run somewhere disposable, and the CI runner's checkout is
+  # exactly that. M00-06 AC1 and AC3.
+  describe "the clean-clone cycle" do
+    let(:pipeline) { YAML.safe_load_file(Rails.root.join("config/ci/jobs.yml")) }
+
+    it "is executed in CI, twice, on a disposable checkout" do
+      job = pipeline.dig("jobs", "setup")
+
+      expect(job).not_to be_nil,
+        "no CI job runs bin/setup: the single command the README promises is the one nothing executes"
+
+      runs = job.fetch("commands").map(&:last).count { |command| command.include?("bin/setup") }
+
+      expect(runs).to be >= 2,
+        "running it once shows it works; running it twice is what shows it is idempotent (AC3)"
+    end
+
+    it "blocks a merge, so a broken setup cannot ship" do
+      expect(pipeline.fetch("required_for_merge")).to include("setup")
+    end
+
+    it "is scheduled by the workflow" do
+      expect(Rails.root.join(".github/workflows/ci.yml").read).to include("- setup")
     end
   end
 

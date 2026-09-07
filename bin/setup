@@ -16,6 +16,7 @@
 #     install that means "you do not have PostgreSQL".
 
 require "English"
+require "json"
 
 APP_ROOT = File.expand_path("..", __dir__)
 Dir.chdir(APP_ROOT)
@@ -94,15 +95,22 @@ unless Gem::Version.new(RUBY_VERSION) >= Gem::Version.new("3.2.0")
 end
 ok "Ruby #{RUBY_VERSION}"
 
+# One declaration of the Node contract, read here and by
+# .github/actions/setup — a second copy is how CI and a developer machine end up
+# on different majors, which presents as a flaky build and is not one.
+required_node = JSON.parse(File.read("package.json")).dig("engines", "node").to_s[/(\d+)/].to_i
+
 unless command_available?("node")
-  fail_with("Node.js is not installed.", "Install Node.js 20 or newer, e.g. `brew install node`.")
+  fail_with("Node.js is not installed.",
+    "Install Node.js #{required_node} or newer, e.g. `brew install node`.")
 end
 
 node_major = version_of("node --version", /v(\d+)/).to_i
-if node_major < 20
+if node_major < required_node
   fail_with(
-    "Node.js #{node_major} is too old. The Vite 8 toolchain needs Node 20 or newer.",
-    "Upgrade Node.js, e.g. `brew upgrade node` or `nvm install 20`."
+    "Node.js #{node_major} is too old. The Vite toolchain needs Node #{required_node} or newer " \
+    "(package.json `engines.node`).",
+    "Upgrade Node.js, e.g. `brew upgrade node` or `nvm install #{required_node}`."
   )
 end
 ok "Node.js #{version_of('node --version', /v([\d.]+)/)}"
