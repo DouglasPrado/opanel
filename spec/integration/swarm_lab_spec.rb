@@ -52,6 +52,59 @@ RSpec.describe "Swarm lab", type: :integration do
       expect(source).not_to match(/ENV\[["'](SKIP|FORCE|ALLOW)_?\w*["']\]/),
         "a guardrail that can be exported away is not a guardrail"
     end
+
+    # The hole the label could not cover: a daemon that has never been
+    # initialised has no node to carry a label, so `up` ran `swarm init` against
+    # whatever DOCKER_HOST pointed at. A real Engine waiting to join a cluster is
+    # exactly that.
+    describe "claiming a daemon that is not yet a lab" do
+      before do
+        allow(LAB).to receive(:available?).and_return(true)
+        allow(LAB).to receive(:lab_daemon?).and_return(false)
+      end
+
+      it "refuses a daemon reached over the network" do
+        allow(LAB).to receive(:endpoint).and_return("tcp://10.0.4.19:2376")
+
+        expect { LAB.assert_claimable!(ROOT) }
+          .to raise_error(LAB::NotTheLab, /Refusing to create a Swarm/)
+      end
+
+      it "refuses it before any mutation, not after" do
+        allow(LAB).to receive(:endpoint).and_return("tcp://10.0.4.19:2376")
+        # `docker!` is how every mutation leaves this process. If the guardrail
+        # reaches it at all, the check ran too late to matter.
+        expect(LAB).not_to receive(:docker!)
+
+        expect { LAB.assert_claimable!(ROOT) }.to raise_error(LAB::NotTheLab)
+      end
+
+      it "accepts an inactive local daemon" do
+        allow(LAB).to receive(:endpoint).and_return("")
+        allow(LAB).to receive(:docker!)
+          .with("info", "--format", "{{json .Swarm}}")
+          .and_return('{"LocalNodeState":"inactive"}')
+
+        expect(LAB.assert_claimable!(ROOT)).to be(true)
+      end
+
+      it "refuses a local daemon already running a swarm that is not ours" do
+        allow(LAB).to receive(:endpoint).and_return("")
+        allow(LAB).to receive(:docker!)
+          .with("info", "--format", "{{json .Swarm}}")
+          .and_return('{"LocalNodeState":"active"}')
+
+        expect { LAB.assert_claimable!(ROOT) }
+          .to raise_error(LAB::NotTheLab, /may be a real cluster/)
+      end
+
+      it "declares the claimable endpoints in a versioned file, not in an env var" do
+        config = YAML.safe_load_file(Rails.root.join("config/architecture/docker-lab.yml"))
+
+        expect(config.dig("lab", "claimable_endpoints")).to include("unix://")
+        expect(config.dig("lab", "claimable_endpoints")).not_to include("tcp://0.0.0.0")
+      end
+    end
   end
 
   describe "the recorded Engine version" do
@@ -104,7 +157,60 @@ RSpec.describe "Swarm lab", type: :integration do
     end
   end
 
-  describe "cleanup", :swarm do
+  # M00-17 declares four resource kinds, and `status`/`reset` already looked for
+  # orphaned secrets and configs — which nothing could create, so that half of
+  # the cleanup path had never run.
+  describe "a secret and a config lifecycle", :swarm do
+    it "creates a secret, finds it, and removes it" do
+      name = create_lab_secret
+
+      expect(lab_resource_exists?("secret", name)).to be(true)
+      expect(LAB.orphaned_resources(ROOT)["secrets"]).to include(name)
+
+      cleanup_lab_resources
+
+      expect(lab_resource_exists?("secret", name)).to be(false)
+    end
+
+    it "creates a config, finds it, and removes it" do
+      name = create_lab_config
+
+      expect(lab_resource_exists?("config", name)).to be(true)
+      expect(LAB.orphaned_resources(ROOT)["configs"]).to include(name)
+
+      cleanup_lab_resources
+
+      expect(lab_resource_exists?("config", name)).to be(false)
+    end
+  end
+
+  describe "cleanup" do
+    # Needs the helpers but not the Engine: what is under test is what the
+    # harness does with a failed removal, and `LAB.remove` is stubbed.
+    include SwarmLabHelpers
+
+    # The failure this replaces was silent: the exit code of `docker rm` was
+    # discarded, so a resource that refused to go away became the next run's
+    # inherited state and the run that leaked it still reported green.
+    it "raises when a removal really fails, instead of discarding the exit code" do
+      allow(LAB).to receive(:remove).with("service", "stuck").and_return("service stuck: in use")
+
+      expect { cleanup_lab_resources([ [ "service", "stuck" ] ]) }
+        .to raise_error(/could not be cleaned up/)
+    end
+
+    it "attempts every resource before it raises, so one failure strands nothing" do
+      allow(LAB).to receive(:remove).with("service", "stuck").and_return("service stuck: in use")
+      allow(LAB).to receive(:remove).with("network", "fine").and_return(nil)
+
+      expect(LAB).to receive(:remove).with("network", "fine")
+
+      expect { cleanup_lab_resources([ [ "service", "stuck" ], [ "network", "fine" ] ]) }
+        .to raise_error(/could not be cleaned up/)
+    end
+  end
+
+  describe "cleanup against the lab", :swarm do
     it "is idempotent after a simulated crash" do
       name = create_lab_service
       leaked = [ [ "service", name ] ]

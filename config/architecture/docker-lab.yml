@@ -28,6 +28,28 @@ lab:
   # cannot collide.
   resource_prefix: "opanel-lab"
 
+  # Where a lab may be *created*.
+  #
+  # The node label identifies a daemon that is already the lab. It cannot
+  # identify one that has never been initialised — a node label needs a Swarm —
+  # and that is the single case `bin/swarm-lab up` used to mutate without any
+  # check at all. A production Engine that has not joined a swarm yet is
+  # indistinguishable, from `docker info`, from an empty laptop.
+  #
+  # So the *endpoint* is checked instead, against this list, before `swarm init`.
+  # A daemon reached over the network is never claimed automatically. This is a
+  # versioned declaration rather than an environment variable: pointing
+  # DOCKER_HOST somewhere else makes the check stricter, never looser, and
+  # widening the list needs the human review .github/CODEOWNERS requires of
+  # config/architecture/.
+  claimable_endpoints:
+    - "" # DOCKER_HOST unset: the local socket
+    - "unix://"
+    - "npipe://"
+    - "tcp://127.0.0.1"
+    - "tcp://localhost"
+    - "tcp://[::1]"
+
   # The image the harness runs when it needs a service that does nothing. It has
   # to be present locally: the lab is deliberately usable without registry access,
   # and a suite that silently depends on Docker Hub fails for reasons that have

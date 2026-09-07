@@ -52,6 +52,42 @@ module SwarmLabHelpers
     name
   end
 
+  # M00-17 declares four resource kinds. Only two were here, and the lab's own
+  # `status` and `reset` already looked for orphaned secrets and configs — which
+  # nothing could ever create, so that half of the cleanup path was never once
+  # exercised.
+  #
+  # The value goes in over stdin: a Swarm secret loaded from a file is a secret
+  # on somebody's disk, which is the thing it exists to avoid.
+  def create_lab_secret(name: lab_name("secret"), value: "lab-value-#{SecureRandom.hex(4)}")
+    LAB.assert_lab!(Rails.root.to_s)
+
+    _stdout, stderr, status = LAB.docker_input(
+      "secret", "create", "--label", "#{lab_label}=true", name, "-", input: value
+    )
+    raise "could not create the lab secret #{name}: #{stderr.strip}" unless status.success?
+
+    created_resources << [ "secret", name ]
+    name
+  end
+
+  def create_lab_config(name: lab_name("config"), content: "lab = true\n")
+    LAB.assert_lab!(Rails.root.to_s)
+
+    _stdout, stderr, status = LAB.docker_input(
+      "config", "create", "--label", "#{lab_label}=true", name, "-", input: content
+    )
+    raise "could not create the lab config #{name}: #{stderr.strip}" unless status.success?
+
+    created_resources << [ "config", name ]
+    name
+  end
+
+  def lab_resource_exists?(kind, name)
+    LAB.docker!(kind, "ls", "--filter", "name=#{name}", "--format", "{{.Name}}")
+      .split("\n").include?(name)
+  end
+
   def lab_service_tasks(name)
     LAB.docker!("service", "ps", name, "--format", "{{.Name}} {{.CurrentState}}")
       .split("\n").reject(&:empty?)
@@ -63,11 +99,20 @@ module SwarmLabHelpers
 
   # Idempotent by construction: removing what is already gone is not an error.
   # Called from an `after` hook, and safe to call again on the next run.
+  #
+  # A removal that fails for any *other* reason is an error, and used to be
+  # invisible: the exit code was discarded, so a Service that refused to go away
+  # became the next run's inherited state and the run that leaked it reported
+  # green. Every resource is still attempted before anything is raised — one
+  # stuck resource must not strand the rest.
   def cleanup_lab_resources(resources = created_resources)
-    resources.each do |kind, name|
-      LAB.docker(kind, "rm", name)
-    end
+    failures = resources.filter_map { |kind, name| LAB.remove(kind, name) }
     resources.clear
+
+    return if failures.empty?
+
+    raise "the lab could not be cleaned up:\n  #{failures.join("\n  ")}\n" \
+          "Run `bin/swarm-lab reset` — no test may inherit this state."
   end
 
   def wait_for(description, timeout: 60, interval: 1)

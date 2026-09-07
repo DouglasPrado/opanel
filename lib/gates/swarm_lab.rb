@@ -59,6 +59,25 @@ module Opanel
         stdout.strip
       end
 
+      # `docker secret create` and `docker config create` read the payload from
+      # stdin. Passing a path instead would put the value on somebody's disk,
+      # which is the thing a Swarm secret exists to avoid.
+      def docker_input(*arguments, input:)
+        Open3.capture3("docker", *arguments, stdin_data: input)
+      end
+
+      # Removing something that is already gone is the desired state, not a
+      # failure. Anything else is: a resource that would not delete is the next
+      # run's inherited state.
+      ALREADY_GONE = /not found|no such/i
+
+      def remove(kind, name)
+        _stdout, stderr, status = docker(kind, "rm", name)
+        return nil if status.success? || stderr.match?(ALREADY_GONE)
+
+        "#{kind} #{name}: #{stderr.strip}"
+      end
+
       def available?
         _stdout, _stderr, status = docker("info", "--format", "{{.ServerVersion}}")
         status.success?
@@ -97,7 +116,63 @@ module Opanel
         false
       end
 
-      # Called before every mutation. Fails closed, with the reason.
+      # The endpoint this process would talk to, normalised.
+      def endpoint = ENV.fetch("DOCKER_HOST", "").strip
+
+      def claimable_endpoints(root = Dir.pwd)
+        Array(config(root).dig("lab", "claimable_endpoints"))
+      end
+
+      def claimable_endpoint?(root = Dir.pwd)
+        current = endpoint
+
+        claimable_endpoints(root).any? do |allowed|
+          allowed.to_s.empty? ? current.empty? : current.start_with?(allowed.to_s)
+        end
+      end
+
+      # Called before the mutation that *creates* the lab, where `assert_lab!`
+      # cannot help: a daemon that has never been initialised carries no node
+      # label, because a node label needs a Swarm. `up` was therefore the one
+      # command that mutated an unidentified destination — it checked
+      # `LocalNodeState`, refused an active swarm that was not ours, and ran
+      # `swarm init` against anything inactive. A production Engine waiting to
+      # join a cluster is exactly that.
+      def assert_claimable!(root = Dir.pwd)
+        raise DockerUnavailable, "the Docker daemon is not reachable" unless available?
+
+        # Already ours: `up` is idempotent.
+        return true if lab_daemon?(root)
+
+        unless claimable_endpoint?(root)
+          raise NotTheLab, <<~MESSAGE.strip
+            Refusing to create a Swarm on `#{endpoint}`.
+
+            The lab is created only on a local daemon. This endpoint is reached
+            over the network, and a real Engine that has not joined a cluster yet
+            looks exactly like an empty one from here — there is nothing left to
+            tell them apart before `swarm init` has already run.
+
+            Point DOCKER_HOST at a disposable local daemon, or add the endpoint to
+            `lab.claimable_endpoints` in config/architecture/docker-lab.yml, which
+            needs the human review CODEOWNERS requires of that directory.
+          MESSAGE
+        end
+
+        state = JSON.parse(docker!("info", "--format", "{{json .Swarm}}"))["LocalNodeState"]
+        return true if state == "inactive"
+
+        raise NotTheLab, <<~MESSAGE.strip
+          This daemon already runs a Swarm that is not the Opanel lab.
+
+          It carries no `#{label(root)}=true` node label,
+          so it may be a real cluster. Refusing to touch it.
+          Point DOCKER_HOST at a disposable daemon.
+        MESSAGE
+      end
+
+      # Called before every mutation of an existing lab. Fails closed, with the
+      # reason.
       def assert_lab!(root = Dir.pwd)
         raise DockerUnavailable, "the Docker daemon is not reachable" unless available?
 

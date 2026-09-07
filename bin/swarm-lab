@@ -57,20 +57,21 @@ when "up"
         "(#{LAB.minimum_version(ROOT)}). See config/architecture/docker-lab.yml.", code: 2)
   end
 
+  # Identify the destination *before* mutating it. The node label cannot do it
+  # here — a daemon that has never been initialised has no node to label — which
+  # is why `up` was the one command in this file that ran `swarm init` against
+  # whatever DOCKER_HOST happened to point at.
+  begin
+    LAB.assert_claimable!(ROOT)
+  rescue Opanel::Gates::SwarmLab::NotTheLab => error
+    die(error.message)
+  end
+
   state = JSON.parse(LAB.docker!("info", "--format", "{{json .Swarm}}"))["LocalNodeState"]
 
+  # `assert_claimable!` has already established that an active swarm here is ours.
   if state == "active"
-    if LAB.lab_daemon?(ROOT)
-      puts "swarm-lab: already up (idempotent)"
-    else
-      # An active swarm that is not ours is the case the guardrail exists for.
-      die(<<~MESSAGE.strip)
-        This daemon already runs a Swarm that is not the Opanel lab.
-
-        It carries no `#{LABEL}=true` node label, so it may be a real cluster.
-        Refusing to touch it. Point DOCKER_HOST at a disposable daemon.
-      MESSAGE
-    end
+    puts "swarm-lab: already up (idempotent)"
   else
     LAB.docker!("swarm", "init", "--advertise-addr", "127.0.0.1")
     puts "swarm-lab: swarm initialised"
@@ -108,8 +109,17 @@ when "down"
 
   # Remove what the harness created before leaving the swarm, so nothing is
   # orphaned in a daemon that is about to forget it managed them.
-  LAB.orphaned_resources(ROOT).each do |kind, names|
-    names.each { |name| LAB.docker(kind.chomp("s"), "rm", name) }
+  #
+  # A removal that fails is reported and stops the teardown. Discarding the exit
+  # code here meant `down` left a Swarm secret behind and still printed "down" —
+  # and once the node has left the swarm, nothing can find it again.
+  failures = LAB.orphaned_resources(ROOT).flat_map do |kind, names|
+    names.filter_map { |name| LAB.remove(kind.chomp("s"), name) }
+  end
+
+  unless failures.empty?
+    die("swarm-lab: refusing to leave the swarm with resources still in it:\n  " +
+        failures.join("\n  "))
   end
 
   LAB.docker!("swarm", "leave", "--force")
@@ -124,9 +134,13 @@ when "reset"
     die(error.message)
   end
 
-  removed = LAB.orphaned_resources(ROOT).sum do |kind, names|
-    names.each { |name| LAB.docker(kind.chomp("s"), "rm", name) }
-    names.length
+  orphans = LAB.orphaned_resources(ROOT)
+  failures = orphans.flat_map { |kind, names| names.filter_map { |name| LAB.remove(kind.chomp("s"), name) } }
+  removed = orphans.values.sum(&:length) - failures.length
+
+  unless failures.empty?
+    die("swarm-lab: reset removed #{removed} resource(s) and could not remove:\n  " +
+        failures.join("\n  "))
   end
 
   puts "swarm-lab: reset (#{removed} leftover resource(s) removed)"
