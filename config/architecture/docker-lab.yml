@@ -36,19 +36,31 @@ lab:
   # check at all. A production Engine that has not joined a swarm yet is
   # indistinguishable, from `docker info`, from an empty laptop.
   #
-  # So the *endpoint* is checked instead, against this list, before `swarm init`.
-  # A daemon reached over the network is never claimed automatically. This is a
-  # versioned declaration rather than an environment variable: pointing
-  # DOCKER_HOST somewhere else makes the check stricter, never looser, and
-  # widening the list needs the human review .github/CODEOWNERS requires of
-  # config/architecture/.
+  # So the *effective* endpoint is checked instead, against this list, before
+  # `swarm init`. Effective means the one the CLI would use: DOCKER_HOST when it
+  # is set, otherwise the current `docker context`. Reading DOCKER_HOST alone
+  # meant `docker context use production` — which leaves the variable empty —
+  # was classified as the local socket.
+  #
+  # Matching is by scheme and exact host, never by string prefix: `tcp://
+  # localhost.attacker.example` and `tcp://127.0.0.1.example.com` both begin with
+  # an entry below and are both somebody else's machine. A `tcp` host must also
+  # resolve exclusively to a loopback address.
+  #
+  # A scheme-only entry is a socket on this machine, whose path is not an
+  # identity. This is a versioned declaration rather than an environment
+  # variable: pointing DOCKER_HOST somewhere else makes the check stricter, never
+  # looser, and widening the list needs the human review .github/CODEOWNERS
+  # requires of config/architecture/.
   claimable_endpoints:
-    - "" # DOCKER_HOST unset: the local socket
-    - "unix://"
-    - "npipe://"
-    - "tcp://127.0.0.1"
-    - "tcp://localhost"
-    - "tcp://[::1]"
+    - scheme: "unix"
+    - scheme: "npipe"
+    - scheme: "tcp"
+      host: "127.0.0.1"
+    - scheme: "tcp"
+      host: "localhost"
+    - scheme: "tcp"
+      host: "::1"
 
   # The image the harness runs when it needs a service that does nothing. It has
   # to be present locally: the lab is deliberately usable without registry access,

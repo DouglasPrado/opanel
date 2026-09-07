@@ -58,20 +58,24 @@ RSpec.describe "Swarm lab", type: :integration do
     # whatever DOCKER_HOST pointed at. A real Engine waiting to join a cluster is
     # exactly that.
     describe "claiming a daemon that is not yet a lab" do
+      def endpoint(raw, source: "DOCKER_HOST")
+        LAB.parse_endpoint(raw, source: source)
+      end
+
       before do
         allow(LAB).to receive(:available?).and_return(true)
         allow(LAB).to receive(:lab_daemon?).and_return(false)
       end
 
       it "refuses a daemon reached over the network" do
-        allow(LAB).to receive(:endpoint).and_return("tcp://10.0.4.19:2376")
+        allow(LAB).to receive(:resolved_endpoint).and_return(endpoint("tcp://10.0.4.19:2376"))
 
         expect { LAB.assert_claimable!(ROOT) }
           .to raise_error(LAB::NotTheLab, /Refusing to create a Swarm/)
       end
 
       it "refuses it before any mutation, not after" do
-        allow(LAB).to receive(:endpoint).and_return("tcp://10.0.4.19:2376")
+        allow(LAB).to receive(:resolved_endpoint).and_return(endpoint("tcp://10.0.4.19:2376"))
         # `docker!` is how every mutation leaves this process. If the guardrail
         # reaches it at all, the check ran too late to matter.
         expect(LAB).not_to receive(:docker!)
@@ -79,8 +83,9 @@ RSpec.describe "Swarm lab", type: :integration do
         expect { LAB.assert_claimable!(ROOT) }.to raise_error(LAB::NotTheLab)
       end
 
-      it "accepts an inactive local daemon" do
-        allow(LAB).to receive(:endpoint).and_return("")
+      it "accepts a local socket" do
+        allow(LAB).to receive(:resolved_endpoint)
+          .and_return(endpoint("unix:///var/run/docker.sock"))
         allow(LAB).to receive(:docker!)
           .with("info", "--format", "{{json .Swarm}}")
           .and_return('{"LocalNodeState":"inactive"}')
@@ -89,7 +94,8 @@ RSpec.describe "Swarm lab", type: :integration do
       end
 
       it "refuses a local daemon already running a swarm that is not ours" do
-        allow(LAB).to receive(:endpoint).and_return("")
+        allow(LAB).to receive(:resolved_endpoint)
+          .and_return(endpoint("unix:///var/run/docker.sock"))
         allow(LAB).to receive(:docker!)
           .with("info", "--format", "{{json .Swarm}}")
           .and_return('{"LocalNodeState":"active"}')
@@ -100,9 +106,151 @@ RSpec.describe "Swarm lab", type: :integration do
 
       it "declares the claimable endpoints in a versioned file, not in an env var" do
         config = YAML.safe_load_file(Rails.root.join("config/architecture/docker-lab.yml"))
+        entries = config.dig("lab", "claimable_endpoints")
 
-        expect(config.dig("lab", "claimable_endpoints")).to include("unix://")
-        expect(config.dig("lab", "claimable_endpoints")).not_to include("tcp://0.0.0.0")
+        expect(entries).to include({ "scheme" => "unix" })
+        expect(entries.map { |entry| entry["host"] }).not_to include("0.0.0.0")
+      end
+    end
+
+    # M00-R11. The endpoint the guardrail judged was DOCKER_HOST, and the CLI
+    # does not stop there: with the variable unset it uses the current context.
+    # So `docker context use production` produced an empty DOCKER_HOST, was read
+    # as "the local socket", and `swarm init` would have run against the cluster.
+    describe "the destination it actually judges" do
+      around do |example|
+        previous = ENV.to_h.slice("DOCKER_HOST", "DOCKER_CONTEXT")
+        example.run
+      ensure
+        ENV["DOCKER_HOST"] = previous["DOCKER_HOST"]
+        ENV["DOCKER_CONTEXT"] = previous["DOCKER_CONTEXT"]
+      end
+
+      def with_context(host)
+        ENV.delete("DOCKER_HOST")
+        ENV.delete("DOCKER_CONTEXT")
+        allow(LAB).to receive(:docker)
+          .with("context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
+          .and_return([ "#{host}\n", "", instance_double(Process::Status, success?: true) ])
+      end
+
+      it "reads the current docker context when DOCKER_HOST is unset" do
+        with_context("tcp://swarm-manager.internal:2376")
+
+        resolved = LAB.resolved_endpoint(ROOT)
+
+        expect(resolved.host).to eq("swarm-manager.internal")
+        expect(resolved.source).to eq("the current docker context")
+      end
+
+      it "refuses a context pointing at a remote daemon" do
+        with_context("tcp://swarm-manager.internal:2376")
+
+        expect(LAB.claimable_endpoint?(ROOT)).to be(false)
+      end
+
+      it "still accepts the local socket the default context names" do
+        with_context("unix:///var/run/docker.sock")
+
+        expect(LAB.claimable_endpoint?(ROOT)).to be(true)
+      end
+
+      it "prefers DOCKER_HOST over the context, as the CLI does" do
+        with_context("unix:///var/run/docker.sock")
+        ENV["DOCKER_HOST"] = "tcp://10.0.4.19:2376"
+
+        expect(LAB.resolved_endpoint(ROOT).host).to eq("10.0.4.19")
+        expect(LAB.claimable_endpoint?(ROOT)).to be(false)
+      end
+
+      it "fails closed when the context cannot be read at all" do
+        ENV.delete("DOCKER_HOST")
+        ENV.delete("DOCKER_CONTEXT")
+        allow(LAB).to receive(:docker)
+          .with("context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
+          .and_return([ "", "context not found", instance_double(Process::Status, success?: false) ])
+
+        expect { LAB.resolved_endpoint(ROOT) }
+          .to raise_error(LAB::EndpointUnknown, /destination is unknown/)
+      end
+    end
+
+    # The allowlist was matched with `start_with?`, which is not an identity
+    # test: every name below begins with an allowed entry and none of them is
+    # this machine.
+    describe "a hostname that merely resembles an allowed one" do
+      [
+        "tcp://localhost.attacker.example:2376",
+        "tcp://127.0.0.1.example.com:2376",
+        "tcp://localhost-2.internal:2376"
+      ].each do |raw|
+        it "refuses #{raw}" do
+          endpoint = LAB.parse_endpoint(raw, source: "DOCKER_HOST")
+
+          expect(LAB.claimable_endpoint?(ROOT, endpoint)).to be(false)
+        end
+      end
+
+      it "accepts the loopback host itself" do
+        endpoint = LAB.parse_endpoint("tcp://127.0.0.1:2375", source: "DOCKER_HOST")
+
+        expect(LAB.claimable_endpoint?(ROOT, endpoint)).to be(true)
+      end
+
+      # An allowed *name* still has to resolve to loopback: /etc/hosts and a
+      # search domain are both things somebody else can control.
+      it "refuses an allowed name that does not resolve to loopback" do
+        endpoint = LAB.parse_endpoint("tcp://localhost:2375", source: "DOCKER_HOST")
+        allow(Resolv).to receive(:getaddresses).with("localhost").and_return([ "10.0.4.19" ])
+
+        expect(LAB.claimable_endpoint?(ROOT, endpoint)).to be(false)
+      end
+
+      it "refuses an endpoint with no scheme rather than guessing one" do
+        expect { LAB.parse_endpoint("127.0.0.1:2375", source: "DOCKER_HOST") }
+          .to raise_error(LAB::EndpointUnknown)
+      end
+    end
+
+    # M00-R16. A listing that failed says nothing about what is running. It was
+    # rescued into `[]`, which says there is nothing — and `down` acts on that by
+    # running `swarm leave --force`.
+    describe "an inventory it could not read" do
+      before { allow(LAB).to receive(:available?).and_return(true) }
+
+      %w[service network secret config].each do |kind|
+        it "refuses to claim the lab is empty when `docker #{kind} ls` fails" do
+          allow(LAB).to receive(:labelled).and_return([])
+          allow(LAB).to receive(:labelled).with(kind, ROOT)
+            .and_raise(LAB::DockerUnavailable, "Cannot connect to the Docker daemon")
+
+          expect { LAB.orphaned_resources(ROOT) }
+            .to raise_error(LAB::InventoryUnknown, /not an empty lab/)
+        end
+      end
+
+      it "reports the inventory as unknown rather than as none" do
+        allow(LAB).to receive(:docker!).with("info", "--format", "{{json .}}")
+          .and_return('{"ServerVersion":"29.7.2","Swarm":{"LocalNodeState":"active","Nodes":1}}')
+        allow(LAB).to receive(:docker!).with("version", "--format", "{{json .}}")
+          .and_return('{"Server":{"ApiVersion":"1.44"}}')
+        allow(LAB).to receive(:lab_daemon?).and_return(true)
+        allow(LAB).to receive(:labelled).and_raise(LAB::DockerUnavailable, "listing failed")
+
+        status = LAB.status(ROOT)
+
+        expect(status.inventory_known?).to be(false)
+        expect(status.orphans).to be_nil
+        expect(status.services).to be_nil
+      end
+
+      it "stops `down` before `swarm leave` instead of tearing down blind" do
+        source = Rails.root.join("bin/swarm-lab").read
+        teardown = source[/when "down"(.*?)when "reset"/m, 1]
+
+        expect(teardown).to match(/InventoryUnknown/)
+        expect(teardown.index("InventoryUnknown")).to be < teardown.index("swarm\", \"leave\""),
+          "the refusal has to come before the irreversible call, not after it"
       end
     end
   end

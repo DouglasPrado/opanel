@@ -49,6 +49,16 @@ end
 
 case command
 when "up"
+  # First, and before any connection. `require_docker!` and the version check
+  # both talk to whatever the endpoint names, so running them first meant a
+  # foreign daemon was contacted twice before the guardrail was consulted — and
+  # an unreachable one was reported as running an Engine that is too old.
+  begin
+    LAB.assert_claimable_endpoint!(ROOT)
+  rescue Opanel::Gates::SwarmLab::NotTheLab, Opanel::Gates::SwarmLab::EndpointUnknown => error
+    die(error.message)
+  end
+
   require_docker!
 
   unless LAB.version_supported?(ROOT)
@@ -63,7 +73,7 @@ when "up"
   # whatever DOCKER_HOST happened to point at.
   begin
     LAB.assert_claimable!(ROOT)
-  rescue Opanel::Gates::SwarmLab::NotTheLab => error
+  rescue Opanel::Gates::SwarmLab::NotTheLab, Opanel::Gates::SwarmLab::EndpointUnknown => error
     die(error.message)
   end
 
@@ -113,7 +123,25 @@ when "down"
   # A removal that fails is reported and stops the teardown. Discarding the exit
   # code here meant `down` left a Swarm secret behind and still printed "down" —
   # and once the node has left the swarm, nothing can find it again.
-  failures = LAB.orphaned_resources(ROOT).flat_map do |kind, names|
+  #
+  # So is an enumeration that failed. `swarm leave --force` past an inventory
+  # nobody could read is the same outcome by a quieter route.
+  orphans =
+    begin
+      LAB.orphaned_resources(ROOT)
+    rescue Opanel::Gates::SwarmLab::InventoryUnknown => error
+      die(<<~MESSAGE.strip)
+        swarm-lab: refusing to leave a swarm whose contents are unknown.
+
+        #{error.message}
+
+        `swarm leave --force` is irreversible for anything still in the lab: once
+        the node has left, a resource this run could not see cannot be found again.
+        Fix the daemon and re-run `bin/swarm-lab down`.
+      MESSAGE
+    end
+
+  failures = orphans.flat_map do |kind, names|
     names.filter_map { |name| LAB.remove(kind.chomp("s"), name) }
   end
 
@@ -134,7 +162,13 @@ when "reset"
     die(error.message)
   end
 
-  orphans = LAB.orphaned_resources(ROOT)
+  orphans =
+    begin
+      LAB.orphaned_resources(ROOT)
+    rescue Opanel::Gates::SwarmLab::InventoryUnknown => error
+      die("swarm-lab: cannot reset a lab whose contents are unknown.\n  #{error.message}")
+    end
+
   failures = orphans.flat_map { |kind, names| names.filter_map { |name| LAB.remove(kind.chomp("s"), name) } }
   removed = orphans.values.sum(&:length) - failures.length
 
@@ -155,15 +189,24 @@ when "status"
   else
     puts "swarm-lab: #{status.lab? ? 'up' : 'not the lab'}"
     puts "  engine        #{status.engine_version} (Engine API #{status.api_version})"
+    puts "  endpoint      #{status.endpoint || 'unknown'}"
     puts "  swarm         #{status.swarm_state}, #{status.node_count} node(s)"
-    puts "  services      #{status.services.empty? ? 'none' : status.services.join(', ')}"
 
-    orphans = (status.orphans || {}).reject { |_kind, names| names.empty? }
-    if orphans.empty?
-      puts "  orphans       none"
+    if status.inventory_known?
+      puts "  services      #{status.services.empty? ? 'none' : status.services.join(', ')}"
+
+      orphans = status.orphans.reject { |_kind, names| names.empty? }
+      if orphans.empty?
+        puts "  orphans       none"
+      else
+        orphans.each { |kind, names| puts "  orphan #{kind.ljust(8)} #{names.join(', ')}" }
+        puts "  → bin/swarm-lab reset removes them; no test may depend on inherited state"
+      end
     else
-      orphans.each { |kind, names| puts "  orphan #{kind.ljust(8)} #{names.join(', ')}" }
-      puts "  → bin/swarm-lab reset removes them; no test may depend on inherited state"
+      # Not "none". Reporting an unreadable inventory as empty is how `down`
+      # walked into `swarm leave` with resources still in the lab.
+      puts "  services      unknown"
+      puts "  orphans       unknown — #{status.inventory_reason}"
     end
   end
 
