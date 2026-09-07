@@ -48,6 +48,20 @@ RESULT_FILE="$TEMP_DIR/result.json"
 CLI_LOG="$TEMP_DIR/codex.log"
 trap 'rm -rf "$TEMP_DIR"' EXIT INT TERM
 
+# The CLI log lives in TEMP_DIR, which the trap removes on every exit. When the
+# runner fails, the 40 lines it echoes to stderr are all that survives, and the
+# cause — a usage limit, a network error, a malformed response — is usually
+# further up. A block whose diagnosis was thrown away is what Annex H forbids,
+# so keep the whole log where the orchestrator's own log points.
+FAILURE_LOG_DIR="${TMPDIR:-/tmp}/opanel-agent-orchestrator"
+FAILURE_LOG="$FAILURE_LOG_DIR/${MILESTONE}-codex-${ATTEMPT_PADDED}.log"
+
+preserve_cli_log() {
+  mkdir -p "$FAILURE_LOG_DIR" || return 0
+  cp "$CLI_LOG" "$FAILURE_LOG" 2>/dev/null || return 0
+  printf 'full Codex log: %s\n' "$FAILURE_LOG" >&2
+}
+
 PROMPT=$(cat <<EOF
 Você é exclusivamente o REVIEWER independente do Milestone $MILESTONE do Opanel.
 
@@ -87,6 +101,7 @@ set -e
 if [ "$CODEX_STATUS" -ne 0 ]; then
   printf 'Codex review failed with exit code %s\n' "$CODEX_STATUS" >&2
   tail -n 40 "$CLI_LOG" >&2 || true
+  preserve_cli_log
   exit 20
 fi
 
@@ -99,6 +114,8 @@ if ! jq -e '
    (.verdict == "NOT_ACCEPTED" and (.criticalCount + .highCount) > 0))
 ' "$RESULT_FILE" >/dev/null; then
   printf 'Codex returned an inconsistent review result\n' >&2
+  cat "$RESULT_FILE" >&2 || true
+  preserve_cli_log
   exit 20
 fi
 

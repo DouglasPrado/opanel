@@ -105,6 +105,12 @@ JSON
 {"verdict":"ACCEPTED","criticalCount":0,"highCount":1,"mediumCount":0,"lowCount":0,"findings":[],"reportMarkdown":"Invalid result."}
 JSON
     ;;
+  cli_failure)
+    # What a usage limit, an expired auth or a dropped network looks like from
+    # here: the CLI dies before writing a result, so no verdict exists.
+    printf 'ERROR: simulated CLI failure before any verdict\n' >&2
+    exit 1
+    ;;
 esac
 FAKE_CODEX
 
@@ -244,6 +250,25 @@ assert_eq blocked "$(jq -r '.status' "$STATE")" "invalid reviewer output must bl
 assert_eq CODEX_REVIEW_EXECUTION_FAILED "$(jq -r '.blockedReason' "$STATE")" \
   "invalid reviewer output must have a deterministic reason"
 pass "inconsistent reviewer output fails closed"
+
+# A dead CLI is not a verdict on the Milestone. It must still fail closed, but
+# it must not spend one of the three reviews the Milestone is entitled to —
+# otherwise a usage limit or a network blip silently exhausts the budget and
+# the next dispatch blocks on MAX_REVIEW_ATTEMPTS_REACHED without any reviewer
+# ever having formed an opinion.
+ROOT="$(make_fixture runner_dies ready_for_review)"
+STATE="$ROOT/docs/implementation/M00/review-state.json"
+if run_orchestrator "$ROOT" cli_failure; then
+  fail "a dead Codex CLI should return a failure"
+fi
+assert_eq blocked "$(jq -r '.status' "$STATE")" "a dead CLI must fail closed"
+assert_eq CODEX_REVIEW_EXECUTION_FAILED "$(jq -r '.blockedReason' "$STATE")" \
+  "a dead CLI must have a deterministic reason"
+assert_eq 0 "$(jq -r '.reviewAttempt' "$STATE")" \
+  "an execution failure must not consume a review attempt"
+assert_eq 1 "$(jq -r '.executionFailures' "$STATE")" \
+  "an execution failure must be counted where a human can see it"
+pass "a failed runner blocks without spending a review attempt"
 
 ROOT="$(make_fixture fix_cap fix_required)"
 STATE="$ROOT/docs/implementation/M00/review-state.json"

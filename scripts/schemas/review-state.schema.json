@@ -28,6 +28,7 @@
     },
     "reviewAttempt": { "type": "integer", "minimum": 0 },
     "fixAttempt": { "type": "integer", "minimum": 0 },
+    "executionFailures": { "type": "integer", "minimum": 0 },
     "maxReviewAttempts": { "type": "integer", "minimum": 1 },
     "maxFixAttempts": { "type": "integer", "minimum": 1 },
     "lastReviewer": { "type": ["string", "null"] },

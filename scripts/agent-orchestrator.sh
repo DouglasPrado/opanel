@@ -94,6 +94,32 @@ begin_review() {
     --arg now "$now"
 }
 
+# A review attempt is spent by a verdict, not by an attempt to obtain one.
+#
+# begin_review increments reviewAttempt before the runner starts, because the
+# runner names CODEX_REVIEW_<NN>.md from it. When the runner dies without
+# producing a verdict — CLI failure, usage limit, network, malformed output —
+# that increment charged the Milestone for a review that never happened, and
+# maxReviewAttempts is there to stop a review/fix loop, not to punish broken
+# infrastructure. So restore the counter, and keep the failure visible in its
+# own field instead.
+#
+# This still blocks: a human has to look. Nothing retries on its own, so a
+# permanently broken runner cannot spin here.
+block_without_consuming_review() {
+  local state_file="$1"
+  local reason="$2"
+  local now
+  now="$(timestamp)"
+
+  write_state "$state_file" \
+    '.status = "blocked" | .reviewAttempt -= 1 |
+     .executionFailures = ((.executionFailures // 0) + 1) |
+     .blockedReason = $reason | .lastError = $reason | .updatedAt = $now' \
+    --arg reason "$reason" --arg now "$now"
+  log "$(jq -r '.milestone' "$state_file") blocked: $reason (review attempt not consumed)"
+}
+
 record_review() {
   local state_file="$1"
   local result="$2"
@@ -103,7 +129,8 @@ record_review() {
   write_state "$state_file" \
     '.lastReviewer = "codex" | .verdict = $verdict |
      .criticalCount = $critical | .highCount = $high |
-     .mediumCount = $medium | .lowCount = $low | .updatedAt = $now' \
+     .mediumCount = $medium | .lowCount = $low |
+     .executionFailures = 0 | .updatedAt = $now' \
     --arg verdict "$(jq -r '.verdict' <<<"$result")" \
     --argjson critical "$(jq '.criticalCount' <<<"$result")" \
     --argjson high "$(jq '.highCount' <<<"$result")" \
@@ -230,12 +257,12 @@ run_worker() {
         set -e
 
         if [ "$runner_status" -ne 0 ] && [ "$runner_status" -ne 10 ]; then
-          block_state "$state_file" "CODEX_REVIEW_EXECUTION_FAILED"
+          block_without_consuming_review "$state_file" "CODEX_REVIEW_EXECUTION_FAILED"
           return 1
         fi
         if ! jq -e '.verdict and (.criticalCount >= 0) and (.highCount >= 0)' \
           <<<"$review_result" >/dev/null 2>&1; then
-          block_state "$state_file" "INVALID_CODEX_REVIEW_RESULT"
+          block_without_consuming_review "$state_file" "INVALID_CODEX_REVIEW_RESULT"
           return 1
         fi
 
