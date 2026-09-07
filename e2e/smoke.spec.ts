@@ -1,5 +1,11 @@
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+
+// Not `@playwright/test` directly: this one masks anything marked sensitive
+// before Playwright records a frame, and records what it captured so
+// bin/redact-artifacts can tell an artifact produced under that masking from one
+// that appeared by some other route.
+import { test, expect } from './support/masked-capture';
 
 /**
  * The smoke journey: the application boots, React mounts, the example page renders

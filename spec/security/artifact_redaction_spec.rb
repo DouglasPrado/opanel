@@ -149,21 +149,132 @@ RSpec.describe "test artifact redaction", type: :security do
     end
   end
 
-  # Screenshots and videos cannot be inspected for text at all. Publishing them
-  # is accepted deliberately and the acceptance is written down in the script;
-  # what must not happen is the list quietly growing to cover everything.
-  it "publishes a screenshot, and still scans its bytes" do
-    clean = "\x89PNG\r\n\x1A\n".b + "IDAT ordinary pixels".b
-    leaky = "\x89PNG\r\n\x1A\n".b + "tEXtComment\x00authorization: Bearer sk_live_abcdef1234567890".b
+  # M00-R02. A screenshot's content is in its pixels. The byte scan finds nothing
+  # there — not because the image is clean, but because there is nothing for a
+  # regex to find — and "the scanner found nothing" was recorded as "publishable".
+  # So a visual artifact is published only when it came out of the masked capture
+  # path, proven by its digest, and never merely because it could not be read.
+  describe "content whose meaning is in its pixels" do
+    let(:clean) { "\x89PNG\r\n\x1A\n".b + "IDAT ordinary pixels".b }
 
-    redact({ "shot.png" => clean }) do |_report, status, remaining|
-      expect(status).to be_success
-      expect(remaining).to have_key("shot.png")
+    def manifest_for(*contents)
+      contents.map { |body| JSON.generate(sha256: Digest::SHA256.hexdigest(body)) }.join("\n") + "\n"
     end
 
-    redact({ "shot.png" => leaky }) do |_report, status, remaining|
-      expect(status).not_to be_success
-      expect(remaining).not_to have_key("shot.png")
+    it "deletes a screenshot with no proof of where it came from" do
+      redact({ "shot.png" => clean }) do |report, status, remaining|
+        expect(status).not_to be_success
+        expect(report["deleted"].map { |entry| entry["patterns"] }.flatten.join)
+          .to include("unproven-visual-artifact")
+        expect(remaining).not_to have_key("shot.png")
+      end
+    end
+
+    it "publishes one the masked capture recorded, bound to its bytes" do
+      redact({ "shot.png" => clean, "visual-manifest.jsonl" => manifest_for(clean) }) do |_r, status, remaining|
+        expect(status).to be_success
+        expect(remaining).to have_key("shot.png")
+      end
+    end
+
+    it "refuses one whose bytes changed after it was recorded" do
+      other = "\x89PNG\r\n\x1A\n".b + "IDAT different pixels entirely".b
+
+      redact({ "shot.png" => clean, "visual-manifest.jsonl" => manifest_for(other) }) do |_r, status, remaining|
+        expect(status).not_to be_success
+        expect(remaining).not_to have_key("shot.png")
+      end
+    end
+
+    it "still refuses a recorded screenshot carrying a credential in its metadata" do
+      leaky = "\x89PNG\r\n\x1A\n".b +
+        "tEXtComment\x00authorization: Bearer sk_live_abcdef1234567890".b
+
+      redact({ "shot.png" => leaky, "visual-manifest.jsonl" => manifest_for(leaky) }) do |_r, status, remaining|
+        expect(status).not_to be_success
+        expect(remaining).not_to have_key("shot.png")
+      end
+    end
+
+    it "publishes a font, which records no screen" do
+      redact({ "geist.woff2" => "wOF2\x00\x00\x00\x00ordinary font data".b }) do |_r, status, remaining|
+        expect(status).to be_success
+        expect(remaining).to have_key("geist.woff2")
+      end
+    end
+  end
+
+  # A trace bundles the screencast frames as entries. Nothing could reach them:
+  # the text scan reads them as noise and reports the archive clean. They are
+  # covered rather than the archive being deleted — a trace with blank frames is
+  # still the actions, the network log and the console output.
+  describe "visual entries inside a trace" do
+    it "replaces them and leaves the rest of the trace readable" do
+      frame = "\x89PNG\r\n\x1A\n".b + "IDAT whatever was on screen".b
+      trace = build_zip("trace.trace" => %({"type":"action","method":"click"}\n),
+        "resources/frame-1.png" => frame)
+
+      redact({ "trace.zip" => trace }) do |report, status, remaining|
+        expect(status).to be_success
+        expect(report["covered"].first["entries"]).to include("resources/frame-1.png")
+
+        rewritten = remaining.fetch("trace.zip").dup.force_encoding("BINARY")
+        expect(rewritten).to include("trace.trace")
+        expect(rewritten).to include(%({"type":"action","method":"click"}))
+        expect(rewritten).not_to include("whatever was on screen")
+      end
+    end
+
+    it "still reads the entries it covers, so a credential in one is caught" do
+      frame = "\x89PNG\r\n\x1A\n".b + "tEXt\x00authorization: Bearer sk_live_abcdef1234567890".b
+      trace = build_zip("resources/frame-1.png" => frame)
+
+      redact({ "trace.zip" => trace }) do |_report, status, remaining|
+        expect(status).not_to be_success
+        expect(remaining).not_to have_key("trace.zip")
+      end
+    end
+  end
+
+  # The other half of the control: the value never reaches the pixels in the
+  # first place. A manifest entry vouches for provenance, not for content.
+  describe "masking at capture" do
+    let(:fixture) { Rails.root.join("e2e/support/masked-capture.ts").read }
+
+    it "installs the redaction stylesheet before the first navigation" do
+      expect(fixture).to include("addInitScript")
+      expect(fixture).to match(/data-sensitive/)
+      expect(fixture).to match(/input\[type="password"\]/)
+      expect(fixture).to match(/visibility: hidden/)
+    end
+
+    # The claim is made where masking is known; the digest is taken where the
+    # bytes exist. Playwright finalises the video and the trace after the fixture
+    # has torn down, so hashing inside the fixture would vouch for the screenshot
+    # and silently omit the two artifacts that record the most.
+    it "claims every artifact the masked test produced" do
+      expect(fixture).to include("testInfo.attachments")
+      expect(fixture).to include("testInfo.outputDir")
+    end
+
+    it "resolves those claims into digests once the files exist" do
+      teardown = Rails.root.join("e2e/support/global-teardown.ts").read
+
+      expect(teardown).to include("createHash('sha256')")
+      expect(teardown).to include("VISUAL_MANIFEST")
+      expect(teardown.index("finaliseVisualManifest();"))
+        .to be < teardown.index("'bin/redact-artifacts'"),
+        "the manifest has to be final before the redactor reads it"
+    end
+
+    it "is what the journeys import, so no spec captures unmasked" do
+      %w[e2e/smoke.spec.ts e2e/gallery.spec.ts].each do |path|
+        source = Rails.root.join(path).read
+
+        expect(source).to include("./support/masked-capture"),
+          "#{path} imports Playwright's test directly and would capture unmasked frames"
+        expect(source).not_to match(/import \{[^}]*\btest\b[^}]*\} from '@playwright\/test'/)
+      end
     end
   end
 

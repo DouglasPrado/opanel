@@ -24,8 +24,10 @@
 #     command exits non-zero. Losing a diagnostic is recoverable; publishing a
 #     credential is not.
 
+require "digest"
 require "json"
 require "fileutils"
+require "set"
 require "stringio"
 require "zlib"
 
@@ -51,16 +53,41 @@ TEXT_EXTENSIONS = %w[.txt .log .json .xml .html .md .yml .yaml .csv .har].freeze
 # bundles are ZIP; a coverage or JUnit upload is sometimes gzip.
 ARCHIVE_EXTENSIONS = %w[.zip .trace .jar .gz .tgz].freeze
 
-# Formats that cannot be inspected for text at all, and whose publication is
-# nevertheless accepted: a screenshot or a video of an E2E run against synthetic
-# fixtures. The environment they are produced in holds no production credential
-# — bin/workspace-guardrail refuses to let the suite start otherwise (Annex H
-# §3.2) — and the bytes are still scanned for the patterns above, which catches a
-# credential embedded in metadata or in an uncompressed chunk.
+# Content whose meaning is in its pixels, not in its bytes.
+#
+# These were published after a regex over the container: the scan found nothing,
+# because there is nothing there to find. A revealed secret, a token in a field
+# or a session id in a debug panel is *rendered* — no pattern above can reach it,
+# and "the scanner found nothing" was recorded as "the artifact is clean".
+#
+# So the rule is provenance, not inspection. A visual artifact is published only
+# when it appears in the capture manifest with a matching digest: that is, only
+# when it came out of a browser context e2e/support/masked-capture.ts had already
+# masked. Anything else is deleted. Inside an archive, where a per-file manifest
+# entry does not exist, the entry is **covered** — replaced with a placeholder —
+# so the trace stays navigable and its frames carry nothing.
+VISUAL = %w[.png .jpg .jpeg .gif .webp .webm .mp4 .avif].freeze
+
+# Opaque, but not a recording of a screen: a font or an icon carries no session.
+# Still scanned for the patterns above, which catches a credential embedded in
+# metadata.
 #
 # **Anything not listed here and not readable is deleted.** Adding an extension
 # is widening what gets published unexamined, so it needs a Story that says why.
-PUBLISHABLE_OPAQUE = %w[.png .jpg .jpeg .gif .webp .webm .mp4 .avif .ico .woff .woff2 .ttf .pdf].freeze
+INERT_OPAQUE = %w[.ico .woff .woff2 .ttf .pdf].freeze
+
+PUBLISHABLE_OPAQUE = (VISUAL + INERT_OPAQUE).freeze
+
+# Written per attachment by e2e/support/masked-capture.ts, as JSON lines.
+VISUAL_MANIFEST = "tmp/test-results/visual-manifest.jsonl"
+
+# What a covered entry is replaced with. A 1×1 transparent PNG: the trace viewer
+# still renders a frame, and the frame is empty.
+PLACEHOLDER_PNG = [
+  "89504e470d0a1a0a0000000d4948445200000001000000010806000000" \
+  "1f15c4890000000d4944415478da63fcffff3f0300050001ff9c5fa6dd" \
+  "0000000049454e44ae426082"
+].pack("H*").freeze
 
 MASKED = "[REDACTED]"
 
@@ -223,10 +250,102 @@ rescue Zlib::Error => error
   raise Unreadable, "could not be decompressed: #{error.class}"
 end
 
+# --- Covering visual entries inside an archive --------------------------------
+#
+# A Playwright trace bundles the screencast frames as `resources/*.png` and
+# `*.jpeg`. Scanning them finds nothing — they are pixels — so the trace was
+# published with whatever was on screen inside it. The entries are replaced and
+# the archive is rewritten, which keeps the actions, the network log and the
+# console output a trace exists for.
+
+PNG_MAGIC = "\x89PNG".b
+JPEG_MAGIC = "\xFF\xD8\xFF".b
+GIF_MAGIC = "GIF8".b
+WEBP_MAGIC = "RIFF".b
+
+def visual_entry?(name, content)
+  return true if VISUAL.include?(File.extname(name).downcase)
+
+  content.start_with?(PNG_MAGIC, JPEG_MAGIC, GIF_MAGIC) ||
+    (content.start_with?(WEBP_MAGIC) && content[8, 4] == "WEBP".b)
+end
+
+# A minimal ZIP: every entry stored, no data descriptor. Playwright's own reader
+# accepts it, and writing STORED avoids re-deriving compressed sizes.
+def build_zip(entries)
+  local = +"".b
+  central = +"".b
+
+  entries.each do |name, content|
+    offset = local.bytesize
+    crc = Zlib.crc32(content)
+    common = [ 20, 0, STORED, 0, 0, crc, content.bytesize, content.bytesize, name.bytesize, 0 ]
+
+    local << ZIP_LOCAL_FILE_HEADER << common.pack("vvvvvVVVvv") << name.b << content
+    # After the shared 26 bytes: comment length, disk number, internal and
+    # external attributes, and the local header's offset — 46 bytes in total
+    # before the name, which is what zip_entries above reads back.
+    central << ZIP_CENTRAL_FILE_HEADER << [ 20 ].pack("v") << common.pack("vvvvvVVVvv") <<
+      [ 0, 0, 0, 0, offset ].pack("vvvVV") << name.b
+  end
+
+  local + central + ZIP_END_OF_CENTRAL_DIRECTORY +
+    [ 0, 0, entries.length, entries.length, central.bytesize, local.bytesize, 0 ].pack("vvvvVVv")
+end
+
+# Returns [rewritten_bytes_or_nil, covered_entry_names].
+def cover_visual_entries(bytes)
+  return [ nil, [] ] unless zip?(bytes)
+
+  covered = []
+  entries = zip_entries(bytes).map do |entry|
+    content = zip_entry_content(bytes, entry)
+
+    if visual_entry?(entry[:name], content)
+      covered << entry[:name]
+      [ entry[:name], PLACEHOLDER_PNG ]
+    else
+      [ entry[:name], content ]
+    end
+  end
+
+  covered.empty? ? [ nil, [] ] : [ build_zip(entries), covered ]
+end
+
+# --- Provenance of a standalone visual artifact -------------------------------
+
+# Where the harness may have left it: the default path, or beside the artifacts
+# it describes — `bin/redact-artifacts` is given the output directory, and the
+# manifest sits with the run that produced it.
+def manifest_paths(roots)
+  ([ VISUAL_MANIFEST ] +
+    roots.flat_map do |root|
+      [ File.join(root, File.basename(VISUAL_MANIFEST)),
+        File.join(File.dirname(root), File.basename(VISUAL_MANIFEST)) ]
+    end).uniq
+end
+
+def capture_manifest(roots)
+  @capture_manifest ||= manifest_paths(roots).each_with_object(Set.new) do |path, digests|
+    next unless File.file?(path)
+
+    File.foreach(path) do |line|
+      digests << JSON.parse(line)["sha256"]
+    rescue JSON::ParserError
+      next
+    end
+  end
+end
+
+def captured_masked?(path, roots)
+  capture_manifest(roots).include?(Digest::SHA256.file(path).hexdigest)
+end
+
 # --- Walk --------------------------------------------------------------------
 
 masked = []
 deleted = []
+covered = []
 scanned = 0
 
 roots.each do |root|
@@ -254,11 +373,28 @@ roots.each do |root|
     if ARCHIVE_EXTENSIONS.include?(extension) || zip?(bytes) || gzip?(bytes)
       begin
         archive_contents(bytes).each { |entry| findings.concat(scan(to_text(entry))) }
+
+        # Whatever the text scan concluded, the frames inside are pixels and were
+        # never examined by it. They are replaced rather than the archive being
+        # deleted: a trace with blank frames is still a navigable trace.
+        rewritten, entries = cover_visual_entries(bytes)
+        if rewritten
+          File.binwrite(path, rewritten)
+          covered << { file: path, entries: entries }
+        end
       rescue Unreadable => error
         # An archive nobody could open is an archive nobody has cleared.
         findings << "uninspectable-archive (#{error.message})"
       end
-    elsif !PUBLISHABLE_OPAQUE.include?(extension)
+    elsif VISUAL.include?(extension)
+      # Provenance, because inspection is not available here. Only a recording
+      # made in a context e2e/support/masked-capture.ts had masked may be
+      # published; an image that appeared by any other route has nothing
+      # vouching for what is in it.
+      unless captured_masked?(path, roots)
+        findings << "unproven-visual-artifact (no #{File.basename(VISUAL_MANIFEST)} entry)"
+      end
+    elsif !INERT_OPAQUE.include?(extension)
       findings << "uninspectable-format (#{extension.empty? ? 'no extension' : extension})"
     end
 
@@ -278,14 +414,19 @@ if format == "json"
     result: result,
     files_scanned: scanned,
     masked: masked,
+    covered: covered,
     deleted: deleted
   )
 else
   masked.each { |entry| puts "redact-artifacts: masked #{entry[:file]} (#{entry[:patterns].join(', ')})" }
+  covered.each do |entry|
+    puts "redact-artifacts: covered #{entry[:entries].length} visual entr(ies) in #{entry[:file]}"
+  end
   deleted.each { |entry| puts "redact-artifacts: DELETED #{entry[:file]} (#{entry[:patterns].join(', ')})" }
 
   if deleted.empty?
-    puts "redact-artifacts: PASS (#{scanned} artifact(s), #{masked.length} masked)"
+    puts "redact-artifacts: PASS (#{scanned} artifact(s), #{masked.length} masked, " \
+         "#{covered.sum { |entry| entry[:entries].length }} visual entr(ies) covered)"
   else
     puts "redact-artifacts: FAIL — #{deleted.length} artifact(s) could not be cleared and were removed"
   end

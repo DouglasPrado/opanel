@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+
+import { test, expect } from './support/masked-capture';
 
 import { galleryEntries } from '../app/frontend/components/features/gallery/registry';
 
