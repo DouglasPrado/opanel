@@ -263,6 +263,82 @@ RSpec.describe Opanel::Gates::FitnessFunctions do
 
       in_repository(files) { |results| expect(result_for(results, "AF-06").status).to eq("pass") }
     end
+
+    # M00-R10. The sink and the value had to be on the same physical line, and a
+    # call with several arguments is not written that way. Every shape below is
+    # the leak the rule exists to catch, formatted normally.
+    describe "a sink whose payload is on another line" do
+      {
+        "a multi-line call" => <<~RUBY,
+          class SessionsController < ApplicationController
+            def create
+              Rails.logger.info(
+                "sign-in attempt",
+                api_key: params[:api_key]
+              )
+            end
+          end
+        RUBY
+        "a block form" => <<~RUBY,
+          class SessionsController < ApplicationController
+            def create
+              Rails.logger.warn do
+                "rotating \#{secret_value}"
+              end
+            end
+          end
+        RUBY
+        "a hash argument continued below" => <<~RUBY
+          class SessionsController < ApplicationController
+            def create
+              render json: {
+                status: "ok",
+                private_key: @node.private_key
+              }
+            end
+          end
+        RUBY
+      }.each do |shape, source|
+        it "detects it: #{shape}" do
+          in_repository({ "app/controllers/sessions_controller.rb" => source }) do |results|
+            expect(result_for(results, "AF-06").status).to eq("fail")
+            expect(result_for(results, "AF-06").violations.first.detail)
+              .to match(/log, error or render sink/)
+          end
+        end
+      end
+
+      it "does not read past the end of the call it is examining" do
+        files = { "app/controllers/sessions_controller.rb" => <<~RUBY }
+          class SessionsController < ApplicationController
+            def create
+              Rails.logger.info("sign-in attempt")
+            end
+
+            def update
+              @node.update!(private_key: params.require(:private_key))
+            end
+          end
+        RUBY
+
+        in_repository(files) { |results| expect(result_for(results, "AF-06").status).to eq("pass") }
+      end
+
+      it "does not let a redaction elsewhere in the call clear the value" do
+        files = { "app/controllers/sessions_controller.rb" => <<~RUBY }
+          class SessionsController < ApplicationController
+            def create
+              Rails.logger.info(
+                token: "[REDACTED]",
+                api_key: params[:api_key]
+              )
+            end
+          end
+        RUBY
+
+        in_repository(files) { |results| expect(result_for(results, "AF-06").status).to eq("fail") }
+      end
+    end
   end
 
   describe "AF-07 — critical mutations reach a Policy" do
@@ -348,6 +424,70 @@ RSpec.describe Opanel::Gates::FitnessFunctions do
 
       in_repository(files, metadata: metadata) do |results|
         expect(result_for(results, "AF-07").status).to eq("pass")
+      end
+    end
+
+    # M00-R10. Naming the Policy was the whole test, so anything that spelled it
+    # cleared the check: a comment, a message, a constant nobody calls. The rule
+    # claims the mutation *reaches* an authorization path.
+    describe "an inert mention of the Policy" do
+      {
+        "a comment" => <<~RUBY,
+          class DeleteService
+            def call(service:)
+              # TODO: route this through ServicePolicy#destroy? before M02
+              service.destroy!
+            end
+          end
+        RUBY
+        "an error message" => <<~RUBY,
+          class DeleteService
+            def call(service:)
+              raise NotAuthorized, "ServicePolicy denied destroy?" if service.locked?
+              service.destroy!
+            end
+          end
+        RUBY
+        "a constant nobody calls" => <<~RUBY
+          class DeleteService
+            POLICY = ServicePolicy
+
+            def call(service:)
+              service.destroy!
+            end
+          end
+        RUBY
+      }.each do |shape, source|
+        it "is not an authorization path: #{shape}" do
+          files = {
+            "app/policies/service_policy.rb" => policy,
+            "app/commands/delete_service.rb" => source
+          }
+
+          in_repository(files, metadata: metadata) do |results|
+            expect(result_for(results, "AF-07").status).to eq("fail")
+            expect(result_for(results, "AF-07").violations.first.detail).to match(/never reaches/)
+          end
+        end
+      end
+
+      it "still accepts the Policy invoked across two lines" do
+        files = {
+          "app/policies/service_policy.rb" => policy,
+          "app/commands/delete_service.rb" => <<~RUBY
+            class DeleteService
+              def call(actor:, service:)
+                ServicePolicy.new(actor: actor, service: service)
+                             .destroy? or raise NotAuthorized
+                service.destroy!
+              end
+            end
+          RUBY
+        }
+
+        in_repository(files, metadata: metadata) do |results|
+          expect(result_for(results, "AF-07").status).to eq("pass")
+        end
       end
     end
   end

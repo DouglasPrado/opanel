@@ -255,35 +255,86 @@ module Opanel
         # An assignment *to* a redaction is the control working, not a leak.
         REDACTING = /REDACT|\[REDACTED\]|Redaction|filter_parameters|sensitive_field_names/i
 
+        # A call is not a line. `Rails.logger.info(` with its payload on the
+        # following lines is ordinary Ruby, and the rule only ever examined the
+        # line the sink was written on — so the value the call was carrying was
+        # never looked at. Bounded, because a checker that reads to end-of-file
+        # after an unbalanced paren reports the whole file.
+        MAX_CALL_LINES = 25
+
         def violations
           fields = metadata.fetch("sensitive_field_names", [])
           return [] if fields.empty?
 
           pattern = /\b(#{fields.map { |field| Regexp.escape(field) }.join('|')})\b/
 
-          scan(EMITTERS, pattern, "a sensitive field name reaches a serializer or audit payload") +
-            scan(SINK_FILES, pattern, "a sensitive field name reaches a log, error or render sink",
-              sink: true)
+          scan_emitters(pattern) + scan_sinks(pattern)
         end
 
         private
 
-        def scan(globs, pattern, detail, sink: false)
-          exempt = metadata.fetch("fitness_self_referential", [])
+        REMEDY = "reference a SecretVersion id instead. Revealing a secret is a separate, " \
+                 "permissioned, re-authenticated and audited action (Annex C §12)."
 
-          files(*globs).flat_map do |path|
+        def exempt = metadata.fetch("fitness_self_referential", [])
+
+        def scan_emitters(pattern)
+          files(*EMITTERS).flat_map do |path|
             next [] if exempt.include?(relative(path))
 
             each_code_line(path).filter_map do |line, number|
               next unless line.match?(pattern)
-              next if sink && !line.match?(SINK)
               next if line.match?(REDACTING)
 
-              violation(path, number, detail,
-                "reference a SecretVersion id instead. Revealing a secret is a separate, " \
-                "permissioned, re-authenticated and audited action (Annex C §12).")
+              violation(path, number,
+                "a sensitive field name reaches a serializer or audit payload", REMEDY)
             end
           end
+        end
+
+        def scan_sinks(pattern)
+          files(*SINK_FILES).flat_map do |path|
+            next [] if exempt.include?(relative(path))
+
+            lines = each_code_line(path).to_a
+
+            lines.each_index.filter_map do |index|
+              line, number = lines[index]
+              next unless line.match?(SINK)
+
+              # The whole expression, then the line inside it that carries the
+              # value — so a `[REDACTED]` elsewhere in the same call does not
+              # clear a leak two lines below it.
+              carried = call_expression(lines, index).find do |candidate|
+                candidate.match?(pattern) && !candidate.match?(REDACTING)
+              end
+              next if carried.nil?
+
+              violation(path, number,
+                "a sensitive field name reaches a log, error or render sink", REMEDY)
+            end
+          end
+        end
+
+        # The sink line plus its continuations: until the brackets it opened
+        # close, or — when it opens a block — until that block's `end`.
+        def call_expression(lines, index)
+          opens_block = lines[index][0].match?(/\bdo\b\s*(?:\|[^|]*\|)?\s*\z/)
+          depth = 0
+          collected = []
+
+          lines[index, MAX_CALL_LINES].each_with_index do |(line, _number), offset|
+            collected << line
+            depth += line.count("([{") - line.count(")]}")
+
+            if opens_block
+              break if offset.positive? && line.match?(/\A\s*end\b/)
+            elsif depth <= 0
+              break
+            end
+          end
+
+          collected
         end
       end
 
@@ -325,20 +376,29 @@ module Opanel
               "#{mutation['command']} is declared critical but its Command does not exist") ]
           end
 
-          return [] if authorized?(read(command_path), policy, action)
+          return [] if authorized?(command_path, policy, action)
 
           [ finding(relative(command_path),
             "#{mutation['command']} never reaches #{policy}##{mutation['action']} — the Policy " \
             "exists and nothing calls it, so the mutation has no authorization path") ]
         end
 
-        # The Command reaches the control when it names the Policy, or calls
-        # `authorize` with the action. Looser than that — any occurrence of the
-        # action word — matches `record.destroy!` and would clear a Command that
-        # authorizes nothing.
-        def authorized?(source, policy, action)
-          source.match?(/\b#{Regexp.escape(policy)}\b/) ||
-            source.match?(/\bauthorize!?[\s(]+:?#{action}\b/)
+        # The Command reaches the control when it **runs** it: the Policy is
+        # constructed or called and the action predicate is invoked, or
+        # `authorize` is passed the action.
+        #
+        # Naming the Policy was enough before, anywhere in the file. A comment
+        # saying "TODO: go through ServicePolicy", a string in an error message,
+        # or the constant sitting in an unused `let` all cleared the check — so a
+        # Command with no authorization at all passed as long as somebody had
+        # written the word.
+        def authorized?(path, policy, action)
+          code = each_code_line(path).to_a.map(&:first).join
+
+          invokes_policy = code.match?(/\b#{Regexp.escape(policy)}\b\s*(?:\.\s*\w|\()/) &&
+            code.match?(/\.\s*#{action}\?/)
+
+          invokes_policy || code.match?(/\bauthorize!?\s*[( ]\s*:?#{action}\b/)
         end
 
         def command_file(mutation)
