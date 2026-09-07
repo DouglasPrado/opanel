@@ -93,6 +93,7 @@ OPANEL_FIX_ATTEMPT="$FIX_ATTEMPT" \
 OPANEL_REVIEW_STATE="$STATE" \
 "$CLAUDE_BIN" --print \
   --permission-mode "${CLAUDE_PERMISSION_MODE:-acceptEdits}" \
+  --allowedTools "Read,Edit,Write,Bash,Glob,Grep" \
   --permission-prompts none \
   --no-session-persistence \
   --output-format text \
