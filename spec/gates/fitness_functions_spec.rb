@@ -212,13 +212,66 @@ RSpec.describe Opanel::Gates::FitnessFunctions do
         expect(result_for(results, "AF-06").status).to eq("pass")
       end
     end
+
+    # The gap: the rule says "logs" and looked at five directories. A controller,
+    # a command, a reconciler and everything under lib/ could log a secret and
+    # this reported pass — which is where somebody actually writes the leak.
+    it "detects a secret logged from a controller" do
+      files = { "app/controllers/sessions_controller.rb" => <<~RUBY }
+        class SessionsController < ApplicationController
+          def create
+            Rails.logger.info("sign-in attempt with \#{params[:password]}")
+          end
+        end
+      RUBY
+
+      in_repository(files, metadata: { "sensitive_field_names" => %w[password api_key] }) do |results|
+        expect(result_for(results, "AF-06").status).to eq("fail")
+        expect(result_for(results, "AF-06").violations.first.detail).to match(/log, error or render sink/)
+      end
+    end
+
+    it "detects a secret handed to an error reporter" do
+      files = { "app/commands/rotate_secret.rb" => <<~RUBY }
+        class RotateSecret
+          def call
+            Rails.error.report(StandardError.new(secret_value))
+          end
+        end
+      RUBY
+
+      in_repository(files) { |results| expect(result_for(results, "AF-06").status).to eq("fail") }
+    end
+
+    it "detects a secret rendered in a response" do
+      files = { "app/controllers/vault_controller.rb" =>
+        "class VaultController\n  def show = render json: { api_key: @secret.api_key }\n  end\n" }
+
+      in_repository(files) { |results| expect(result_for(results, "AF-06").status).to eq("fail") }
+    end
+
+    # A rule that fires on a mention rather than on a sink gets ignored, and an
+    # ignored rule protects nothing.
+    it "accepts a controller that names a sensitive field without emitting it" do
+      files = { "app/controllers/vault_controller.rb" => <<~RUBY }
+        class VaultController < ApplicationController
+          def update
+            @secret.update!(secret_value: params.require(:secret_value))
+          end
+        end
+      RUBY
+
+      in_repository(files) { |results| expect(result_for(results, "AF-06").status).to eq("pass") }
+    end
   end
 
-  describe "AF-07 — critical mutations have a Policy" do
+  describe "AF-07 — critical mutations reach a Policy" do
     let(:metadata) do
       { "critical_mutations" => [ { "command" => "DeleteService", "policy" => "ServicePolicy",
 "action" => "destroy?" } ] }
     end
+
+    let(:policy) { "class ServicePolicy\n  def destroy? = owner?\nend\n" }
 
     it "detects a declared mutation with no policy" do
       in_repository({}, metadata: metadata) do |results|
@@ -235,8 +288,63 @@ RSpec.describe Opanel::Gates::FitnessFunctions do
       end
     end
 
-    it "accepts a policy with the action" do
-      files = { "app/policies/service_policy.rb" => "class ServicePolicy\n  def destroy? = owner?\nend\n" }
+    it "detects a declared mutation whose Command does not exist" do
+      in_repository({ "app/policies/service_policy.rb" => policy }, metadata: metadata) do |results|
+        expect(result_for(results, "AF-07").status).to eq("fail")
+        expect(result_for(results, "AF-07").violations.first.detail).to match(/Command does not exist/)
+      end
+    end
+
+    # The gap the rule had: a Policy with the right method, and a Command that
+    # never calls it. The file existed, the authorization did not.
+    it "detects a Command that never reaches the Policy" do
+      files = {
+        "app/policies/service_policy.rb" => policy,
+        "app/commands/delete_service.rb" => <<~RUBY
+          class DeleteService
+            def call(service:)
+              service.destroy!
+            end
+          end
+        RUBY
+      }
+
+      in_repository(files, metadata: metadata) do |results|
+        expect(result_for(results, "AF-07").status).to eq("fail")
+        expect(result_for(results, "AF-07").violations.first.detail).to match(/never reaches/)
+      end
+    end
+
+    it "accepts a Command that goes through the Policy" do
+      files = {
+        "app/policies/service_policy.rb" => policy,
+        "app/commands/delete_service.rb" => <<~RUBY
+          class DeleteService
+            def call(actor:, service:)
+              ServicePolicy.new(actor, service).destroy? or raise NotAuthorized
+              service.destroy!
+            end
+          end
+        RUBY
+      }
+
+      in_repository(files, metadata: metadata) do |results|
+        expect(result_for(results, "AF-07").status).to eq("pass")
+      end
+    end
+
+    it "accepts a Command that authorizes by action name" do
+      files = {
+        "app/policies/service_policy.rb" => policy,
+        "app/commands/delete_service.rb" => <<~RUBY
+          class DeleteService
+            def call(actor:, service:)
+              authorize! :destroy, service, actor: actor
+              service.destroy!
+            end
+          end
+        RUBY
+      }
 
       in_repository(files, metadata: metadata) do |results|
         expect(result_for(results, "AF-07").status).to eq("pass")

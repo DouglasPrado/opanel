@@ -215,9 +215,45 @@ module Opanel
       end
 
       # AF-06 — the last automated line against a secret leaking.
+      #
+      # Two shapes, because the first alone does not cover what the rule says.
+      # It looked at five directories and called that "logs": a
+      # `Rails.logger.info(user.password)` in a controller, a command, a
+      # reconciler or anywhere under lib/ was never examined, and the leak the
+      # rule exists to catch is exactly the one somebody writes outside a
+      # serializer.
+      #
+      #   * an **emitter** — a serializer, a jbuilder view, an audit or operation
+      #     payload — naming a sensitive field at all;
+      #   * a **sink** — a log call, an error report, a render, an audit
+      #     publication — anywhere in the application, carrying one.
       class Af06NoPlaintextSecretInOutput < Base
         def id = "AF-06"
         def rule = "Secret plaintext does not appear in serializers, logs or audit payloads."
+
+        # Whose job is to emit. A sensitive field name here is a leak whether or
+        # not the line looks like a call.
+        EMITTERS = %w[
+          app/serializers/**/*.rb app/views/**/*.jbuilder
+          app/audit/**/*.rb app/operations/**/*.rb app/events/**/*.rb app/jobs/**/*.rb
+        ].freeze
+
+        # Where a sink may be written. The whole application, plus the platform
+        # library — not the gate scripts, which contain the patterns because they
+        # are the checkers.
+        SINK_FILES = %w[app/**/*.rb lib/opanel/**/*.rb].freeze
+
+        # Anything that turns a value into output somebody else can read.
+        SINK = /
+          \b(?:Rails\.logger|logger|log)\s*\.\s*(?:debug|info|warn|error|fatal|unknown)\b |
+          \bRails\.error\.(?:report|handle|record|unexpected)\b |
+          (?:^|[^\w.])(?:puts|print|pp|warn)\s |
+          \brender\s+(?:json|plain|xml|inertia):|\bto_json\b |
+          (?:^|[^\w.])(?:audit|publish|emit|notify|broadcast)\w*\s*[( ]
+        /x
+
+        # An assignment *to* a redaction is the control working, not a leak.
+        REDACTING = /REDACT|\[REDACTED\]|Redaction|filter_parameters|sensitive_field_names/i
 
         def violations
           fields = metadata.fetch("sensitive_field_names", [])
@@ -225,17 +261,25 @@ module Opanel
 
           pattern = /\b(#{fields.map { |field| Regexp.escape(field) }.join('|')})\b/
 
-          files(
-            "app/serializers/**/*.rb", "app/views/**/*.jbuilder",
-            "app/audit/**/*.rb", "app/operations/**/*.rb", "app/jobs/**/*.rb"
-          ).flat_map do |path|
+          scan(EMITTERS, pattern, "a sensitive field name reaches a serializer or audit payload") +
+            scan(SINK_FILES, pattern, "a sensitive field name reaches a log, error or render sink",
+              sink: true)
+        end
+
+        private
+
+        def scan(globs, pattern, detail, sink: false)
+          exempt = metadata.fetch("fitness_self_referential", [])
+
+          files(*globs).flat_map do |path|
+            next [] if exempt.include?(relative(path))
+
             each_code_line(path).filter_map do |line, number|
               next unless line.match?(pattern)
-              # An assignment *to* a redaction is the control working, not a leak.
-              next if line.match?(/REDACT|\[REDACTED\]|Redaction|filter_parameters|sensitive_field_names/i)
+              next if sink && !line.match?(SINK)
+              next if line.match?(REDACTING)
 
-              violation(path, number,
-                "a sensitive field name reaches a serializer, log or audit payload",
+              violation(path, number, detail,
                 "reference a SecretVersion id instead. Revealing a secret is a separate, " \
                 "permissioned, re-authenticated and audited action (Annex C §12).")
             end
@@ -244,32 +288,72 @@ module Opanel
       end
 
       # AF-07 — a mutation without a Policy is a mutation without authorization.
+      #
+      # Two halves, because the first alone proves nothing: the Policy exists
+      # with the declared action, **and** the Command actually goes through it. A
+      # policy file nobody calls is a file. The rule claimed to check "a
+      # server-side authorization path" and checked only that one end of it
+      # existed.
       class Af07CriticalMutationsHavePolicies < Base
         def id = "AF-07"
-        def rule = "Critical mutations have a server-side authorization path."
+        def rule = "Critical mutations reach a server-side authorization path."
 
         def violations
           mutations = metadata.fetch("critical_mutations", [])
           return [] if mutations.empty?
 
-          mutations.filter_map do |mutation|
-            policy_file = File.join(root, "app/policies", "#{underscore(mutation['policy'])}.rb")
-            action = Regexp.escape(mutation["action"].to_s.delete("?"))
-            next if File.exist?(policy_file) && read(policy_file).match?(/def\s+#{action}\??/)
-
-            Violation.new(
-              function: id,
-              file: "app/policies/#{underscore(mutation['policy'])}.rb",
-              line: nil,
-              detail: "#{mutation['command']} is declared critical but " \
-                      "#{mutation['policy']}##{mutation['action']} does not exist",
-              remedy: "authorization is server-side and contextual, and every new mutation needs a " \
-                      "negative test including a cross-team attempt (Annex C §7.3)."
-            )
-          end
+          mutations.flat_map { |mutation| mutation_violations(mutation) }
         end
 
         private
+
+        def mutation_violations(mutation)
+          policy = mutation["policy"].to_s
+          action = Regexp.escape(mutation["action"].to_s.delete("?"))
+          policy_path = "app/policies/#{underscore(policy)}.rb"
+
+          unless File.exist?(File.join(root, policy_path)) &&
+                 read(File.join(root, policy_path)).match?(/def\s+#{action}\??/)
+            return [ finding(policy_path,
+              "#{mutation['command']} is declared critical but #{policy}##{mutation['action']} " \
+              "does not exist") ]
+          end
+
+          command_path = command_file(mutation)
+          if command_path.nil?
+            return [ finding("app/commands/#{underscore(mutation['command'])}.rb",
+              "#{mutation['command']} is declared critical but its Command does not exist") ]
+          end
+
+          return [] if authorized?(read(command_path), policy, action)
+
+          [ finding(relative(command_path),
+            "#{mutation['command']} never reaches #{policy}##{mutation['action']} — the Policy " \
+            "exists and nothing calls it, so the mutation has no authorization path") ]
+        end
+
+        # The Command reaches the control when it names the Policy, or calls
+        # `authorize` with the action. Looser than that — any occurrence of the
+        # action word — matches `record.destroy!` and would clear a Command that
+        # authorizes nothing.
+        def authorized?(source, policy, action)
+          source.match?(/\b#{Regexp.escape(policy)}\b/) ||
+            source.match?(/\bauthorize!?[\s(]+:?#{action}\b/)
+        end
+
+        def command_file(mutation)
+          name = "#{underscore(mutation['command'])}.rb"
+
+          files("app/commands/**/*.rb", "app/**/*.rb").find { |path| File.basename(path) == name }
+        end
+
+        def finding(path, detail)
+          Violation.new(
+            function: id, file: path, line: nil, detail: detail,
+            remedy: "authorization is server-side and contextual, and every new mutation needs a " \
+                    "negative test including a cross-team attempt (Annex C §7.3)."
+          )
+        end
 
         def underscore(name)
           name.to_s.gsub(/::/, "/").gsub(/([a-z\d])([A-Z])/, '\1_\2').downcase

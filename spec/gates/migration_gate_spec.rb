@@ -148,6 +148,73 @@ RSpec.describe Opanel::Gates::MigrationGate do
       RUBY
     end
 
+    # The bypass: every line between `reversible do` and an `end` was skipped by
+    # every rule, so writing the word made a destructive change invisible to the
+    # contract-phase rule — which is not about reversibility at all. `reversible`
+    # says the author wrote the inverse; it says nothing about whether dropping
+    # the table now is safe.
+    it "detects a `drop_table` written inside `reversible`" do
+      expect(rules_for(<<~RUBY)).to include("CONTRACT_PHASE")
+        class Example < ActiveRecord::Migration[8.1]
+          def change
+            reversible do |direction|
+              direction.up { drop_table :infrastructure_checkpoints }
+              direction.down { create_table(:infrastructure_checkpoints) { |t| t.string :name } }
+            end
+          end
+        end
+      RUBY
+    end
+
+    it "detects destructive SQL written inside `reversible`" do
+      expect(rules_for(<<~RUBY)).to include("CONTRACT_PHASE")
+        class Example < ActiveRecord::Migration[8.1]
+          def change
+            reversible do |direction|
+              direction.up { execute "DROP TABLE infrastructure_checkpoints" }
+              direction.down { execute "SELECT 1" }
+            end
+          end
+        end
+      RUBY
+    end
+
+    # The block used to end at the first `end` at any depth, so a nested
+    # `do ... end` left the checker convinced it was still inside `reversible`
+    # for the rest of the file.
+    it "stops treating code as reversible after the block's own end" do
+      expect(rules_for(<<~RUBY)).to include("CONTRACT_PHASE")
+        class Example < ActiveRecord::Migration[8.1]
+          def change
+            reversible do |direction|
+              direction.up do
+                execute "SELECT 1"
+              end
+            end
+
+            drop_table :infrastructure_checkpoints do |t|
+              t.string :name
+            end
+          end
+        end
+      RUBY
+    end
+
+    it "still accepts a reversible destructive change that declares phase and reference" do
+      expect(rules_for(<<~RUBY)).to be_empty
+        # migration-phase: contract
+        # migration-contract-ref: ADR-0009
+        class Example < ActiveRecord::Migration[8.1]
+          def change
+            reversible do |direction|
+              direction.up { drop_table :infrastructure_checkpoints }
+              direction.down { create_table(:infrastructure_checkpoints) { |t| t.string :name } }
+            end
+          end
+        end
+      RUBY
+    end
+
     it "ignores a destructive operation that only appears in a comment" do
       expect(rules_for(<<~RUBY)).not_to include("CONTRACT_PHASE")
         # This migration deliberately does not drop_table anything.
@@ -207,6 +274,19 @@ RSpec.describe Opanel::Gates::MigrationGate do
           def change
             create_table(:example) { |t| t.string :name }
             add_index :example, :name
+          end
+        end
+      RUBY
+    end
+
+    it "detects an index build written inside `reversible`" do
+      expect(rules_for(<<~RUBY)).to include("INDEX_SAFETY")
+        class Example < ActiveRecord::Migration[8.1]
+          def change
+            reversible do |direction|
+              direction.up { add_index :infrastructure_checkpoints, :counter }
+              direction.down { remove_index :infrastructure_checkpoints, :counter }
+            end
           end
         end
       RUBY

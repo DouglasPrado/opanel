@@ -149,7 +149,7 @@ module Opanel
       def destructive_lines
         found = []
 
-        each_code_line do |line, number|
+        each_code_line do |line, number, _in_reversible|
           DESTRUCTIVE_OPERATIONS.each do |operation|
             found << [ operation, number ] if line.match?(/(^|[^\w.])#{operation}\b/)
           end
@@ -163,7 +163,7 @@ module Opanel
       def index_lines
         found = []
 
-        each_code_line do |line, number|
+        each_code_line do |line, number, _in_reversible|
           next unless line.match?(/(^|[^\w.])add_index\b/) ||
             (line.match?(/(^|[^\w.])add_reference\b/) && !line.match?(/index:\s*false/))
 
@@ -178,8 +178,10 @@ module Opanel
 
         result = nil
 
-        each_code_line do |line, number|
-          next if result
+        each_code_line do |line, number, in_reversible|
+          # This is the one rule `reversible` legitimately answers: the author has
+          # written the inverse by hand.
+          next if result || in_reversible
 
           IRREVERSIBLE_IN_CHANGE.each do |command|
             result = [ command, number ] if line.match?(/(^|[^\w.])#{command}\b/)
@@ -199,29 +201,47 @@ module Opanel
         result
       end
 
+      # Opens a block that has to be closed by `end`. A `{ ... }` block does not,
+      # and a modifier `if` does not either — both would unbalance the depth.
+      BLOCK_OPENER = /
+        \bdo\b\s*(\|[^|]*\|)?\s*\z |
+        \A(if|unless|case|begin|while|until|for|def|class|module)\b
+      /x
+
       # Comments carry the markers, so rules that look for operations must not match
-      # a commented-out line, and `reversible do ... end` blocks are explicitly
-      # handled by the author.
+      # a commented-out line.
+      #
+      # `reversible do ... end` is yielded like any other code, with a flag saying
+      # so. Skipping the block entirely — which is what this did — hid a
+      # `drop_table` from the contract-phase rule and an `add_index` from the
+      # index-safety rule: writing `reversible` made a destructive migration
+      # invisible to the two rules that are not about reversibility at all. Only
+      # `irreversible_command_in_change` may read the flag.
+      #
+      # The depth is tracked rather than assumed. The previous version decremented
+      # on the first `end` at any nesting level, so `reversible do |dir| dir.up
+      # do ... end end` left the checker convinced it was still inside the block
+      # for the rest of the file.
       def each_code_line
-        inside_reversible = 0
+        return enum_for(:each_code_line) unless block_given?
+
+        depth = 0
+        reversible_at = nil
 
         lines.each_with_index do |line, index|
-          number = index + 1
           stripped = line.strip
+          next if stripped.empty? || stripped.start_with?("#")
 
-          next if stripped.start_with?("#")
+          reversible_at = depth if reversible_at.nil? && stripped.match?(/(^|[^\w.])reversible\s+do\b/)
 
-          if stripped.match?(/^reversible\s+do\b/)
-            inside_reversible += 1
-            next
-          end
+          yield line, index + 1, !reversible_at.nil?
 
-          if inside_reversible.positive?
-            inside_reversible -= 1 if stripped == "end"
-            next
-          end
+          depth += 1 if stripped.match?(BLOCK_OPENER)
 
-          yield line, number
+          next unless stripped == "end" || stripped.start_with?("end ", "end.", "end)")
+
+          depth -= 1
+          reversible_at = nil if reversible_at && depth <= reversible_at
         end
       end
 
