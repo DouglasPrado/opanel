@@ -20,8 +20,8 @@ declare acceptance. The independent verdict belongs to Codex.
 | Findings Critical corrigidos | 1 / 1 |
 | Findings High corrigidos | 15 / 15 |
 | Findings Medium / Low | 0 / 0 (o review não emitiu nenhum) |
-| Commits | 11 (`04db7e6..77a3cb0`) |
-| Diff | 57 arquivos, +3936 / −224 |
+| Commits de correção | 11 (`04db7e6..77a3cb0`), mais os commits de fechamento que carregam este relatório |
+| Diff da correção | 57 arquivos, +3936 / −224 (`2a38d11..77a3cb0`) |
 | Novas dependências | nenhuma |
 | Novo ADR | nenhum |
 | Bloqueios | nenhum |
@@ -609,9 +609,12 @@ mesmo check que, antes de M00-R05, era satisfeito por um certificado escrito por
 um gate reprovado. `tests` passa lendo `rspec-metadata.json` com
 `type=all`, `tests=651`, `failures=0` e o commit de `HEAD`.
 
-Este relatório e o próprio commit que o contém são a única coisa que muda depois
-dessa medição; reexecutar os três comandos acima em `HEAD` reproduz o mesmo
-resultado.
+Depois dessa medição, os únicos commits são os que corrigem e completam este
+relatório. Cada um deles foi seguido pela mesma reexecução, com o mesmo
+resultado, e o resultado da última está registrado na mensagem do commit que a
+produziu — uma medição não cabe dentro do commit que ela mede, e a mensagem é o
+lugar imutável mais próximo. Reexecutar os três comandos acima em `HEAD`
+reproduz o mesmo resultado.
 
 ## Findings não corrigidos
 
