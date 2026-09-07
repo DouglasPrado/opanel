@@ -11,15 +11,32 @@
 # Authorization header, a session cookie or a revealed secret would be published
 # to CI storage and to whoever has the artifact link.
 #
-# Text artifacts are masked in place. Archives and binaries cannot be masked
-# without rewriting them, so a hit deletes the artifact and the command exits
-# non-zero: losing a diagnostic is recoverable, publishing a credential is not.
+# Three dispositions, and the third is the one that matters:
+#
+#   * **Text** is masked in place.
+#   * **An archive** is opened and every entry is inspected. A Playwright trace is
+#     a ZIP whose JSON is DEFLATE-compressed, so grepping the container's bytes
+#     found nothing and reported the artifact clean — which is how a recoverable
+#     credential passed this check. Reading the container is not inspecting it.
+#   * **Anything that cannot be inspected** is refused. Not knowing what is inside
+#     an artifact is not the same as knowing it is clean, so an unreadable
+#     archive, an unknown binary format or a corrupt entry is deleted and the
+#     command exits non-zero. Losing a diagnostic is recoverable; publishing a
+#     credential is not.
 
 require "json"
 require "fileutils"
+require "stringio"
+require "zlib"
 
 PATTERNS = {
   "authorization-header" => /(authorization"?\s*[:=]\s*"?)(Bearer|Basic|Token)\s+[A-Za-z0-9._\-\/+=]+/i,
+  # The same header, as a trace actually stores it. Playwright writes each one as
+  # `{"name":"authorization","value":"Bearer …"}`, so the name and the value are
+  # separated by the whole JSON encoding and the line-oriented pattern above
+  # never reaches across it. This is the shape inside the archive, which is the
+  # only place these headers appear at all.
+  "header-object" => /("name"\s*:\s*"(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token)"\s*,\s*"value"\s*:\s*")([^"\r\n]{8,})/i,
   "cookie-header" => /((?:set-)?cookie"?\s*[:=]\s*"?)([^"\r\n;]{8,})/i,
   "password-assignment" => /((?:password|passwd|pwd|secret|passphrase)"?\s*[:=]\s*"?)([^"\s,}]{4,})/i,
   "token-assignment" => /((?:api[_-]?key|token|access[_-]?token|refresh[_-]?token)"?\s*[:=]\s*"?)([A-Za-z0-9._\-]{12,})/i,
@@ -29,7 +46,26 @@ PATTERNS = {
 }.freeze
 
 TEXT_EXTENSIONS = %w[.txt .log .json .xml .html .md .yml .yaml .csv .har].freeze
+
+# Containers this tool knows how to open. A Playwright trace and its resource
+# bundles are ZIP; a coverage or JUnit upload is sometimes gzip.
+ARCHIVE_EXTENSIONS = %w[.zip .trace .jar .gz .tgz].freeze
+
+# Formats that cannot be inspected for text at all, and whose publication is
+# nevertheless accepted: a screenshot or a video of an E2E run against synthetic
+# fixtures. The environment they are produced in holds no production credential
+# — bin/workspace-guardrail refuses to let the suite start otherwise (Annex H
+# §3.2) — and the bytes are still scanned for the patterns above, which catches a
+# credential embedded in metadata or in an uncompressed chunk.
+#
+# **Anything not listed here and not readable is deleted.** Adding an extension
+# is widening what gets published unexamined, so it needs a Story that says why.
+PUBLISHABLE_OPAQUE = %w[.png .jpg .jpeg .gif .webp .webm .mp4 .avif .ico .woff .woff2 .ttf .pdf].freeze
+
 MASKED = "[REDACTED]"
+
+# The container was recognised but could not be read. Fails closed.
+class Unreadable < StandardError; end
 
 format = "text"
 roots = []
@@ -52,8 +88,18 @@ end
 
 roots = %w[tmp/test-results playwright-report test-results] if roots.empty?
 
+def binary_read(path)
+  File.read(path, encoding: "BINARY")
+end
+
+def to_text(bytes)
+  bytes.to_s.dup.force_encoding("BINARY").encode("UTF-8", invalid: :replace, undef: :replace, replace: "")
+end
+
 def text_artifact?(path)
   return true if TEXT_EXTENSIONS.include?(File.extname(path).downcase)
+  return false if ARCHIVE_EXTENSIONS.include?(File.extname(path).downcase)
+  return false if PUBLISHABLE_OPAQUE.include?(File.extname(path).downcase)
 
   sample = File.read(path, 4096, mode: "rb").to_s
   !sample.empty? && sample.valid_encoding? && !sample.include?("\u0000")
@@ -78,6 +124,107 @@ def mask(content)
   end
 end
 
+# --- Archives ----------------------------------------------------------------
+#
+# The ZIP central directory rather than the local headers: a streamed entry puts
+# its sizes in a trailing data descriptor, so the local header alone does not say
+# how many bytes to read. The central directory always does.
+
+ZIP_END_OF_CENTRAL_DIRECTORY = "PK\x05\x06".b
+ZIP_CENTRAL_FILE_HEADER = "PK\x01\x02".b
+ZIP_LOCAL_FILE_HEADER = "PK\x03\x04".b
+ZIP64_MARKER = 0xFFFFFFFF
+
+STORED = 0
+DEFLATED = 8
+
+def zip?(bytes) = bytes.start_with?(ZIP_LOCAL_FILE_HEADER)
+def gzip?(bytes) = bytes.start_with?("\x1F\x8B".b)
+
+def zip_entries(bytes)
+  eocd = bytes.rindex(ZIP_END_OF_CENTRAL_DIRECTORY)
+  raise Unreadable, "no end-of-central-directory record" if eocd.nil?
+
+  count = bytes[eocd + 10, 2].to_s.unpack1("v")
+  offset = bytes[eocd + 16, 4].to_s.unpack1("V")
+  raise Unreadable, "unreadable central directory" if count.nil? || offset.nil?
+  raise Unreadable, "ZIP64 archives are not inspected" if offset == ZIP64_MARKER
+
+  entries = []
+  cursor = offset
+
+  count.times do
+    unless bytes[cursor, 4] == ZIP_CENTRAL_FILE_HEADER && bytes.bytesize >= cursor + 46
+      raise Unreadable, "central directory record is truncated"
+    end
+
+    method = bytes[cursor + 10, 2].unpack1("v")
+    compressed_size = bytes[cursor + 20, 4].unpack1("V")
+    name_length = bytes[cursor + 28, 2].unpack1("v")
+    extra_length = bytes[cursor + 30, 2].unpack1("v")
+    comment_length = bytes[cursor + 32, 2].unpack1("v")
+    local_offset = bytes[cursor + 42, 4].unpack1("V")
+    name = bytes[cursor + 46, name_length].to_s
+
+    if [ compressed_size, local_offset ].include?(ZIP64_MARKER)
+      raise Unreadable, "ZIP64 entry #{name} is not inspected"
+    end
+
+    entries << { name: name, method: method, compressed_size: compressed_size, offset: local_offset }
+    cursor += 46 + name_length + extra_length + comment_length
+  end
+
+  entries
+end
+
+# A ZIP entry holds a raw DEFLATE stream, without the zlib header
+# `Zlib::Inflate.inflate` expects — hence the negative window size. The stream is
+# in memory and holds no descriptor, so it is left to the collector rather than
+# closed in an `ensure` that would have to swallow its own failure.
+def inflate_raw(data)
+  Zlib::Inflate.new(-Zlib::MAX_WBITS).inflate(data)
+end
+
+def zip_entry_content(bytes, entry)
+  header = entry[:offset]
+  raise Unreadable, "local header of #{entry[:name]} is missing" unless bytes[header, 4] == ZIP_LOCAL_FILE_HEADER
+
+  name_length = bytes[header + 26, 2].unpack1("v")
+  extra_length = bytes[header + 28, 2].unpack1("v")
+  data = bytes[header + 30 + name_length + extra_length, entry[:compressed_size]].to_s
+
+  case entry[:method]
+  when STORED then data
+  when DEFLATED then inflate_raw(data)
+  else raise Unreadable, "#{entry[:name]} uses compression method #{entry[:method]}"
+  end
+rescue Zlib::Error => error
+  raise Unreadable, "#{entry[:name]} could not be decompressed: #{error.class}"
+end
+
+# Every entry, decompressed. Nested archives are opened too — a trace bundles
+# resource archives, and one level of nesting would otherwise be a blind spot.
+def archive_contents(bytes, depth: 0)
+  raise Unreadable, "archive nesting is deeper than 3 levels" if depth > 3
+
+  if gzip?(bytes)
+    inflated = Zlib::GzipReader.new(StringIO.new(bytes)).read
+    return [ inflated ] + (zip?(inflated) ? archive_contents(inflated, depth: depth + 1) : [])
+  end
+
+  raise Unreadable, "not a ZIP or gzip container" unless zip?(bytes)
+
+  zip_entries(bytes).flat_map do |entry|
+    content = zip_entry_content(bytes, entry)
+    nested = zip?(content) || gzip?(content) ? archive_contents(content, depth: depth + 1) : []
+    [ content ] + nested
+  end
+rescue Zlib::Error => error
+  raise Unreadable, "could not be decompressed: #{error.class}"
+end
+
+# --- Walk --------------------------------------------------------------------
+
 masked = []
 deleted = []
 scanned = 0
@@ -89,27 +236,37 @@ roots.each do |root|
     next unless File.file?(path)
 
     scanned += 1
+    extension = File.extname(path).downcase
 
     if text_artifact?(path)
-      content = File.read(path, encoding: "BINARY")
-        .encode("UTF-8", invalid: :replace, undef: :replace, replace: "")
+      content = to_text(binary_read(path))
       findings = scan(content)
       next if findings.empty?
 
       File.write(path, mask(content))
       masked << { file: path, patterns: findings }
-    else
-      # An archive or a media file: read it as bytes and look for the same
-      # markers. A trace zip stores its JSON uncompressed often enough that this
-      # catches the common case, and a false positive costs one artifact.
-      content = File.read(path, encoding: "BINARY")
-        .encode("UTF-8", invalid: :replace, undef: :replace, replace: "")
-      findings = scan(content)
-      next if findings.empty?
-
-      FileUtils.rm_f(path)
-      deleted << { file: path, patterns: findings }
+      next
     end
+
+    bytes = binary_read(path)
+    findings = scan(to_text(bytes))
+
+    if ARCHIVE_EXTENSIONS.include?(extension) || zip?(bytes) || gzip?(bytes)
+      begin
+        archive_contents(bytes).each { |entry| findings.concat(scan(to_text(entry))) }
+      rescue Unreadable => error
+        # An archive nobody could open is an archive nobody has cleared.
+        findings << "uninspectable-archive (#{error.message})"
+      end
+    elsif !PUBLISHABLE_OPAQUE.include?(extension)
+      findings << "uninspectable-format (#{extension.empty? ? 'no extension' : extension})"
+    end
+
+    findings = findings.uniq
+    next if findings.empty?
+
+    FileUtils.rm_f(path)
+    deleted << { file: path, patterns: findings }
   end
 end
 
@@ -130,7 +287,7 @@ else
   if deleted.empty?
     puts "redact-artifacts: PASS (#{scanned} artifact(s), #{masked.length} masked)"
   else
-    puts "redact-artifacts: FAIL — #{deleted.length} artifact(s) carried sensitive material and were removed"
+    puts "redact-artifacts: FAIL — #{deleted.length} artifact(s) could not be cleared and were removed"
   end
 end
 
