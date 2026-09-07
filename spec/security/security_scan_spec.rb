@@ -2,6 +2,11 @@ require "rails_helper"
 require "open3"
 require "tmpdir"
 require "fileutils"
+require "json"
+require "yaml"
+require Rails.root.join("lib/gates/dependency_gate")
+require Rails.root.join("lib/gates/secret_allowlist")
+require Rails.root.join("lib/gates/security_report")
 require Rails.root.join("lib/gates/security_waivers")
 
 # A scanner nobody proved can fail is a scanner that reports "clean" forever.
@@ -169,13 +174,38 @@ RSpec.describe "security scanning", type: :security do
   describe "the allowlist" do
     let(:config) { Rails.root.join("config/security/gitleaks.toml").read }
 
-    it "explains every entry" do
-      # Each allowlisted path or regex sits under a comment. An unexplained entry
-      # is indistinguishable from a real secret somebody hid.
-      allowlist = config.split("[allowlist]").last
+    # M00-10 AC4. This used to count `#` characters in the file, which a single
+    # paragraph at the top satisfies for any number of entries — and the way an
+    # entry gets added is by pasting it under a comment that was about something
+    # else.
+    it "explains every entry, checked one entry at a time" do
+      violations = Opanel::Gates::SecretAllowlist.check(Rails.root.to_s)
 
-      expect(allowlist.scan(/^\s*#/).length).to be >= 8,
-        "every allowlist entry needs a written reason"
+      expect(violations.map(&:message)).to be_empty
+    end
+
+    it "refuses an entry with no reason above it" do
+      Dir.mktmpdir do |directory|
+        FileUtils.mkdir_p(File.join(directory, "config/security"))
+        File.write(File.join(directory, "config/security/gitleaks.toml"), <<~TOML)
+          [allowlist]
+          paths = [
+            # Lockfiles are public by construction.
+            '''package-lock\\.json''',
+
+            '''app/vault/.*''',
+          ]
+        TOML
+
+        violations = Opanel::Gates::SecretAllowlist.check(directory)
+
+        expect(violations.map(&:entry)).to eq([ "app/vault/.*" ])
+        expect(violations.first.message).to include("carries no reason")
+      end
+    end
+
+    it "is a check bin/security runs, not a spec nobody wires up" do
+      expect(Rails.root.join("bin/security").read).to include("lib/gates/secret_allowlist.rb")
     end
 
     it "allowlists fixture values rather than whole security spec files" do
@@ -273,7 +303,23 @@ RSpec.describe "security scanning", type: :security do
     end
   end
 
+  # M00-10 AC7. The gate was documented as a checklist and never executed; what
+  # stood in for it was the spec below asserting that ten hand-written names
+  # appeared somewhere in the reports. A hand-written list does not notice the
+  # eleventh dependency, which is the one the gate exists for.
   describe "the Dependency Gate" do
+    def dependency_violations(files)
+      Dir.mktmpdir do |directory|
+        files.each do |path, content|
+          full = File.join(directory, path)
+          FileUtils.mkdir_p(File.dirname(full))
+          File.write(full, content)
+        end
+
+        Opanel::Gates::DependencyGate.check(root: directory)
+      end
+    end
+
     it "is documented with the questions Annex I §10.1 requires" do
       template = Rails.root.join("docs/templates/DEPENDENCY_JUSTIFICATION.md").read
 
@@ -282,16 +328,93 @@ RSpec.describe "security scanning", type: :security do
       end
     end
 
-    it "is applied: every dependency added in M00 is justified in a Story Report" do
-      reports = Dir.glob(Rails.root.join("docs/implementation/M00/reports/*.md")).map { |path| File.read(path) }
-      combined = reports.join("\n")
+    it "runs, and is green on this repository" do
+      output, status = run("ruby", "bin/dependency-gate")
 
-      # The gems and packages M00 introduced beyond the Rails generator.
-      %w[solid_queue inertia_rails vite_rails rspec-rails factory_bot_rails
-         parallel_tests vitest @playwright/test radix-ui].each do |dependency|
-        expect(combined).to include(dependency),
-          "#{dependency} was added but no Story Report justifies it (Annex I §10.1)"
-      end
+      expect(status).to be_success, output
+    end
+
+    it "refuses a dependency no Story Report or ADR justifies" do
+      violations = dependency_violations(
+        "Gemfile" => %(source "https://rubygems.org"\ngem "some_convenient_gem"\n),
+        "Gemfile.lock" => "    some_convenient_gem (1.0.0)\n"
+      )
+
+      expect(violations.map(&:name)).to include("some_convenient_gem")
+      expect(violations.map(&:message).join).to match(/no Story Report or ADR justifies it/)
+    end
+
+    it "accepts one the Story Report explains" do
+      violations = dependency_violations(
+        "Gemfile" => %(source "https://rubygems.org"\ngem "some_convenient_gem"\n),
+        "Gemfile.lock" => "    some_convenient_gem (1.0.0)\n",
+        "docs/implementation/M99/reports/M99-01.md" =>
+          "## Dependências novas\n\n`some_convenient_gem` — solves X; alternatives evaluated; MIT.\n"
+      )
+
+      expect(violations).to be_empty
+    end
+
+    it "refuses an npm package that is declared but not pinned in the lockfile" do
+      violations = dependency_violations(
+        "package.json" => JSON.generate("dependencies" => { "some-package" => "^1.0.0" }),
+        "package-lock.json" => JSON.generate("packages" => {}),
+        "docs/implementation/M99/reports/M99-01.md" => "`some-package` is justified here.\n"
+      )
+
+      expect(violations.map(&:message).join).to match(/does not appear in package-lock\.json/)
+    end
+
+    it "runs inside bin/security, so CI executes it on every push" do
+      expect(Rails.root.join("bin/security").read).to include("bin/dependency-gate")
+    end
+  end
+
+  # M00-10 AC8. Annex D §24: scanner and version, findings, severity,
+  # disposition. An exit code says a scan happened and nothing about what it
+  # covered.
+  describe "the Security Report", :slow do
+    let(:gate) do
+      {
+        "gate" => "security", "result" => "fail", "duration_ms" => 1234,
+        "checks" => [
+          { "check" => "secret-scan", "result" => "pass", "duration_ms" => 200, "reason" => "" },
+          { "check" => "npm-audit", "result" => "fail", "duration_ms" => 900, "reason" => "1 high" }
+        ]
+      }
+    end
+
+    let(:report) { Opanel::Gates::SecurityReport.build(gate, Rails.root.to_s) }
+
+    it "records the scanner and its version" do
+      expect(report[:tools].map { |tool| tool[:name] })
+        .to include("gitleaks", "bundler-audit", "npm", "brakeman")
+      expect(report[:tools].map { |tool| tool[:version] }).to all(be_a(String))
+    end
+
+    it "records each finding with a severity and a disposition" do
+      finding = report[:findings].find { |entry| entry[:scanner] == "npm-audit" }
+
+      expect(finding[:severity]).to eq("blocking")
+      expect(finding[:disposition]).to eq("blocked the run")
+      expect(report[:findings].map { |entry| entry[:scanner] }).not_to include("secret-scan")
+    end
+
+    it "records the waivers, so an accepted finding is visible as accepted" do
+      expect(report[:waivers].keys).to contain_exactly(:active, :expiring_soon, :expired)
+    end
+
+    it "names the commit it describes" do
+      expect(report[:commit]).to be_present
+    end
+
+    it "is written by the run that produced it, and archived" do
+      jobs = YAML.safe_load_file(Rails.root.join("config/ci/jobs.yml"))
+      scan = jobs.dig("jobs", "security-fast", "commands").map(&:last)
+        .find { |command| command.start_with?("bin/security") }
+
+      expect(scan).to include("--out tmp/security/")
+      expect(Rails.root.join(".github/actions/archive/action.yml").read).to include("tmp/security/")
     end
   end
 end

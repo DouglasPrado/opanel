@@ -1,0 +1,65 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The Dependency Gate — Annex I §10, M00-10 AC7.
+#
+#   ruby bin/dependency-gate                     # against the merge base with main
+#   ruby bin/dependency-gate --base origin/main
+#   ruby bin/dependency-gate --format json
+#
+# Invoked through `ruby` by bin/security and by its spec, so it runs whatever the
+# file mode happens to be; it also carries the executable bit, like every other
+# script here, so `bin/dependency-gate` works on its own.
+#
+# A dependency added without a recorded justification is refused. "For
+# convenience" is not a justification, and a package nobody wrote about is
+# exactly that (Annex I §10.1).
+
+require "json"
+require_relative "../lib/gates/dependency_gate"
+
+format = "text"
+base = nil
+arguments = ARGV.dup
+
+until arguments.empty?
+  argument = arguments.shift
+
+  case argument
+  when "--json" then format = "json"
+  when "--format" then format = arguments.shift
+  when /\A--format=(.+)\z/ then format = Regexp.last_match(1)
+  when "--base" then base = arguments.shift
+  when /\A--base=(.+)\z/ then base = Regexp.last_match(1)
+  else
+    warn "unknown option: #{argument}"
+    exit 2
+  end
+end
+
+unless %w[text json].include?(format)
+  warn "unknown format: #{format.inspect} (expected text or json)"
+  exit 2
+end
+
+root = File.expand_path("..", __dir__)
+violations = Opanel::Gates::DependencyGate.check(root: root, base: base)
+
+if format == "json"
+  puts JSON.pretty_generate(
+    check: "dependency-gate",
+    result: violations.empty? ? "pass" : "fail",
+    violations: violations.map(&:to_h)
+  )
+elsif violations.empty?
+  puts "dependency-gate: PASS (every added dependency is justified and pinned)"
+else
+  violations.each do |violation|
+    puts "dependency-gate: FAIL [#{violation.manifest}] #{violation.name}"
+    puts "  #{violation.message}"
+    puts "  remedy: #{violation.remedy}"
+  end
+  puts "dependency-gate: #{violations.length} unjustified or unpinned dependency(ies)"
+end
+
+exit(violations.empty? ? 0 : 1)

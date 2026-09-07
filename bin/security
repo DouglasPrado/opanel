@@ -27,6 +27,7 @@ format="text"
 mode="all"
 history="no"
 scope="all"
+out=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -34,6 +35,8 @@ while [ $# -gt 0 ]; do
     --staged) scope="staged" ;;
     --history) history="yes" ;;
     --waivers) mode="waivers" ;;
+    --out) out="$2"; shift ;;
+    --out=*) out="${1#--out=}" ;;
     --format) format="$2"; shift ;;
     --format=*) format="${1#--format=}" ;;
     --json) format="json" ;;
@@ -46,12 +49,34 @@ if [ "$mode" = "waivers" ]; then
   exec bin/security-waivers --format "$format"
 fi
 
+# The Security Report of Annex D §24, written from this run rather than from a
+# second one. `finish` is called instead of `gate_finish` everywhere below, so an
+# early exit still archives what it found.
+finish() {
+  if [ -n "$out" ]; then
+    if ! gate_write_json "$out"; then
+      gate_fail "report" "the gate result could not be written to $out"
+    elif ! ruby lib/gates/security_report.rb "$out" > /dev/null; then
+      gate_fail "report" "the security report could not be written to $out"
+      # The file on disk still says the run passed. Rewrite it, or the archived
+      # evidence disagrees with the exit code — which is the class of defect
+      # this whole file exists to remove.
+      gate_write_json "$out" || true
+    fi
+  fi
+  gate_finish
+}
+
 gate_begin "security" "$format"
 
 # --- Waivers -----------------------------------------------------------------
 # First: a malformed or expired waiver is itself a finding, and the scanners
 # below consult the same file.
 gate_run "waivers" bin/security-waivers --check
+
+# Every allowlist entry carries a written reason. An unexplained one is
+# indistinguishable from a real secret somebody hid (M00-10 AC4).
+gate_run "allowlist" ruby lib/gates/secret_allowlist.rb
 
 # --- Secrets -----------------------------------------------------------------
 # gitleaks is a binary rather than a gem. Its absence is a setup failure and must
@@ -91,10 +116,16 @@ else
 fi
 
 if [ "$mode" = "fast" ]; then
-  gate_finish
+  finish
 fi
 
 # --- Dependencies ------------------------------------------------------------
+
+# Annex I §10: a dependency added without a recorded justification is refused,
+# and an unpinned one resolves differently on every machine. Before the
+# advisories, because "should this be here at all" comes before "is this version
+# vulnerable".
+gate_run "dependency-gate" ruby bin/dependency-gate
 
 gate_run "bundler-audit" bundle exec bundle-audit check --update --config config/bundler-audit.yml
 
@@ -110,4 +141,4 @@ gate_run "npm-audit" npm audit --audit-level=high
 gate_run "brakeman" bundle exec brakeman --quiet --no-pager --no-exit-on-warn \
   --output /dev/stdout --format plain
 
-gate_finish
+finish
