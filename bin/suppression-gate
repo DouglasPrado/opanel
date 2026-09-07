@@ -9,6 +9,7 @@
 #   bin/suppression-gate --format json
 
 require "json"
+require_relative "../lib/gates/control_reductions"
 require_relative "../lib/gates/suppression_gate"
 
 format = "text"
@@ -37,7 +38,17 @@ end
 
 root = File.expand_path("..", __dir__)
 
-if paths.empty?
+# A control turned down in a *configuration* file leaves no suppression comment
+# to find, so it is checked separately: an ESLint rule switched off for a
+# directory, a tsconfig flag left out, an accessibility violation baselined. Each
+# needs an owned, dated waiver in config/quality/waivers.yml.
+#
+# Only on the whole-repository run. Given explicit paths this command answers a
+# question about those files, and a repository-wide finding would be an answer to
+# something nobody asked.
+whole_repository = paths.empty?
+
+if whole_repository
   Dir.chdir(root) { paths = `git ls-files`.split("\n") }
   paths = paths.map { |path| File.join(root, path) }
 end
@@ -69,6 +80,7 @@ end
 
 started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 violations = Opanel::Gates::SuppressionGate.check_paths(paths)
+violations += Opanel::Gates::ControlReductions.new(root).violations if whole_repository
 duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 
 relative = ->(path) { path.start_with?(root) ? path.delete_prefix("#{root}/") : path }
@@ -79,8 +91,9 @@ if format == "json"
     result: violations.empty? ? "pass" : "fail",
     duration_ms: (duration * 1000).round,
     files_checked: paths.length,
-    rule: {
-      Opanel::Gates::SuppressionGate::RULE => Opanel::Gates::SuppressionGate::RULE_DESCRIPTION
+    rules: {
+      Opanel::Gates::SuppressionGate::RULE => Opanel::Gates::SuppressionGate::RULE_DESCRIPTION,
+      Opanel::Gates::ControlReductions::RULE => Opanel::Gates::ControlReductions::RULE_DESCRIPTION
     },
     violations: violations.map { |violation| violation.to_h.merge(file: relative.call(violation.file)) }
   )

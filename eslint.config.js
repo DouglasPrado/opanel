@@ -142,9 +142,16 @@ export default tseslint.config(
     // This list is exactly the imported tree. Adding a path to it is a way to
     // silence a rule, so it needs a Story that says why.
     //
-    // Accessibility is not being waived: the runtime axe check over the rendered
-    // gallery and journeys (M00-08) is the gate that actually decides WCAG 2.2 AA,
-    // and a violation it finds is fixed upstream and re-imported.
+    // **Every `'off'` below is waived, not merely explained.** Each has an entry
+    // in config/quality/waivers.yml carrying an owner, the risk, the mitigation
+    // and the date it stops being acceptable; `bin/suppression-gate` fails on a
+    // rule turned off without one and on a waiver that has expired. The comment
+    // that used to stand here instead was an explanation with no owner and no
+    // expiry, which is how a temporary relaxation becomes permanent.
+    //
+    // Accessibility is not decided here: the runtime axe check over the rendered
+    // gallery and journeys (M00-08) is the gate for WCAG 2.2 AA, and a violation
+    // it finds is fixed upstream and re-imported.
     files: [
       'app/frontend/components/{ui,shared,layouts}/**/*.{ts,tsx}',
       'app/frontend/hooks/use-mobile.ts',

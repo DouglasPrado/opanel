@@ -12,8 +12,17 @@ import { galleryEntries } from '../app/frontend/components/features/gallery/regi
  * reachability. That is decided here (Annex B §18, doc 10 §28).
  */
 
+interface BaselineEntry {
+  nodes: number;
+  why: string;
+  fix: string;
+  owner: string;
+  waiver: string;
+  expires_at: string;
+}
+
 interface Baseline {
-  violations: Record<string, { nodes: number; why: string; fix: string; owner: string }>;
+  violations: Record<string, BaselineEntry>;
 }
 
 const baseline: Baseline = JSON.parse(readFileSync('e2e/accessibility-baseline.json', 'utf8'));
@@ -40,6 +49,30 @@ test.describe('component gallery', () => {
     );
 
     expect(problems, `the gallery produced console errors:\n${problems.join('\n')}`).toEqual([]);
+  });
+
+  /**
+   * The baseline is a set of waivers, and a waiver without a date is permanent.
+   * M00-08 AC6 requires this gate to block on a WCAG 2.2 AA violation, so an
+   * entry that outlives its date stops being an exception and starts blocking
+   * again — the same rule config/security/waivers.yml and
+   * config/quality/waivers.yml apply everywhere else.
+   */
+  test('carries no baseline entry that has outlived its waiver', () => {
+    const today = new Date().toISOString().slice(0, 10);
+
+    const expired = Object.entries(baseline.violations)
+      .filter(([, entry]) => !entry.expires_at || entry.expires_at < today)
+      .map(
+        ([id, entry]) => `${id} (waiver ${entry.waiver ?? 'none'}, expires ${entry.expires_at})`,
+      );
+
+    expect(
+      expired,
+      `these accessibility exceptions have expired and block again:\n${expired.join('\n')}\n\n` +
+        'Fix them upstream and remove the entry, or renew the waiver in ' +
+        'config/quality/waivers.yml and here — deliberately, with a reason.',
+    ).toEqual([]);
   });
 
   test('introduces no accessibility violation beyond the recorded upstream baseline', async ({

@@ -1,7 +1,11 @@
 require "spec_helper"
 require "open3"
 require "fileutils"
+require "json"
 require "securerandom"
+require "tmpdir"
+require "yaml"
+require_relative "../../lib/gates/control_reductions"
 
 # A lint rule nobody proved can fail is decoration. Each critical rule is planted
 # with a violation and must reject it, and is then shown to accept the compliant
@@ -291,6 +295,98 @@ RSpec.describe "lint rules" do
 
     it "points at the convention document, which exists" do
       expect(File.exist?(File.join(LINT_PROBE_ROOT, "docs/engineering/lint-suppressions.md"))).to be(true)
+    end
+  end
+
+  # A rule silenced on a line names its Story. A control turned down in a
+  # *configuration* file leaves no line to comment on — and each of the ones this
+  # repository has was justified by a comment the implementer wrote, which has no
+  # owner and, above all, no date.
+  describe "Control reductions — a control turned down in configuration has a waiver" do
+    REDUCTIONS = Opanel::Gates::ControlReductions
+
+    def reductions_in(files)
+      Dir.mktmpdir do |root|
+        files.each do |path, content|
+          full = File.join(root, path)
+          FileUtils.mkdir_p(File.dirname(full))
+          File.write(full, content)
+        end
+
+        yield REDUCTIONS.new(root).violations
+      end
+    end
+
+    def strict_tsconfig(**overrides)
+      options = REDUCTIONS::TYPESCRIPT_FLAGS.to_h { |flag| [ flag, true ] }.merge(overrides)
+      JSON.generate("compilerOptions" => options)
+    end
+
+    def waivers_file(*entries) = { "waivers" => entries }.to_yaml
+
+    def waiver(tool:, finding:, expires_at:)
+      {
+        "id" => "probe-#{finding}", "tool" => tool, "finding" => finding,
+        "risk" => "probe", "owner" => "douglas", "justification" => "probe",
+        "mitigation" => "probe", "expires_at" => expires_at
+      }
+    end
+
+    it "is satisfied by this repository — every reduction is waived, owned and dated" do
+      violations = REDUCTIONS.new(LINT_PROBE_ROOT).violations
+
+      expect(violations.map { |violation| "#{violation.file}: #{violation.message}" }).to be_empty
+    end
+
+    it "detects an ESLint rule turned off with no waiver" do
+      reductions_in(
+        "tsconfig.json" => strict_tsconfig,
+        "eslint.config.js" => "export default [{ rules: { 'jsx-a11y/alt-text': 'off' } }];\n"
+      ) do |violations|
+        expect(violations.map(&:rule)).to include("CONTROL_WAIVED")
+        expect(violations.map(&:message).join).to include("jsx-a11y/alt-text")
+      end
+    end
+
+    it "accepts it once a waiver names it, with an owner and a date" do
+      reductions_in(
+        "tsconfig.json" => strict_tsconfig,
+        "eslint.config.js" => "export default [{ rules: { 'jsx-a11y/alt-text': 'off' } }];\n",
+        "config/quality/waivers.yml" =>
+          waivers_file(waiver(tool: "eslint", finding: "jsx-a11y/alt-text",
+            expires_at: (Date.today + 30).to_s))
+      ) { |violations| expect(violations).to be_empty }
+    end
+
+    # The mechanism. Without it the file becomes a list nobody has looked at.
+    it "blocks again the day after the waiver expires" do
+      reductions_in(
+        "tsconfig.json" => strict_tsconfig,
+        "eslint.config.js" => "export default [{ rules: { 'jsx-a11y/alt-text': 'off' } }];\n",
+        "config/quality/waivers.yml" =>
+          waivers_file(waiver(tool: "eslint", finding: "jsx-a11y/alt-text",
+            expires_at: (Date.today - 1).to_s))
+      ) do |violations|
+        expect(violations.map(&:message).join).to include("expired on")
+        expect(violations.map(&:message).join).to include("jsx-a11y/alt-text")
+      end
+    end
+
+    it "detects a TypeScript flag that is not enabled" do
+      reductions_in("tsconfig.json" => strict_tsconfig("strict" => false)) do |violations|
+        expect(violations.map(&:message).join).to include("`strict` is not enabled")
+      end
+    end
+
+    it "detects a baselined accessibility violation with no waiver" do
+      reductions_in(
+        "tsconfig.json" => strict_tsconfig,
+        "e2e/accessibility-baseline.json" =>
+          JSON.generate("violations" => { "color-contrast" => { "nodes" => 9 } })
+      ) do |violations|
+        expect(violations.map(&:message).join).to include("color-contrast")
+        expect(violations.map(&:message).join).to include("WCAG 2.2 AA gate does not block")
+      end
     end
   end
 end

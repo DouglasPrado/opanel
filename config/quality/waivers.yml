@@ -1,0 +1,191 @@
+# Controls turned down in configuration, and why — Annex I §16.3, Annex D §24.1.
+#
+# The Suppression Gate covers a rule silenced on a line. This file covers the
+# ones turned down in a *configuration*: an ESLint rule switched off for a
+# directory, a TypeScript flag left out, an accessibility violation added to a
+# baseline. Every one of these was previously justified by a comment the
+# implementer wrote next to it — which is not the exception process. A comment
+# has no owner, no risk statement and, above all, no date.
+#
+# Same contract as config/security/waivers.yml, checked by `bin/suppression-gate`
+# and therefore by the `static` CI job:
+#
+#   id · tool · finding · risk · owner · justification · mitigation · expires_at
+#
+# **An expired waiver blocks again, automatically.** That is the mechanism. A
+# waiver is renewed deliberately or the control comes back.
+#
+# Every entry below is debt in the component library imported verbatim by
+# M00-05, which forbids redesigning an imported component's API: patching the
+# vendored copy is drift nobody would ever reconcile, so each is fixed upstream
+# in gba.dev and re-imported. The owner is that design system, which is where the
+# fix has to happen.
+
+waivers:
+  # --- TypeScript ------------------------------------------------------------
+  #
+  # `strict` and the seven flags around it are on. These two are not, and their
+  # absence was a decision rather than an oversight.
+
+  - id: "ts-strict-2026-001"
+    tool: "typescript"
+    finding: "exactOptionalPropertyTypes"
+    risk: "An optional prop explicitly set to `undefined` type-checks where the
+      declaration means `absent`, so a component can receive a value its props
+      say it cannot."
+    owner: "gba.dev design system"
+    justification: "The imported component library declares optional props as
+      `prop?: T` and passes `undefined` through in several places. Enabling this
+      requires changing those declarations, which M00-05 forbids doing here."
+    mitigation: "`strict` is on, so the class of error this flag adds is narrow:
+      the distinction between an absent property and one present as `undefined`.
+      Opanel's own components are written to the stricter convention."
+    removal_story: "M00-05 follow-up — fix upstream in gba.dev and re-import"
+    expires_at: "2027-03-31"
+
+  - id: "ts-strict-2026-002"
+    tool: "typescript"
+    finding: "noUncheckedIndexedAccess"
+    risk: "An index access is typed as present, so `array[i]` reads as `T` rather
+      than `T | undefined` and an out-of-range read is not a type error."
+    owner: "gba.dev design system"
+    justification: "The imported library indexes into arrays and records without
+      narrowing in table, chart and carousel components. Enabling this requires
+      rewriting their bodies."
+    mitigation: "The gallery renders every imported component in jsdom and in a
+      real browser and fails on a console error, so an out-of-range read surfaces
+      as a test failure rather than in production."
+    removal_story: "M00-05 follow-up — fix upstream in gba.dev and re-import"
+    expires_at: "2027-03-31"
+
+  # --- ESLint ----------------------------------------------------------------
+  #
+  # Scoped in eslint.config.js to exactly the imported tree
+  # (app/frontend/components/{ui,shared,layouts}, hooks/use-mobile.ts,
+  # lib/utils.ts). Opanel's own code is held to the full ruleset.
+
+  - id: "eslint-2026-001"
+    tool: "eslint"
+    finding: "react-refresh/only-export-components"
+    risk: "A module exporting both a component and a non-component breaks Fast
+      Refresh, so an edit reloads the page and loses component state."
+    owner: "gba.dev design system"
+    justification: "The library colocates variant definitions (cva) with the
+      component that uses them, which is the pattern the upstream design system
+      is built on."
+    mitigation: "A development-time ergonomics rule with no runtime or security
+      effect; the full reload is correct, only slower."
+    removal_story: "M00-05 follow-up — split variants upstream"
+    expires_at: "2027-03-31"
+
+  - id: "eslint-2026-002"
+    tool: "eslint"
+    finding: "@typescript-eslint/no-empty-object-type"
+    risk: "`{}` as a type means 'any non-nullish value', which reads as 'no
+      properties' and silently accepts anything."
+    owner: "gba.dev design system"
+    justification: "Used by the library's prop-extension idiom
+      (`interface Props extends React.ComponentProps<'div'> {}`), where the empty
+      body is the extension point."
+    mitigation: "Every such interface extends a typed base, so the effective type
+      is the base rather than `{}`."
+    removal_story: "M00-05 follow-up — replace with type aliases upstream"
+    expires_at: "2027-03-31"
+
+  - id: "eslint-2026-003"
+    tool: "eslint"
+    finding: "react-hooks/set-state-in-effect"
+    risk: "Setting state inside an effect causes a second render pass and can
+      loop when the dependency list is wrong."
+    owner: "gba.dev design system"
+    justification: "The library's controlled/uncontrolled sync and media-query
+      hooks set state from an effect, which is the documented Radix pattern for
+      those cases."
+    mitigation: "The gallery renders every component and fails on a console
+      error, so an actual render loop is caught rather than tolerated."
+    removal_story: "M00-05 follow-up — lift the sync upstream"
+    expires_at: "2027-03-31"
+
+  - id: "eslint-a11y-2026-001"
+    tool: "eslint"
+    finding: "jsx-a11y/click-events-have-key-events"
+    risk: "An element that responds to a click and not to a key press is
+      unreachable by keyboard."
+    owner: "gba.dev design system"
+    justification: "Radix primitives attach keyboard handling through their own
+      props, which this static rule cannot see."
+    mitigation: "Keyboard reachability is decided at runtime by the axe check over
+      the rendered gallery and the journeys (M00-08), in a real browser. That gate
+      blocks; this lint rule is the static approximation of it."
+    removal_story: "M00-05 follow-up"
+    expires_at: "2027-03-31"
+
+  - id: "eslint-a11y-2026-002"
+    tool: "eslint"
+    finding: "jsx-a11y/no-noninteractive-element-interactions"
+    risk: "A handler on a non-interactive element is invisible to assistive
+      technology."
+    owner: "gba.dev design system"
+    justification: "Same cause: the roles are applied by the Radix primitive at
+      runtime, not in the JSX this rule reads."
+    mitigation: "The runtime axe check over the rendered tree, which sees the
+      applied roles."
+    removal_story: "M00-05 follow-up"
+    expires_at: "2027-03-31"
+
+  - id: "eslint-a11y-2026-003"
+    tool: "eslint"
+    finding: "jsx-a11y/anchor-has-content"
+    risk: "An anchor with no accessible content is announced as an empty link."
+    owner: "gba.dev design system"
+    justification: "The library's anchors take their content through `asChild`
+      composition, which this rule cannot follow."
+    mitigation: "The runtime axe check reports `link-name` on the rendered output;
+      the gallery carries no such violation."
+    removal_story: "M00-05 follow-up"
+    expires_at: "2027-03-31"
+
+  # --- Accessibility ---------------------------------------------------------
+  #
+  # e2e/accessibility-baseline.json records these so `e2e/gallery.spec.ts` does
+  # not block on them. They are WCAG 2.2 AA failures, which M00-08 AC6 requires
+  # the gate to block on — so they are exceptions, with a date, not a baseline.
+  # Opanel's own pages carry none: e2e/smoke.spec.ts blocks on any violation.
+
+  - id: "a11y-2026-001"
+    tool: "accessibility"
+    finding: "color-contrast"
+    risk: "Body text below 4.5:1 is unreadable for low-vision users. Nine nodes:
+      destructive at 4.4:1, muted-foreground at 4.33:1, inactive tab at 3.37:1."
+    owner: "gba.dev design system"
+    justification: "The values come from the brand palette in the upstream theme.
+      Changing them here would fork the design system."
+    mitigation: "None of the three is used for essential text in Opanel's own
+      pages; all three are close to threshold rather than far below it."
+    removal_story: "M00-05 follow-up — darken the tokens upstream"
+    expires_at: "2027-03-31"
+
+  - id: "a11y-2026-002"
+    tool: "accessibility"
+    finding: "aria-input-field-name"
+    risk: "The Slider thumb carries `role=slider` with no accessible name, so a
+      screen reader announces an unnamed control."
+    owner: "gba.dev design system"
+    justification: "The library does not forward `aria-label` to
+      `SliderPrimitive.Thumb`; a caller has no way to name it from outside."
+    mitigation: "No Opanel page uses a Slider yet. A Story that introduces one
+      before this is fixed has to carry the upstream fix with it."
+    removal_story: "M00-05 follow-up — forward aria-label upstream"
+    expires_at: "2027-03-31"
+
+  - id: "a11y-2026-003"
+    tool: "accessibility"
+    finding: "scrollable-region-focusable"
+    risk: "A scrollable region that cannot take focus is unreachable by keyboard,
+      so its content cannot be scrolled without a pointer."
+    owner: "gba.dev design system"
+    justification: "ScrollArea renders the Radix Viewport with a fixed prop set,
+      so `tabIndex` cannot reach the scrollable element."
+    mitigation: "No Opanel page uses ScrollArea yet."
+    removal_story: "M00-05 follow-up — spread caller props onto the Viewport"
+    expires_at: "2027-03-31"

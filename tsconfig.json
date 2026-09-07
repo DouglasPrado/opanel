@@ -9,10 +9,11 @@
 
     // `strict` matches the strictness the imported component library (M00-05) is
     // written against. `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`
-    // are deliberately absent: turning them on would require rewriting the
-    // library's prop types, and M00-05 forbids redesigning an imported
-    // component's API. Raising them again means fixing the library upstream, in
-    // a Story of its own.
+    // are off, and that is an exception rather than a preference: it is recorded
+    // in config/quality/waivers.yml with an owner, a risk, a mitigation and a
+    // date, and `bin/suppression-gate` fails when either the waiver is missing or
+    // it has expired. A comment here justifying it — which is what used to be
+    // here — has no owner and no expiry, so nothing ever comes back on.
     "strict": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
