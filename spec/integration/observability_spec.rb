@@ -50,22 +50,42 @@ RSpec.describe "observability", type: :integration do
   describe "request → job" do
     # This is the property the whole correlation contract exists for: the work a
     # request scheduled is findable from the id the user was shown.
+    #
+    # Enqueuing and performing inside one `Current` proves nothing — it passes
+    # with no serialization at all, which is how `request_id` came to be dropped
+    # by the queue and stay dropped through a green suite. So the payload is
+    # serialized, `Current` is reset the way a worker process starts, and the job
+    # is executed through the same entry point a worker uses.
     it "propagates the request id into the job the request enqueued" do
-      request_id = nil
+      get "/", headers: modern_browser
+      request_id = response.headers["X-Request-Id"]
 
-      logs = capture_logs do
-        get "/", headers: modern_browser
-        request_id = response.headers["X-Request-Id"]
-
-        Current.set(correlation_id: request_id) do
-          perform_enqueued_jobs { ExampleCheckpointJob.perform_later(name: "correlated-run") }
-        end
+      payload = Current.set(request_id: request_id, correlation_id: request_id) do
+        ExampleCheckpointJob.new(name: "correlated-run").serialize
       end
 
-      job_lines = json_lines(logs).select { |entry| entry["event"] == "job.performed" }
+      Current.reset
 
-      expect(job_lines).not_to be_empty, "the job did not log its execution"
-      expect(job_lines.map { |entry| entry["correlation_id"] }).to include(request_id)
+      logs = capture_logs { ActiveJob::Base.execute(payload) }
+      job_line = json_lines(logs).find { |entry| entry["event"] == "job.performed" }
+
+      expect(job_line).not_to be_nil, "the job did not log its execution"
+      expect(job_line["request_id"]).to eq(request_id),
+        "the job's log line cannot be traced back to the request that scheduled it"
+      expect(job_line["correlation_id"]).to eq(request_id)
+    end
+
+    it "leaves the request id out when no request enqueued the job" do
+      Current.reset
+
+      payload = ExampleCheckpointJob.new(name: "unrequested-run").serialize
+      logs = capture_logs { ActiveJob::Base.execute(payload) }
+      job_line = json_lines(logs).find { |entry| entry["event"] == "job.performed" }
+
+      expect(job_line).not_to be_nil
+      expect(job_line["request_id"]).to be_nil,
+        "a job nobody requested must not borrow another request's id"
+      expect(job_line["correlation_id"]).to be_present
     end
 
     it "gives a job with no enqueuing request a correlation id of its own" do

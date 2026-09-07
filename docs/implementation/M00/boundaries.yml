@@ -19,6 +19,93 @@
 # thing this prevents.
 
 boundaries:
+  # The Stories below carry a boundary declared during the fix of
+  # CODEX_REVIEW_01. A Story whose fix commit had no entry here could not be
+  # checked at all — `bin/gate post-commit --story <id>` fails an undeclared
+  # boundary rather than skipping it — so declaring them is what makes the check
+  # apply to this work, not what lets it pass. Each entry names the files the
+  # corresponding finding reaches and nothing else; FIX_REPORT_01.md says why.
+
+  M00-06:
+    - bin/setup
+    - bin/dev
+    - db/seeds.rb
+    - spec/integration/development_environment_spec.rb
+    # M00-R14: the clean/idempotent cycle is proved by running it on a
+    # disposable checkout, and `engines.node` is the one declaration bin/setup
+    # and .github/actions/setup both read.
+    - package.json
+
+  M00-08:
+    - bin/test:js
+    - bin/test:e2e
+    - bin/redact-artifacts
+    - playwright.config.ts
+    - vitest.config.ts
+    - e2e/**
+    - spec/frontend/**
+    - spec/security/artifact_redaction_spec.rb
+
+  M00-09:
+    - bin/lint
+    - bin/format
+    - bin/typecheck
+    - bin/suppression-gate
+    - lib/gates/suppression_gate.rb
+    - lib/gates/control_reductions.rb
+    - lib/rubocop/**
+    - .rubocop.yml
+    - eslint.config.js
+    - .prettierrc.json
+    - .prettierignore
+    - tsconfig.json
+    - config/quality/**
+    - spec/gates/lint_rules_spec.rb
+    # M00-R12: the accessibility baseline is one of the three reduced controls,
+    # and it stops being a permanent waiver in the file that records it and in
+    # the spec that enforces the expiry.
+    - e2e/accessibility-baseline.json
+    - e2e/gallery.spec.ts
+
+  M00-10:
+    - bin/security
+    - bin/security-waivers
+    - bin/dependency-gate
+    - bin/bundler-audit
+    - bin/workspace-guardrail
+    - lib/gates/security_waivers.rb
+    - lib/gates/dependency_gate.rb
+    - lib/gates/secret_allowlist.rb
+    - lib/gates/security_report.rb
+    - lib/gates/workspace_guardrail.rb
+    - config/security/**
+    - config/bundler-audit.yml
+    - spec/security/security_scan_spec.rb
+    - spec/security/workspace_guardrail_spec.rb
+
+  M00-13:
+    - bin/fitness
+    - bin/migration-gate
+    - lib/gates/fitness_functions.rb
+    - lib/gates/fitness/**
+    - lib/gates/migration_gate.rb
+    - config/architecture/fitness.yml
+    - spec/gates/fitness_functions_spec.rb
+    - spec/gates/migration_gate_spec.rb
+
+  M00-15:
+    - config/environments/production.rb
+    - config/initializers/**
+    - lib/opanel/**
+    - app/jobs/**
+    - app/models/current.rb
+    - app/controllers/health_controller.rb
+    - spec/unit/application_job_spec.rb
+    - spec/unit/log_formatter_spec.rb
+    - spec/integration/observability_spec.rb
+    - spec/integration/job_correlation_spec.rb
+    - spec/security/production_logging_spec.rb
+
   M00-11:
     - .github/**
     - config/ci/**
@@ -71,6 +158,16 @@ boundaries:
     - bin/test-metadata
     - spec/spec_helper.rb
     - spec/gates/**
+    # Widened during the fix of CODEX_REVIEW_01, deliberately.
+    #
+    # M00-R06 asks the gate to run the *related* tests rather than the changed
+    # spec files, and M00-R07 to read reviews and acceptance criteria in their
+    # canonical form instead of matching a word. Neither is expressible inside
+    # bin/gate: the selection and the two readers are libraries the gate calls,
+    # and inlining them would put three parsers in a shell script.
+    - lib/gates/related_specs.rb
+    - lib/gates/acceptance_mapping.rb
+    - lib/gates/review_findings.rb
 
   M00-14:
     - bin/pack
@@ -81,6 +178,24 @@ boundaries:
     - spec/gates/pack_spec.rb
     - spec/gates/stop_gate_spec.rb
     - docs/implementation/README.md
+    # Widened during the fix of CODEX_REVIEW_01, deliberately.
+    #
+    # M00-R08 requires config/pack/tasks.schema.json to be *applied* rather than
+    # described, which is a validator; M00-R07 requires the Stop Gate to read the
+    # reviews and the criteria that exist. Both are libraries the Story's own
+    # scripts call.
+    - lib/gates/json_schema.rb
+    - lib/gates/acceptance_mapping.rb
+    - lib/gates/review_findings.rb
+    # The loop's own bookkeeping, which this Story established: the state file the
+    # orchestrator reads between phases, the independent review it persists, and
+    # the fix report that answers it. Same category as MILESTONE_REPORT.md, which
+    # lib/gates/story_boundary.rb already allows everywhere — named here rather
+    # than added there, because widening a declaration is a reviewable act and
+    # editing the checker is not.
+    - docs/implementation/*/review-state.json
+    - docs/implementation/*/CODEX_REVIEW_*.md
+    - docs/implementation/*/FIX_REPORT_*.md
 
   M00-17:
     - config/architecture/docker-lab.yml

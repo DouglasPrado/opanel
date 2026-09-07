@@ -38,15 +38,35 @@ class ApplicationJob < ActiveJob::Base
     @correlation_id ||= Current.correlation_id
   end
 
-  attr_writer :correlation_id
+  # The HTTP request that enqueued this job, when there was one.
+  #
+  # Carried separately from `correlation_id` rather than folded into it. They are
+  # the same value at an HTTP boundary and diverge everywhere else: a job
+  # enqueued by a scheduler or by another job has a correlation id and no
+  # request. M00-15 AC2 asks for the request id by name in the log line of the
+  # job *that request enqueued*, so it has to survive the queue — reading
+  # `Current.request_id` inside `perform` finds nothing, because the request
+  # ended long before the worker picked the job up.
+  #
+  # `defined?` rather than `||=`: nil is the correct answer for a job with no
+  # request behind it, and re-reading `Current` on every call would let a worker
+  # attribute one job to another job's request.
+  def request_id
+    return @request_id if defined?(@request_id)
+
+    @request_id = Current.request_id
+  end
+
+  attr_writer :correlation_id, :request_id
 
   def serialize
-    super.merge("correlation_id" => correlation_id)
+    super.merge("correlation_id" => correlation_id, "request_id" => request_id)
   end
 
   def deserialize(job_data)
     super
     self.correlation_id = job_data["correlation_id"]
+    self.request_id = job_data["request_id"]
   end
 
   def record_terminal_failure(error)
@@ -60,7 +80,7 @@ class ApplicationJob < ActiveJob::Base
   private
 
   def with_correlation_context
-    Current.set(correlation_id: correlation_id) do
+    Current.set(correlation_id: correlation_id, request_id: request_id) do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       begin
