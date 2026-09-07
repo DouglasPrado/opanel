@@ -242,9 +242,9 @@ ter check. Post-commit e Stop Gate usam os dois módulos.
 - `reads the Markdown review the template defines`.
 
 Verificação de que a leitura não é vazia: sobre `docs/implementation/M00/review/`
-o parser lê 3–4 findings por Story (54 no total), incluindo dois `high` marcados
-como resolvidos dentro da própria Story — ou seja, ele distingue severidade e
-estado em vez de devolver lista vazia.
+o parser lê 3–4 findings por Story — 59 no total, 40 `low`, 17 `medium` e dois
+`high` marcados como resolvidos dentro da própria Story. Ou seja, ele distingue
+severidade e estado em vez de devolver lista vazia.
 
 ### M00-R08 — schema não aplicado (`lib/gates/pack.rb:71`)
 
@@ -564,7 +564,7 @@ Executados no commit `77a3cb0`, com o laboratório Docker no ar (nenhum exemplo
 | Gate | Resultado | Exit code |
 |---|---|---|
 | `bin/gate local` | PASS — 8 checks | `0` |
-| `bin/gate pre-commit` (hook, em cada um dos 11 commits) | PASS — 8 checks | `0` |
+| `bin/gate pre-commit` (hook, em cada commit deste fix) | PASS — 8 checks | `0` |
 | `bin/lint` | PASS | `0` |
 | `bin/format --check` | PASS | `0` |
 | `bin/typecheck` | PASS | `0` |
@@ -639,6 +639,27 @@ como aprovação:
    orquestrador; `CLAUDE.md` proíbe o IMPLEMENTER de modificá-los durante um
    Milestone ou uma correção de review, então foram deixados exatamente como
    estavam e **não** entraram em nenhum commit deste fix.
+4. **A revisão independente seguinte não chegou a executar.** Às `01:51:16Z` o
+   orquestrador leu o `ready_for_review` escrito pelo commit `8346598`, iniciou a
+   tentativa de review 2 e o runner falhou: `review-state.json` passou a
+   `blocked` com `lastError` e `blockedReason` iguais a
+   `CODEX_REVIEW_EXECUTION_FAILED`. A falha é do runner do reviewer, não da
+   correção — o commit final passa `bin/gate post-commit` e `bin/stop-gate`
+   integralmente. O IMPLEMENTER não pode executar, substituir nem reverter essa
+   etapa, então o estado do orquestrador foi deixado como ele o escreveu.
+
+   Duas observações que ajudam a diagnosticá-la, ambas fora do que o IMPLEMENTER
+   pode corrigir:
+
+   - `scripts/run-codex-review.sh` apaga seu `TEMP_DIR` num `trap ... EXIT`, e o
+     log da CLI mora lá dentro. Quando o runner sai por `exit 20`, as 40 linhas
+     que ele imprime em stderr são tudo o que resta, e o orquestrador registra
+     apenas o código. Um bloqueio sem diagnóstico reproduzível é exatamente o que
+     o Anexo H proíbe em toda parte, inclusive aqui.
+   - O dispatch ocorreu **enquanto a árvore ainda se movia**: os commits
+     `15d26d8` e `49098dc`, que completam este relatório, vieram depois das
+     `01:51:16Z`. Um reviewer read-only lendo uma árvore em movimento é uma
+     corrida, independentemente de ter sido essa a causa desta falha.
 
 ## Fronteiras alargadas
 
@@ -665,6 +686,10 @@ a exigiu.
 
 ## Estado
 
-`review-state.json` passa a `ready_for_review`, com `verdict` e os counts do
-review anterior limpos. O IMPLEMENTER não emite verdict e não declara aceitação:
+`review-state.json` foi levado a `ready_for_review`, com `verdict` e os counts do
+review anterior limpos — é o que o commit `8346598` registra. O orquestrador
+consumiu esse estado e, ao falhar o runner do Codex, escreveu `blocked` sobre
+ele (ver "Conflitos e bloqueios", item 4); esse estado é dele e foi preservado.
+
+O IMPLEMENTER não emite verdict e não declara aceitação:
 a próxima revisão independente é do Codex, sobre o commit final.
