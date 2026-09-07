@@ -53,9 +53,29 @@ if [ "$type" != "all" ]; then
 fi
 
 if [ "$scope" = "changed" ] && [ -z "${paths// /}" ]; then
-  paths="$(gate_files changed '^spec/.*_spec\.rb$' | tr '\n' ' ')"
+  # The *related* tests, not the changed spec files (Annex I §11.1). Selecting
+  # only changed specs meant a commit touching nothing but source ran nothing and
+  # the gate recorded `tests PASS` — the shape of commit where running the suite
+  # matters most was the shape where none ran.
+  #
+  # Ruby under app/ or lib/ that no spec covers exits non-zero here rather than
+  # selecting nothing: "there was nothing to run" and "everything passed" are not
+  # the same answer.
+  changed_files="$(gate_files changed '.')"
+
+  if [ -z "$changed_files" ]; then
+    echo "bin/test: nothing changed"
+    exit 0
+  fi
+
+  if ! paths="$(printf '%s\n' "$changed_files" | ruby lib/gates/related_specs.rb)"; then
+    exit 1
+  fi
+
+  paths="$(printf '%s' "$paths" | tr '\n' ' ')"
+
   if [ -z "${paths// /}" ]; then
-    echo "bin/test: no spec file changed"
+    echo "bin/test: no backend spec is related to the change"
     exit 0
   fi
 fi

@@ -2,8 +2,10 @@ require "spec_helper"
 require "json"
 require "open3"
 require "tmpdir"
+require "fileutils"
 require_relative "../../lib/gates/story_boundary"
 require_relative "../../lib/gates/post_commit"
+require_relative "../../lib/gates/related_specs"
 
 # The three local gates, proved by breaking them.
 #
@@ -217,6 +219,58 @@ RSpec.describe "The local gates", :slow do
     end
   end
 
+  # Annex I §11.1 asks for the *related* tests. `--changed` selected changed spec
+  # files and nothing else, and exited 0 with "no spec file changed" whenever a
+  # commit touched only source — so the shape of commit where running the suite
+  # matters most was the shape where none ran, and the gate recorded `tests PASS`.
+  describe "the related specs" do
+    RELATED = Opanel::Gates::RelatedSpecs
+
+    def selection_for(*changed) = RELATED.for_changed(changed, root: GATE_ROOT)
+
+    it "selects a changed spec directly" do
+      selection = selection_for("spec/unit/application_job_spec.rb")
+
+      expect(selection.paths).to eq([ "spec/unit/application_job_spec.rb" ])
+      expect(selection.uncovered).to be_empty
+    end
+
+    it "selects the spec named after a changed source file" do
+      expect(selection_for("app/jobs/application_job.rb").paths)
+        .to include("spec/unit/application_job_spec.rb")
+    end
+
+    it "falls back to the suite that would notice, when nothing is named after the file" do
+      expect(selection_for("db/migrate/20260101000000_probe.rb").paths)
+        .to include("spec/gates/migration_gate_spec.rb")
+    end
+
+    # "There was nothing to run" and "everything passed" are not the same answer.
+    it "reports application code no spec and no suite covers" do
+      selection = selection_for("app/mcp/tool_registry.rb")
+
+      expect(selection.paths).to be_empty
+      expect(selection.uncovered).to eq([ "app/mcp/tool_registry.rb" ])
+    end
+
+    it "ignores what RSpec cannot be selected for" do
+      selection = selection_for("docs/MASTER.md", "app/frontend/pages/Home.tsx", "package.json")
+
+      expect(selection.paths).to be_empty
+      expect(selection.uncovered).to be_empty
+    end
+
+    it "exits non-zero rather than selecting nothing" do
+      output, status = Open3.capture2e(
+        "ruby", "lib/gates/related_specs.rb",
+        stdin_data: "app/mcp/tool_registry.rb\n", chdir: GATE_ROOT
+      )
+
+      expect(status).not_to be_success
+      expect(output).to include("no spec is related to app/mcp/tool_registry.rb")
+    end
+  end
+
   describe "the git hook" do
     # AC4.
     it "is installed by bin/setup" do
@@ -257,21 +311,74 @@ RSpec.describe "The local gates", :slow do
       end
     end
 
-    it "is not detected when the record exists" do
+    # A scratch repository with one commit, and whatever pre-commit record the
+    # example wants beside it.
+    def with_recorded_commit(record)
       Dir.mktmpdir do |directory|
         Open3.capture2e("git", "init", "--quiet", chdir: directory)
         Open3.capture2e("git", "-c", "user.email=t@example.com", "-c", "user.name=T",
           "commit", "--allow-empty", "--quiet", "-m", "probe", chdir: directory)
         tree, = Open3.capture2e("git", "rev-parse", "HEAD^{tree}", chdir: directory)
+        tree = tree.strip
 
         FileUtils.mkdir_p(File.join(directory, POST_COMMIT::EVIDENCE_DIRECTORY))
         File.write(
-          File.join(directory, POST_COMMIT::EVIDENCE_DIRECTORY, "pre-commit-#{tree.strip}.json"),
-          JSON.generate(tree: tree.strip, gate: "pre-commit")
+          File.join(directory, POST_COMMIT::EVIDENCE_DIRECTORY, "pre-commit-#{tree}.json"),
+          JSON.generate(record.call(tree))
         )
 
-        expect(POST_COMMIT.run("pre-commit-executed", story: "M00-12", root: directory)).to be_ok
+        yield POST_COMMIT.run("pre-commit-executed", story: "M00-12", root: directory)
       end
+    end
+
+    def complete_record
+      lambda do |tree|
+        { gate: "pre-commit", tree: tree, result: "pass",
+          checks: POST_COMMIT::PRE_COMMIT_CHECKS, at: "2026-09-06T00:00:00Z" }
+      end
+    end
+
+    it "is not detected when the record exists" do
+      with_recorded_commit(complete_record) { |outcome| expect(outcome).to be_ok }
+    end
+
+    # The record used to be written at the end of every run, whatever the run
+    # found. A red pre-commit gate produced a certificate for a tree it had just
+    # rejected, and this check — the one that exists to catch a bypass — read it
+    # and passed.
+    it "refuses a record whose own result was a failure" do
+      record = ->(tree) { complete_record.call(tree).merge(result: "fail") }
+
+      with_recorded_commit(record) do |outcome|
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("already failed")
+      end
+    end
+
+    it "refuses a record that does not name every item of §12.1" do
+      record = ->(tree) { complete_record.call(tree).merge(checks: %w[format lint]) }
+
+      with_recorded_commit(record) do |outcome|
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("secret-scan")
+      end
+    end
+
+    it "refuses a record describing another tree" do
+      record = ->(_tree) { complete_record.call("0" * 40) }
+
+      with_recorded_commit(record) do |outcome|
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("describes something else")
+      end
+    end
+
+    it "is written only by a gate that passed" do
+      source = File.read(File.join(GATE_ROOT, "bin/gate"))
+      recorder = source[/record_pre_commit_evidence\(\) \{(.*?)^\}/m]
+
+      expect(recorder).to include("GATE_FAILURES"),
+        "the recorder must consult the run's result before attesting to it"
     end
 
     it "is written by the gate itself, keyed by the tree" do
@@ -406,6 +513,243 @@ RSpec.describe "The local gates", :slow do
         expect(outcome).not_to be_ok
         expect(outcome.reason).to include("a suite nobody ran is not a suite that passed")
       end
+    end
+
+    # A scratch repository whose HEAD the evidence can honestly name.
+    def with_test_evidence(metadata, story: "M99-01", story_body: nil)
+      Dir.mktmpdir do |directory|
+        Open3.capture2e("git", "init", "--quiet", chdir: directory)
+        Open3.capture2e("git", "-c", "user.email=t@example.com", "-c", "user.name=T",
+          "commit", "--allow-empty", "--quiet", "-m", "probe", chdir: directory)
+        head, = Open3.capture2e("git", "rev-parse", "HEAD", chdir: directory)
+
+        if story_body
+          FileUtils.mkdir_p(File.join(directory, "docs/implementation/M99/stories"))
+          File.write(File.join(directory, "docs/implementation/M99/stories/#{story}-probe.md"), story_body)
+        end
+
+        FileUtils.mkdir_p(File.join(directory, "tmp/test-results"))
+        File.write(
+          File.join(directory, "tmp/test-results/rspec-metadata.json"),
+          JSON.generate({ "result" => "pass", "commit" => head.strip }.merge(metadata))
+        )
+
+        yield POST_COMMIT.run("tests", story: story, root: directory)
+      end
+    end
+
+    # An empty run reports `pass` for the same reason a green suite does. The
+    # gate read only that field, so a run that executed nothing was evidence.
+    it "refuses a run that executed no examples" do
+      with_test_evidence({ "type" => "all", "tests" => 0 }) do |outcome|
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("executed no examples")
+      end
+    end
+
+    it "refuses evidence that contradicts itself" do
+      with_test_evidence({ "type" => "all", "tests" => 12, "failures" => 3 }) do |outcome|
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("contradicts itself")
+      end
+    end
+
+    # The evidence in the tree was from a `contract` run, and it was accepted for
+    # a Story whose Required Tests name unit, integration and security. Evidence
+    # from a narrower run is evidence about something else.
+    it "refuses evidence from a suite the Story does not declare" do
+      story = <<~MARKDOWN
+        # M99-01 — Probe
+
+        ## Required Tests
+        - **unit**: the rules.
+        - **integration**: against real PostgreSQL.
+
+        ## Quality Gates
+        Local.
+      MARKDOWN
+
+      with_test_evidence({ "type" => "contract", "tests" => 4 }, story_body: story) do |outcome|
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("unit", "integration")
+      end
+    end
+
+    it "accepts a full run for the same Story" do
+      story = <<~MARKDOWN
+        # M99-01 — Probe
+
+        ## Required Tests
+        - **unit**: the rules.
+        - **integration**: against real PostgreSQL.
+      MARKDOWN
+
+      with_test_evidence({ "type" => "all", "tests" => 40 }, story_body: story) do |outcome|
+        expect(outcome).to be_ok
+      end
+    end
+  end
+
+  # M00-18's templates describe a report that maps every criterion. The gate
+  # checked that the word "acceptance" appeared, which a report mapping three of
+  # nine criteria also does.
+  describe "the acceptance mapping" do
+    def with_story_and_report(story_body, report_body)
+      Dir.mktmpdir do |directory|
+        FileUtils.mkdir_p(File.join(directory, "docs/implementation/M99/stories"))
+        FileUtils.mkdir_p(File.join(directory, "docs/implementation/M99/reports"))
+        File.write(File.join(directory, "docs/implementation/M99/stories/M99-01-probe.md"), story_body)
+        File.write(File.join(directory, "docs/implementation/M99/reports/M99-01.md"), report_body)
+
+        yield POST_COMMIT.run("acceptance-mapping", story: "M99-01", root: directory)
+      end
+    end
+
+    let(:story) do
+      <<~MARKDOWN
+        # M99-01 — Probe
+
+        ## Acceptance Criteria
+        1. The first thing happens.
+        2. The second thing happens.
+        3. The third thing happens.
+
+        ## Required Tests
+        - **unit**: the rules.
+      MARKDOWN
+    end
+
+    it "refuses a report that maps only some of the criteria" do
+      report = <<~MARKDOWN
+        # Story Report — M99-01
+
+        ## Acceptance Criteria
+
+        - [x] 1. The first thing — `spec/unit/first_spec.rb`.
+      MARKDOWN
+
+      with_story_and_report(story, report) do |outcome|
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("1 of 3")
+        expect(outcome.reason).to include("2, 3")
+      end
+    end
+
+    it "refuses a criterion that is neither satisfied nor deferred to a decision" do
+      report = <<~MARKDOWN
+        # Story Report — M99-01
+
+        ## Acceptance Criteria
+
+        - [x] 1. The first thing — `spec/unit/first_spec.rb`.
+        - [x] 2. The second thing — `spec/unit/second_spec.rb`.
+        - [ ] 3. The third thing did not get done.
+      MARKDOWN
+
+      with_story_and_report(story, report) do |outcome|
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("neither satisfied nor deferred")
+      end
+    end
+
+    it "accepts one deferred to a named decision" do
+      report = <<~MARKDOWN
+        # Story Report — M99-01
+
+        ## Acceptance Criteria
+
+        - [x] 1. The first thing — `spec/unit/first_spec.rb`.
+        - [x] 2. The second thing — `spec/unit/second_spec.rb`.
+        - [ ] 3. **Deferred.** Waits on ADR-0002, which is still Proposed.
+      MARKDOWN
+
+      with_story_and_report(story, report) { |outcome| expect(outcome).to be_ok }
+    end
+
+    it "accepts the table form the template offers" do
+      report = <<~MARKDOWN
+        # Story Report — M99-01
+
+        ## Acceptance Criteria
+
+        | # | Critério | Evidência |
+        |---|---|---|
+        | 1 | The first thing | `spec/unit/first_spec.rb` |
+        | 2 | The second thing | `spec/unit/second_spec.rb` |
+        | 3 | The third thing | `spec/unit/third_spec.rb` |
+      MARKDOWN
+
+      with_story_and_report(story, report) { |outcome| expect(outcome).to be_ok }
+    end
+  end
+
+  # An absent review is not a clean one. The check globbed `review/*.json`, of
+  # which this repository has none, so every Story reported zero findings —
+  # including a Story with no review at all.
+  describe "the reviewer findings" do
+    def with_review(contents)
+      Dir.mktmpdir do |directory|
+        FileUtils.mkdir_p(File.join(directory, "docs/implementation/M99/review"))
+        if contents
+          File.write(File.join(directory, "docs/implementation/M99/review/M99-01.md"), contents)
+        end
+
+        yield POST_COMMIT.run("reviewer-findings", story: "M99-01", root: directory)
+      end
+    end
+
+    it "refuses a Story with no review at all" do
+      with_review(nil) do |outcome|
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("an absent review is not a clean one")
+      end
+    end
+
+    it "reads the Markdown form the template defines" do
+      with_review(<<~MARKDOWN) do |outcome|
+        # Review — M99-01
+
+        ## Findings
+
+        ### F-1 — Authorization is missing on the delete path
+
+        - **Dimensão:** Segurança
+        - **Severidade:** High
+        - **Evidência:** `app/commands/delete.rb:12`
+        - **Estado:** open
+      MARKDOWN
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("Critical and High must be 0")
+        expect(outcome.reason).to include("F-1")
+      end
+    end
+
+    it "accepts a High that was resolved inside the Story" do
+      with_review(<<~MARKDOWN) { |outcome| expect(outcome).to be_ok }
+        # Review — M99-01
+
+        ## Findings
+
+        ### F-1 — A nested run overwrote the outer run's evidence
+
+        - **Dimensão:** Correção
+        - **Severidade:** High (resolved)
+        - **Evidência:** `bin/test:70`
+      MARKDOWN
+    end
+
+    it "accepts a Medium left open with its reason" do
+      with_review(<<~MARKDOWN) { |outcome| expect(outcome).to be_ok }
+        # Review — M99-01
+
+        ## Findings
+
+        ### F-1 — The scan was narrowed to the staged diff
+
+        - **Dimensão:** Segurança
+        - **Severidade:** Medium
+        - **Estado:** open, with CI compensating
+      MARKDOWN
     end
   end
 

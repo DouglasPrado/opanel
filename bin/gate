@@ -98,12 +98,35 @@ check_no_verify_absent() {
 
 # Written by the pre-commit gate, keyed by the tree it checked. The post-commit
 # gate reads it to tell a verified commit from a bypassed one.
+#
+# **Only a gate that passed every item has anything to attest.** It used to be
+# written unconditionally, at the end of the run: a red pre-commit gate produced
+# a certificate for a tree it had just rejected, and the post-commit check — the
+# one that exists to catch `--no-verify` — read that certificate and passed.
+#
+# The record names the checks, not just the count. "Eight checks passed" and
+# "these eight checks passed" are different claims, and only the second survives
+# somebody quietly removing one.
 record_pre_commit_evidence() {
-  local tree
+  local tree check json_names=""
+
+  if [ "$GATE_FAILURES" -ne 0 ]; then
+    # Only in the text form. Under `--format json` the report already says
+    # `"result": "fail"`, and a line of prose on stderr is one a caller reading
+    # both streams has to parse as JSON and cannot.
+    [ "$GATE_FORMAT" = "json" ] || echo "  pre-commit evidence not recorded: the gate did not pass" >&2
+    return 0
+  fi
+
   tree="$(git write-tree 2>/dev/null)" || return 0
+
+  for check in $GATE_CHECK_NAMES; do
+    json_names="$json_names\"$check\","
+  done
+
   mkdir -p tmp/gate
-  printf '{"tree":"%s","at":"%s","gate":"pre-commit"}\n' \
-    "$tree" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "tmp/gate/pre-commit-$tree.json"
+  printf '{"gate":"pre-commit","tree":"%s","result":"pass","checks":[%s],"at":"%s"}\n' \
+    "$tree" "${json_names%,}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "tmp/gate/pre-commit-$tree.json"
 }
 
 post_commit_check() {
