@@ -1,11 +1,11 @@
 {
   "milestone": "M00",
   "status": "ready_for_review",
-  "reviewAttempt": 0,
-  "fixAttempt": 0,
+  "reviewAttempt": 1,
+  "fixAttempt": 1,
   "maxReviewAttempts": 3,
   "maxFixAttempts": 3,
-  "lastReviewer": null,
+  "lastReviewer": "codex",
   "verdict": null,
   "criticalCount": null,
   "highCount": null,
@@ -14,5 +14,5 @@
   "lastError": null,
   "blockedReason": null,
   "acceptedAt": null,
-  "updatedAt": "2026-09-06T19:40:00Z"
+  "updatedAt": "2026-09-07T02:05:00Z"
 }

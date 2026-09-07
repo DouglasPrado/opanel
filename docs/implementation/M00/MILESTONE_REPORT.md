@@ -13,6 +13,13 @@ M00 builds no Opanel domain entity. It builds the machinery every later
 Milestone is judged by: the runtime, the harnesses, the gates, and the loop's
 own memory.
 
+> **This report describes the first implementation pass.**
+> `CODEX_REVIEW_01.md` returned `NOT_ACCEPTED` (Critical 1, High 15) against
+> `2a38d11`. Every one of those findings is answered in
+> [`FIX_REPORT_01.md`](FIX_REPORT_01.md), which carries the fix, its evidence and
+> the re-run of every suite and gate. Read the two together: the numbers below
+> were measured before the fix, and the ones that changed are restated there.
+
 ## Stories
 
 18 required, 18 `done`, 0 blocked. One commit per Story, plus three
