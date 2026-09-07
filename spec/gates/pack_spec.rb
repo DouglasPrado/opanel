@@ -4,6 +4,7 @@ require "open3"
 require "tmpdir"
 require "fileutils"
 require_relative "../../lib/gates/pack"
+require_relative "../../lib/gates/json_schema"
 
 # The Implementation Pack's state, and the rules that keep it trustworthy.
 #
@@ -66,6 +67,78 @@ RSpec.describe Opanel::Gates::Pack do
 
       expect(schema.dig("properties", "stories", "items", "properties", "status", "enum"))
         .to contain_exactly("pending", "ready", "in_progress", "review", "fix_required", "done", "blocked")
+    end
+  end
+
+  # The schema was called the contract and then not executed: a hand-written
+  # check covered five of its rules and every other constraint validated clean.
+  describe "the schema, applied" do
+    # A document written verbatim, so a payload can violate the *shape* rather
+    # than only the values `with_pack` allows.
+    def violations_for(document)
+      Dir.mktmpdir do |root|
+        directory = File.join(root, "docs/implementation/M99")
+        FileUtils.mkdir_p(File.join(directory, "stories"))
+        File.write(File.join(directory, "stories/M99-01.md"), "# M99-01\n")
+        File.write(File.join(directory, "tasks.json"), JSON.generate(document))
+
+        described_class.validate(File.join(directory, "tasks.json"), root)
+      end
+    end
+
+    def pack_with(story_overrides = {}, **overrides)
+      {
+        "milestone" => "M99", "name" => "Probe", "status" => "in_progress",
+        "dependencies" => [], "stories" => [ {
+          "id" => "M99-01", "file" => "stories/M99-01.md", "status" => "pending",
+          "dependsOn" => [], "attempts" => 0, "required" => true
+        }.merge(story_overrides) ]
+      }.merge(overrides)
+    end
+
+    it "accepts the shape the schema declares" do
+      expect(violations_for(pack_with)).to be_empty
+    end
+
+    {
+      "a property the schema does not declare" => [ { "owner" => "someone" }, /unknown property/ ],
+      "an attempts count below the minimum" => [ { "attempts" => -3 }, /below the minimum/ ],
+      "an attempts count of the wrong type" => [ { "attempts" => "one" }, /should be integer/ ],
+      "a required flag of the wrong type" => [ { "required" => "yes" }, /should be boolean/ ],
+      "a commit that is not a hash" => [ { "commit" => "not-a-hash" }, /does not match/ ],
+      "an id in the wrong format" => [ { "id" => "M99_01" }, /does not match/ ]
+    }.each do |description, (override, message)|
+      it "rejects #{description}" do
+        violations = violations_for(pack_with(override))
+
+        expect(violations.map(&:rule)).to include("SCHEMA")
+        expect(violations.map(&:detail).join("\n")).to match(message)
+      end
+    end
+
+    it "rejects an empty name" do
+      violations = violations_for(pack_with("name" => ""))
+
+      expect(violations.map(&:rule)).to include("SCHEMA")
+    end
+
+    it "rejects a blockedReason carrying a field the schema does not declare" do
+      blocked = {
+        "status" => "blocked",
+        "blockedReason" => {
+          "qualifier" => "BLOCKED_EXTERNAL_DEPENDENCY",
+          "diagnosis" => "the registry is unreachable from this network, reproducibly",
+          "escalated_to" => "someone"
+        }
+      }
+
+      expect(violations_for(pack_with(blocked)).map(&:detail).join("\n"))
+        .to match(/unknown property `escalated_to`/)
+    end
+
+    it "refuses to validate against a keyword it cannot apply" do
+      expect { Opanel::Gates::JsonSchema.validate({ "allOf" => [] }, {}) }
+        .to raise_error(Opanel::Gates::JsonSchema::UnsupportedKeyword, /allOf/)
     end
   end
 

@@ -106,36 +106,111 @@ RSpec.describe Opanel::Gates::StopGate do
       end
     end
 
-    # An acceptance criterion that points at nothing is not satisfied, and the
-    # report is where it points.
-    it "refuses a done Story whose report maps no acceptance criteria" do
+    # A throwaway Milestone: one required, done Story, with whatever Story file,
+    # report and review the example wants beside it.
+    def with_milestone(story: nil, report: nil, review: nil)
       Dir.mktmpdir do |root|
         directory = File.join(root, "docs/implementation/M99")
+        FileUtils.mkdir_p(File.join(directory, "stories"))
         FileUtils.mkdir_p(File.join(directory, "reports"))
+        FileUtils.mkdir_p(File.join(directory, "review"))
+
         File.write(File.join(directory, "tasks.json"), JSON.generate(stories: [
           { "id" => "M99-01", "status" => "done", "required" => true, "commit" => "a1b2c3d" }
         ]))
-        File.write(File.join(directory, "reports/M99-01.md"), "# M99-01\n\nIt is finished.\n")
+        File.write(File.join(directory, "stories/M99-01-probe.md"), story) if story
+        File.write(File.join(directory, "reports/M99-01.md"), report) if report
+        File.write(File.join(directory, "review/M99-01.md"), review) if review
 
+        yield root
+      end
+    end
+
+    def story_declaring_three
+      <<~MARKDOWN
+        # M99-01 — Probe
+
+        ## Acceptance Criteria
+        1. The first thing happens.
+        2. The second thing happens.
+        3. The third thing happens.
+      MARKDOWN
+    end
+
+    # An acceptance criterion that points at nothing is not satisfied, and the
+    # report is where it points. Checking that the word "acceptance" appears
+    # somewhere is not checking that.
+    it "refuses a done Story whose report maps no acceptance criteria" do
+      with_milestone(story: story_declaring_three,
+        report: "# M99-01\n\n## Acceptance Criteria\n\nIt is finished.\n") do |root|
         runner = described_class::Runner.new(milestone: "M99", root: root, only: [ "acceptance" ]).run
 
         expect(runner).not_to be_ok
-        expect(runner.reason).to include("no acceptance mapping")
+        expect(runner.reason).to include("maps 0/3 criteria")
+      end
+    end
+
+    it "refuses a report that maps only some of them" do
+      report = <<~MARKDOWN
+        # M99-01
+
+        ## Acceptance Criteria
+
+        - [x] 1. The first thing — `spec/unit/first_spec.rb`.
+        - [x] 2. The second thing — `spec/unit/second_spec.rb`.
+      MARKDOWN
+
+      with_milestone(story: story_declaring_three, report: report) do |root|
+        runner = described_class::Runner.new(milestone: "M99", root: root, only: [ "acceptance" ]).run
+
+        expect(runner).not_to be_ok
+        expect(runner.reason).to include("missing 3")
       end
     end
 
     it "refuses an unresolved Critical finding" do
-      Dir.mktmpdir do |root|
-        directory = File.join(root, "docs/implementation/M99/review")
-        FileUtils.mkdir_p(directory)
-        File.write(File.join(directory, "M99-01.json"), JSON.generate(
-          findings: [ { "severity" => "critical", "title" => "the executor has no allowlist" } ]
-        ))
+      review = <<~MARKDOWN
+        # Review — M99-01
 
+        ### F-1 — The executor has no allowlist
+
+        - **Severidade:** Critical
+        - **Estado:** open
+      MARKDOWN
+
+      with_milestone(review: review) do |root|
         runner = described_class::Runner.new(milestone: "M99", root: root, only: [ "findings" ]).run
 
         expect(runner).not_to be_ok
         expect(runner.reason).to include("Critical and High must be 0")
+      end
+    end
+
+    # The glob was `review/*.json`, of which this repository has none. Eighteen
+    # Markdown reviews sat next to it unread, every Story reported zero findings,
+    # and a Story with no review at all reported the same thing.
+    it "refuses a required Story with no review at all" do
+      with_milestone do |root|
+        runner = described_class::Runner.new(milestone: "M99", root: root, only: [ "findings" ]).run
+
+        expect(runner).not_to be_ok
+        expect(runner.reason).to include("no implementation self-review for M99-01")
+      end
+    end
+
+    it "reads the Markdown review the template defines" do
+      review = <<~MARKDOWN
+        # Review — M99-01
+
+        ### F-1 — A nested run overwrote the outer run's evidence
+
+        - **Severidade:** High (resolved)
+      MARKDOWN
+
+      with_milestone(review: review) do |root|
+        runner = described_class::Runner.new(milestone: "M99", root: root, only: [ "findings" ]).run
+
+        expect(runner).to be_ok
       end
     end
   end

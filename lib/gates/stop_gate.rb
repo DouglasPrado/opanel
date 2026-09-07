@@ -2,7 +2,9 @@
 
 require "json"
 require "open3"
+require_relative "acceptance_mapping"
 require_relative "pack"
+require_relative "review_findings"
 
 module Opanel
   module Gates
@@ -133,14 +135,18 @@ module Opanel
 
         # Annex H §4.2's "story acceptance script". There is no per-Story script
         # in this repository, and inventing one that the agent writes would be a
-        # check the agent grades. What is verifiable is that every required Story
-        # is done and has a report that maps its acceptance criteria to something.
+        # check the agent grades. What *is* verifiable is that every required
+        # Story is done and that its report accounts for every criterion the
+        # Story declares — by number, one at a time.
+        #
+        # The previous version accepted any report matching /acceptance/i, so a
+        # report that mapped a third of the criteria was indistinguishable from
+        # one that mapped all of them.
         def acceptance
           path = File.join(milestone_directory, "tasks.json")
           return "no tasks.json for #{@milestone}" unless File.exist?(path)
 
-          stories = Pack.load(path).fetch("stories")
-          required = stories.select { |story| story["required"] }
+          required = Pack.load(path).fetch("stories").select { |story| story["required"] }
 
           unfinished = required.reject { |story| story["status"] == "done" }
           unless unfinished.empty?
@@ -150,34 +156,59 @@ module Opanel
                    "reproducible diagnosis: #{TEMPLATES[:blocker]}"
           end
 
-          missing = required.reject do |story|
-            report = File.join(milestone_directory, "reports", "#{story['id']}.md")
-            File.exist?(report) && File.read(report).match?(/acceptance/i)
-          end
-          return nil if missing.empty?
+          problems = required.filter_map { |story| acceptance_problem(story["id"]) }
+          return nil if problems.empty?
 
-          "no acceptance mapping for #{missing.map { |s| s['id'] }.join(', ')} — " \
-            "a criterion that points at nothing is not satisfied. " \
+          "#{problems.join('; ')}. A criterion that points at nothing is not satisfied. " \
             "Template: #{TEMPLATES[:story_report]}"
         end
 
+        def acceptance_problem(story)
+          report = AcceptanceMapping.report_path(@root, @milestone, story)
+          return "#{story} has no report" unless File.exist?(report)
+
+          story_file = AcceptanceMapping.story_path(@root, @milestone, story)
+          return "#{story} has no Story file" if story_file.nil?
+
+          declared = AcceptanceMapping.declared(story_file)
+          return "#{story} declares no acceptance criteria" if declared.empty?
+
+          unmapped = AcceptanceMapping.unmapped(story_file, report)
+          return "#{story} maps #{declared.length - unmapped.length}/#{declared.length} criteria " \
+                 "(missing #{unmapped.join(', ')})" unless unmapped.empty?
+
+          unaccounted = AcceptanceMapping.unaccounted(story_file, report)
+          return nil if unaccounted.empty?
+
+          "#{story} criteria #{unaccounted.join(', ')} are neither satisfied nor deferred to a " \
+            "named ADR or Story"
+        end
+
         # Critical = 0 and High = 0 block DONE and block merge.
+        #
+        # Read from the Markdown reviews that actually exist. The glob was
+        # `review/*.json`, of which there are none: eighteen reviews sat next to
+        # it unread, and a Milestone with no review at all reported clean.
         def findings
-          blocking = []
+          path = File.join(milestone_directory, "tasks.json")
+          return "no tasks.json for #{@milestone}" unless File.exist?(path)
 
-          Dir.glob(File.join(milestone_directory, "review", "*.json")).each do |path|
-            JSON.parse(File.read(path)).fetch("findings", []).each do |finding|
-              severity = finding["severity"].to_s.downcase
-              next unless %w[critical high].include?(severity)
-              next if finding["status"].to_s == "resolved"
+          directory = File.join(milestone_directory, "review")
+          required = Pack.load(path).fetch("stories").select { |story| story["required"] }
 
-              blocking << "#{File.basename(path, '.json')}: #{severity}"
-            end
+          missing = required.map { |story| story["id"] }
+            .select { |story| ReviewFindings.missing?(directory, story) }
+          unless missing.empty?
+            return "no implementation self-review for #{missing.join(', ')} — an absent review is " \
+                   "not a clean one. Template: #{TEMPLATES[:review_findings]}"
           end
 
+          blocking = required.flat_map do |story|
+            ReviewFindings.blocking(directory, story["id"]).map { |finding| "#{story['id']} #{finding}" }
+          end
           return nil if blocking.empty?
 
-          "Critical and High must be 0: #{blocking.join(', ')}. " \
+          "Critical and High must be 0: #{blocking.join('; ')}. " \
             "Severities and their blocking policy: #{TEMPLATES[:review_findings]}"
         end
 

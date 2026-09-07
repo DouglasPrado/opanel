@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "json_schema"
 
 module Opanel
   module Gates
@@ -12,12 +13,20 @@ module Opanel
     # it, a blocked Story carries a reproducible diagnosis, and `dependsOn`
     # describes a graph that can actually be walked.
     #
-    # Validated by hand rather than by a JSON Schema library. The schema in
-    # config/pack/tasks.schema.json is the contract and stays authoritative for
-    # editors and reviewers; the rules that matter here — a `file` that exists, a
-    # cycle, a done Story with no commit — are ones no schema expresses anyway,
-    # so a dependency would buy the easy half and leave the hard half.
+    # Two passes, in this order:
+    #
+    #   1. **the schema**, applied — every type, pattern, enum, bound and
+    #      `additionalProperties: false` in config/pack/tasks.schema.json. It used
+    #      to be called the contract and then not executed: a hand-written check
+    #      covered five of its rules, so a negative `attempts`, a `commit` that is
+    #      not a hash, an unknown property and a `diagnosis` under the declared
+    #      minimum all validated clean;
+    #   2. **the semantic rules**, which no schema expresses — a `file` that
+    #      exists on disk, a `dependsOn` that names a Story of this Milestone, a
+    #      cycle, a `done` with no commit behind it.
     module Pack
+      SCHEMA_PATH = File.expand_path("../../config/pack/tasks.schema.json", __dir__)
+
       STATUSES = %w[pending ready in_progress review fix_required done blocked].freeze
       QUALIFIERS = %w[
         BLOCKED_FOR_PRODUCT_DECISION
@@ -54,8 +63,14 @@ module Opanel
             remedy: "the loop reads this file to know where it is; it cannot recover from invalid JSON") ]
         end
 
-        violations.concat(structure_violations(pack, relative))
-        return violations unless violations.empty?
+        schema_violations = schema_violations(pack, relative)
+        structure = structure_violations(pack, relative)
+
+        # A document whose shape is wrong cannot be walked; the rules below would
+        # raise rather than report. Everything found so far comes back instead.
+        return schema_violations + structure unless structure.empty?
+
+        violations.concat(schema_violations)
 
         directory = File.dirname(path)
         ids = pack.fetch("stories").map { |story| story["id"] }
@@ -66,6 +81,25 @@ module Opanel
 
         violations.concat(cycle_violations(pack, relative))
         violations
+      end
+
+      def schema
+        @schema ||= JSON.parse(File.read(SCHEMA_PATH))
+      end
+
+      def schema_violations(pack, relative)
+        JsonSchema.validate(schema, pack).map do |error|
+          Violation.new(
+            file: relative, rule: "SCHEMA", detail: error.to_s,
+            remedy: "config/pack/tasks.schema.json is the contract, and this is it being applied"
+          )
+        end
+      rescue JsonSchema::UnsupportedKeyword => error
+        [ Violation.new(
+          file: relative, rule: "SCHEMA", detail: error.message,
+          remedy: "the schema declares something nothing enforces, which is worse than not " \
+                  "declaring it — implement the keyword or remove it"
+        ) ]
       end
 
       def structure_violations(pack, relative)
