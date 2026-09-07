@@ -81,6 +81,39 @@ RSpec.describe "The CI pipeline", :slow do
       end
     end
 
+    # The defect this replaces: the command loop was fed by a here-string, the
+    # here-string could not be materialised, the body never ran — and the job
+    # reported `ci-job:static: PASS` with zero checks and exit 0. A gate that
+    # certifies an execution which did not happen is worse than no gate.
+    it "refuses to report a result for checks it did not run" do
+      script = <<~SH
+        set -uo pipefail
+        cd "#{PIPELINE_ROOT}"
+        source bin/_gate_lib.sh
+        gate_begin "probe" "text"
+        gate_run "ran" true
+        # Two results the run believes in and never wrote — what an interrupted
+        # loop leaves behind.
+        GATE_EXPECTED_CHECKS=3
+        gate_finish
+      SH
+
+      output, status = Open3.capture2e("bash", "-c", script, chdir: PIPELINE_ROOT)
+
+      expect(status).not_to be_success, "an interrupted gate must not report PASS"
+      expect(output).to include("recorded 1 of 3")
+    end
+
+    it "records one result per declared command, so a short run is visible" do
+      Dir.mktmpdir do |directory|
+        destination = File.join(directory, "frontend.json")
+        run("bin/ci-job", "frontend", "--out", destination)
+        report = JSON.parse(File.read(destination))
+
+        expect(report["checks"].length).to eq(PIPELINE.job("frontend").commands.length)
+      end
+    end
+
     # A slot with no commands must not claim to have tested anything. A false
     # green is worse than a missing check, because nobody goes looking for it.
     it "reports an unpopulated slot as empty, never as passing" do
@@ -351,6 +384,38 @@ RSpec.describe "The CI pipeline", :slow do
   end
 
   describe "the CI environment" do
+    # The failure this catches: the setup action read `node-version-file: .nvmrc`
+    # and no .nvmrc was ever committed, so every job died in setup before running
+    # a single check — and nothing in the repository said so, because a workflow
+    # is otherwise only exercised by pushing.
+    it "points only at files that exist" do
+      Dir.glob(File.join(PIPELINE_ROOT, ".github/{workflows,actions}/**/*.yml")).each do |path|
+        contents = File.read(path)
+        name = path.delete_prefix("#{PIPELINE_ROOT}/")
+
+        contents.scan(/^\s*[\w-]*version-file:\s*(\S+)/).flatten.each do |referenced|
+          expect(File.exist?(File.join(PIPELINE_ROOT, referenced))).to be(true),
+            "#{name} reads #{referenced}, which is not in this repository"
+        end
+
+        contents.scan(%r{uses:\s*(\./[\w./-]+)}).flatten.each do |referenced|
+          expect(File.exist?(File.join(PIPELINE_ROOT, referenced, "action.yml"))).to be(true),
+            "#{name} uses #{referenced}, which has no action.yml"
+        end
+      end
+    end
+
+    # One declaration of the Node contract. Two is how CI and a developer machine
+    # end up on different majors.
+    it "reads the Node version from the file bin/setup reads" do
+      declared = JSON.parse(File.read(File.join(PIPELINE_ROOT, "package.json"))).dig("engines", "node")
+
+      expect(declared).not_to be_nil, "package.json declares no engines.node"
+      expect(File.read(File.join(PIPELINE_ROOT, "bin/setup"))).to include("engines", "node")
+      expect(File.read(File.join(PIPELINE_ROOT, ".github/actions/setup/action.yml")))
+        .to include("node-version-file: package.json")
+    end
+
     it "carries no production credential" do
       workflows = Dir.glob(File.join(PIPELINE_ROOT, ".github/workflows/*.yml"))
 

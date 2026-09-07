@@ -12,13 +12,29 @@ GATE_FORMAT="text"
 GATE_FAILURES=0
 GATE_STARTED_AT=0
 GATE_RESULTS_FILE=""
+# How many results the gate believes it produced. Compared against how many were
+# actually written: every way a run can be cut short — a temporary file that
+# cannot be created, a killed interpreter, a loop that never started — otherwise
+# ends with an empty result list, and an empty result list reads as "nothing
+# failed".
+GATE_EXPECTED_CHECKS=0
+# The names, in order. What a gate ran is part of its result: "eight checks
+# passed" and "these eight checks passed" are different claims, and only the
+# second one can be verified afterwards.
+GATE_CHECK_NAMES=""
 
 gate_begin() {
   GATE_NAME="$1"
   GATE_FORMAT="${2:-text}"
   GATE_FAILURES=0
+  GATE_EXPECTED_CHECKS=0
+  GATE_CHECK_NAMES=""
   GATE_STARTED_AT="$(gate_now_ms)"
-  GATE_RESULTS_FILE="$(mktemp -t opanel-gate)"
+
+  if ! GATE_RESULTS_FILE="$(mktemp -t opanel-gate)"; then
+    echo "$GATE_NAME: cannot create a results file — the gate did not run" >&2
+    exit 2
+  fi
 
   case "$GATE_FORMAT" in
     text|json) ;;
@@ -81,6 +97,8 @@ gate_pass() {
 }
 
 gate_record() {
+  GATE_EXPECTED_CHECKS=$(( GATE_EXPECTED_CHECKS + 1 ))
+  GATE_CHECK_NAMES="$GATE_CHECK_NAMES $1"
   python3 - "$GATE_RESULTS_FILE" "$1" "$2" "$3" "$4" <<'PY'
 import json, sys
 
@@ -117,8 +135,8 @@ gate_write_json() {
   duration=$(( $(gate_now_ms) - GATE_STARTED_AT ))
   if [ "$GATE_FAILURES" -eq 0 ]; then result="pass"; else result="fail"; fi
 
-  mkdir -p "$(dirname "$path")"
-  python3 - "$GATE_RESULTS_FILE" "$GATE_NAME" "$result" "$duration" "$path" <<'PY'
+  mkdir -p "$(dirname "$path")" || return 1
+  python3 - "$GATE_RESULTS_FILE" "$GATE_NAME" "$result" "$duration" "$path" <<'PY' || return 1
 import json, sys
 
 results, name, result, duration, destination = sys.argv[1:6]
@@ -138,10 +156,59 @@ with open(destination, "w") as handle:
 PY
 }
 
+# How many results actually reached the file. -1 when the file is unreadable,
+# which is itself an answer: the gate cannot say what it ran.
+gate_recorded_count() {
+  python3 - "$GATE_RESULTS_FILE" <<'PY'
+import json, os, sys
+
+path = sys.argv[1]
+try:
+    if not path or not os.path.exists(path):
+        print(0)
+    else:
+        with open(path) as handle:
+            print(len(json.load(handle)))
+except Exception:
+    print(-1)
+PY
+}
+
 gate_finish() {
-  local duration result
+  local duration result recorded
   duration=$(( $(gate_now_ms) - GATE_STARTED_AT ))
   if [ "$GATE_FAILURES" -eq 0 ]; then result="pass"; else result="fail"; fi
+
+  # The run has to account for itself before it is allowed to report. A gate that
+  # recorded fewer results than it started was interrupted, and an interrupted
+  # gate reporting PASS is the failure mode this whole file exists to prevent.
+  recorded="$(gate_recorded_count)"
+  if [ "$recorded" != "$GATE_EXPECTED_CHECKS" ]; then
+    # Reported in the format that was asked for. A caller parsing JSON must get a
+    # document saying the run failed, not prose on stderr it cannot read — an
+    # unparseable answer is indistinguishable from no answer, and this is the one
+    # message that must always arrive.
+    if [ "$GATE_FORMAT" = "json" ]; then
+      python3 - "$GATE_NAME" "$duration" "$recorded" "$GATE_EXPECTED_CHECKS" <<'PY'
+import json, sys
+
+name, duration, recorded, expected = sys.argv[1:5]
+print(json.dumps({
+    "gate": name,
+    "result": "fail",
+    "duration_ms": int(duration),
+    "checks": [],
+    "reason": f"recorded {recorded} of {expected} check result(s); "
+              "the run was interrupted and proves nothing",
+}, indent=2))
+PY
+    else
+      printf '%s: FAIL — recorded %s of %s check result(s); the run was interrupted and proves nothing\n' \
+        "$GATE_NAME" "$recorded" "$GATE_EXPECTED_CHECKS" >&2
+    fi
+    rm -f "$GATE_RESULTS_FILE"
+    exit 1
+  fi
 
   if [ "$GATE_FORMAT" = "json" ]; then
     python3 - "$GATE_RESULTS_FILE" "$GATE_NAME" "$result" "$duration" <<'PY'

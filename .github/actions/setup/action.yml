@@ -18,7 +18,11 @@ runs:
     - name: Node
       uses: actions/setup-node@v4
       with:
-        node-version-file: .nvmrc
+        # `engines.node` in package.json, not a .nvmrc — the .nvmrc named here
+        # never existed, so every job failed in setup before running a single
+        # check. One declaration, in the file that already carries the rest of
+        # the Node contract, and the one bin/setup reads too.
+        node-version-file: package.json
         cache: npm
 
     - name: Install npm dependencies

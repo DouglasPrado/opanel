@@ -57,7 +57,11 @@ jobs:
     description: "Secret scan, dependency audit, static analysis and the workspace guardrail."
     commands:
       - ["workspace-guardrail", "bin/workspace-guardrail"]
-      - ["scan", "bin/security"]
+      # `--out` writes the Security Report of Annex D §24 — scanner, version,
+      # findings, severity and disposition — from this run. The archive action
+      # uploads tmp/security/, so a green result is a result somebody can read
+      # afterwards rather than an exit code nobody kept.
+      - ["scan", "bin/security --out tmp/security/security-report.json"]
       - ["waivers", "bin/security-waivers"]
       - ["controls", "bin/test --type security"]
 
@@ -66,6 +70,19 @@ jobs:
     description: "Vitest component tests over app/frontend."
     commands:
       - ["components", "bin/test:js"]
+
+  setup:
+    stage: pr
+    description: "A clean checkout reaches a working environment with one command — twice."
+    commands:
+      # M00-06 AC1: one command turns a clone into a working environment. The
+      # suite only ever read bin/setup's source, which cannot fail the way a
+      # clean clone fails; the runner's checkout is the disposable environment
+      # that can.
+      - ["clean-clone", "bin/setup --skip-server"]
+      # AC3: idempotence. Running it twice is the property, and it is the one
+      # that rots first — a setup script people are afraid to re-run.
+      - ["idempotent", "bin/setup --skip-server"]
 
   migrations:
     stage: pr
@@ -148,5 +165,6 @@ required_for_merge:
   - security-fast
   - frontend
   - migrations
+  - setup
   - e2e-critical
   - swarm-smoke

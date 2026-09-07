@@ -72,6 +72,11 @@ definition="$(pipeline "
   job.commands.each { |label, command| puts \"#{label}\t#{command}\" }
 ")" || exit 2
 
+# How many checks this job is *supposed* to run, asked separately so the number
+# the loop reaches is compared against the definition rather than against
+# whatever the loop managed to read.
+expected="$(pipeline "print Opanel::Gates::CiPipeline.job('$job').commands.length")" || exit 2
+
 # An empty slot is reported as empty and exits 0 — it is a declared gap, not a
 # passing check. It never claims to have tested anything.
 if [ -z "$definition" ]; then
@@ -91,16 +96,48 @@ fi
 
 gate_begin "ci-job:$job" "$format"
 
-while IFS="$(printf '\t')" read -r label command; do
+# Split in the shell rather than with a here-string. A here-string is backed by a
+# temporary file on some hosts, and when that write failed the loop body never
+# ran: the job reported PASS with zero checks and exit 0, which is the worst
+# possible outcome for a gate — it certified an execution that did not happen.
+#
+# `set -f` while splitting: a command containing `*` must not be glob-expanded
+# against the working directory on its way into the array.
+set -f
+IFS=$'\n'
+# shellcheck disable=SC2206  # deliberate word splitting on newlines
+lines=($definition)
+unset IFS
+set +f
+
+executed=0
+for line in "${lines[@]}"; do
+  label="${line%%$'\t'*}"
+  command="${line#*$'\t'}"
   [ -n "$label" ] || continue
-  # shellcheck disable=SC2086  # the command is repository-defined, not user input
   gate_run "$label" bash -c "$command"
-done <<< "$definition"
+  executed=$((executed + 1))
+done
+
+# The count is the check. Anything that stopped the loop early — a failed
+# temporary file, a truncated read, a job definition that changed underneath —
+# now reports as a failure instead of as a job with nothing left to run.
+if [ "$executed" -ne "$expected" ]; then
+  gate_fail "job-integrity" \
+    "ran $executed of $expected declared check(s) — the job did not execute, it was interrupted"
+fi
 
 # The log stays readable and the machine result is written alongside it: the
 # Merge Gate reads the file, a person reads the log, and neither is asked to
 # parse the other. Both come from the same run — the job is never executed twice
 # to produce two shapes of the same answer.
-[ -n "$out" ] && gate_write_json "$out"
+#
+# A result the Merge Gate cannot read is a job whose outcome nobody has: if the
+# file cannot be written, that is a failure of the run, not a detail of it.
+if [ -n "$out" ]; then
+  if ! gate_write_json "$out"; then
+    gate_fail "evidence" "could not write the machine-readable result to $out"
+  fi
+fi
 
 gate_finish

@@ -54,6 +54,7 @@ jobs:
           - security-fast
           - frontend
           - migrations
+          - setup
 
     services:
       postgres:
