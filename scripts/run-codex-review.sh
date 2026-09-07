@@ -56,7 +56,8 @@ Leia AGENTS.md, docs/MASTER.md e docs/AGENT_RULES.md antes da revisão.
 
 Esta é a tentativa de review $ATTEMPT. Leia todos os CODEX_REVIEW_*.md e
 FIX_REPORT_*.md anteriores, além do git diff/log e da implementação completa.
-Não confie nas afirmações do implementer: verifique código, testes e gates.
+Não confie nas afirmações do implementer. Você não pode executar suíte nem
+gates em sandbox read-only: verifique-os por leitura de código, specs e git log.
 
 Você está tecnicamente em sandbox read-only. Não altere arquivos, não corrija
 código, não faça commits e não modifique tasks.json ou review-state.json.

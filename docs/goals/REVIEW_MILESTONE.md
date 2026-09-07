@@ -112,7 +112,13 @@ Não presuma segurança porque existe teste happy-path.
 
 ## 6. Testes
 
-Execute os testes relevantes.
+Seu sandbox é read-only: **não execute a suíte nem os gates.** Um comando que
+escreve falha, e insistir consome o orçamento do review sem produzir veredito.
+
+Leia `MILESTONE_REPORT.md` e `docs/implementation/<M>/reports/*.md`. Cada número
+ali é uma **alegação do implementer**, não um fato: verifique-a contra o código,
+os specs e o `git log`. Reprove toda evidência que você não consiga reconstruir
+a partir do repositório.
 
 Verifique se existem testes que:
 
@@ -122,7 +128,9 @@ Verifique se existem testes que:
 - ignoram failure paths;
 - foram alterados apenas para acomodar implementação incorreta.
 
-Também execute os quality gates definidos no repositório.
+Sobre os gates, verifique por leitura: o que o script realmente executa, se o
+critério de falha corresponde ao que o relatório afirma, e se algum check aceita
+a *forma* da evidência em vez do seu conteúdo.
 
 ## 7. Escopo
 
@@ -214,8 +222,10 @@ O Milestone só pode receber `ACCEPTED` se:
 
 - todas as Stories obrigatórias passarem;
 - todos os Acceptance Criteria estiverem satisfeitos;
-- testes exigidos estiverem verdes;
-- quality gates estiverem verdes;
+- a evidência de que os testes exigidos estão verdes for verificável no
+  repositório;
+- a evidência de que os quality gates estão verdes for verificável no
+  repositório;
 - Critical findings = 0;
 - High findings = 0;
 - nenhuma violação arquitetural bloqueadora existir;
