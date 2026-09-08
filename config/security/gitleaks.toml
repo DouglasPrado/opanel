@@ -26,7 +26,15 @@ paths = [
   '''vendor/bundle/.*''',
   '''node_modules/.*''',
   '''public/vite.*/.*''',
-  '''tmp/.*''',
+  # Anchored, and it has to stay anchored. `tmp/.*` matches *any* path containing
+  # `tmp/` — including `/tmp`, where a scratch directory lives on Linux. The three
+  # planted-secret examples in spec/security/security_scan_spec.rb scan a scratch
+  # directory, passed here because macOS puts one under /var/folders, and reported
+  # `scanned ~0 bytes (0) — no leaks found` on the CI runner: the scan silenced by
+  # the allowlist rather than run. The entry means this repository's tmp/, so it
+  # says so. The other directory entries are left unanchored deliberately —
+  # node_modules and vendor/bundle nest, tmp/ does not.
+  '''^tmp/''',
   # The versioned example declares keys and holds no value; a spec asserts every
   # sensitive key in it is empty.
   '''\.env\.example''',

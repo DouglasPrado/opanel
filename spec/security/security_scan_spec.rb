@@ -25,8 +25,18 @@ RSpec.describe "security scanning", type: :security do
     def scan_with_planted(content)
       # Outside the repository on purpose: tmp/ is allowlisted by the scan
       # configuration, so a fixture placed there would prove nothing.
+      #
+      # And deliberately one level *under* a directory named tmp/ inside that
+      # scratch space. The allowlist entry used to read `tmp/.*`, unanchored,
+      # which silenced the scan for every path containing `tmp/` anywhere —
+      # including /tmp, where Dir.mktmpdir lands on Linux. These examples passed
+      # here, where macOS puts a scratch directory under /var/folders, and
+      # reported `scanned ~0 bytes (0) — no leaks found` on the CI runner. Planting
+      # under a tmp/ gives the fixture the same shape on every platform, so an
+      # un-anchored entry fails this everywhere instead of only where it is run.
       Dir.mktmpdir do |directory|
-        File.write(File.join(directory, "planted.txt"), content)
+        FileUtils.mkdir_p(File.join(directory, "tmp"))
+        File.write(File.join(directory, "tmp", "planted.txt"), content)
 
         output, status = run(
           "gitleaks", "dir", directory,
