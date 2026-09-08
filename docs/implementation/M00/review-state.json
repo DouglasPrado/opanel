@@ -1,6 +1,6 @@
 {
   "milestone": "M00",
-  "status": "ready_for_review",
+  "status": "blocked",
   "reviewAttempt": 2,
   "fixAttempt": 2,
   "maxReviewAttempts": 3,
@@ -11,9 +11,9 @@
   "highCount": null,
   "mediumCount": null,
   "lowCount": null,
-  "lastError": null,
-  "blockedReason": null,
+  "lastError": "CODEX_REVIEW_EXECUTION_FAILED",
+  "blockedReason": "CODEX_REVIEW_EXECUTION_FAILED",
   "acceptedAt": null,
-  "updatedAt": "2026-09-08T00:58:42Z",
-  "executionFailures": 0
+  "updatedAt": "2026-09-08T01:45:57Z",
+  "executionFailures": 1
 }
