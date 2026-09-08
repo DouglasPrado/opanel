@@ -47,7 +47,12 @@ PATTERNS = {
   "recovery-key" => /(recovery[_-]?key"?\s*[:=]\s*"?)([^"\s,}]{4,})/i
 }.freeze
 
-TEXT_EXTENSIONS = %w[.txt .log .json .xml .html .md .yml .yaml .csv .har].freeze
+# `.jsonl` is here because this repository writes one: VISUAL_MANIFEST below. It
+# was missing, and a manifest with entries only passed by accident — the sniff
+# below reads it as text. An empty one has nothing to sniff, so it was classified
+# `uninspectable-format (.jsonl)`, deleted, and failed the `e2e-critical` job on
+# the first real run of the pipeline. It is a text format either way.
+TEXT_EXTENSIONS = %w[.txt .log .json .jsonl .xml .html .md .yml .yaml .csv .har].freeze
 
 # Containers this tool knows how to open. A Playwright trace and its resource
 # bundles are ZIP; a coverage or JUnit upload is sometimes gzip.
@@ -129,7 +134,15 @@ def text_artifact?(path)
   return false if PUBLISHABLE_OPAQUE.include?(File.extname(path).downcase)
 
   sample = File.read(path, 4096, mode: "rb").to_s
-  !sample.empty? && sample.valid_encoding? && !sample.include?("\u0000")
+
+  # Zero bytes carry nothing, so there is nothing to clear. This read `!empty?`,
+  # which sent every empty file down the binary path to be deleted as
+  # uninspectable — "nobody could read it" applied to a file with nothing in it.
+  # The three guards above still run first, so an empty .png is still an unproven
+  # visual artifact and an empty .zip is still an archive nobody could open.
+  return true if sample.empty?
+
+  sample.valid_encoding? && !sample.include?("\u0000")
 rescue SystemCallError
   false
 end

@@ -1,5 +1,5 @@
 require "rails_helper"
-require "english"
+require "English"
 require "tmpdir"
 # lib/gates is deliberately outside Zeitwerk so the bin/ scripts can load it
 # without booting Rails (see config/application.rb).

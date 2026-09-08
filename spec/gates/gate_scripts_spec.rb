@@ -337,11 +337,32 @@ RSpec.describe "The local gates", :slow do
       expect(File.read(hook)).to include("bin/gate pre-commit")
     end
 
-    it "is what git is configured to run" do
-      output, status = Open3.capture2e("bin/install-hooks", "--check", chdir: GATE_ROOT)
+    # This asserted that *this* machine had core.hooksPath set — true on a
+    # developer's checkout because bin/setup had run, and false on a CI runner,
+    # where it failed the `unit` job on the first real execution of the pipeline.
+    # Asserting the ambient state proves only that somebody once ran the script.
+    # What has to hold everywhere is the round trip: --check refuses a repository
+    # that is not configured, and bin/install-hooks configures it.
+    #
+    # GIT_DIR/GIT_WORK_TREE point git at a scratch repository, so the example
+    # proves both directions without ever touching the hooks of the checkout it
+    # runs in — a test that unset them and died would silently disable the gate.
+    it "is what git is configured to run, once bin/install-hooks has run" do
+      Dir.mktmpdir do |directory|
+        Open3.capture2e("git", "init", "--quiet", directory)
+        env = { "GIT_DIR" => File.join(directory, ".git"), "GIT_WORK_TREE" => directory }
 
-      expect(status).to be_success, output
-      expect(output).to include(".githooks")
+        refused, refused_status = Open3.capture2e(env, "bin/install-hooks", "--check", chdir: GATE_ROOT)
+
+        expect(refused_status).not_to be_success
+        expect(refused).to include("unset")
+
+        Open3.capture2e(env, "bin/install-hooks", chdir: GATE_ROOT)
+        output, status = Open3.capture2e(env, "bin/install-hooks", "--check", chdir: GATE_ROOT)
+
+        expect(status).to be_success, output
+        expect(output).to include(".githooks")
+      end
     end
   end
 

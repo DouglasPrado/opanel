@@ -128,13 +128,24 @@ end
 
 # The client existing says nothing about the server running, and "connection
 # refused" thirty seconds later is a worse message than this one.
-unless system("pg_isready > /dev/null 2>&1")
+#
+# The probe has to reach the same server the application will: config/database.yml
+# reads OPANEL_DATABASE_HOST and OPANEL_DATABASE_PORT, so this reads them too,
+# with the same defaults. A bare `pg_isready` asks the local Unix socket instead,
+# which is right on a laptop and wrong everywhere the database is a TCP service —
+# it is what failed the `setup` CI job on the first real run of the pipeline,
+# against a PostgreSQL that `bin/rails db:test:prepare` had just connected to.
+database_host = ENV.fetch("OPANEL_DATABASE_HOST", "localhost")
+database_port = ENV.fetch("OPANEL_DATABASE_PORT", "5432")
+
+unless system("pg_isready", "-h", database_host, "-p", database_port.to_s, out: File::NULL, err: File::NULL)
   fail_with(
-    "PostgreSQL is installed but not accepting connections.",
-    "Start it, e.g. `brew services start postgresql@17`, then run bin/setup again."
+    "PostgreSQL is not accepting connections at #{database_host}:#{database_port}.",
+    "Start it, e.g. `brew services start postgresql@17`, then run bin/setup again. " \
+    "If the server is elsewhere, set OPANEL_DATABASE_HOST and OPANEL_DATABASE_PORT."
   )
 end
-ok "PostgreSQL is accepting connections"
+ok "PostgreSQL is accepting connections at #{database_host}:#{database_port}"
 
 # --- Dependencies ------------------------------------------------------------
 

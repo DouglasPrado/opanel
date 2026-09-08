@@ -149,6 +149,42 @@ RSpec.describe "test artifact redaction", type: :security do
     end
   end
 
+  # The e2e run that captures nothing writes an empty manifest
+  # (e2e/support/global-teardown.ts). This deleted it as `uninspectable-format`
+  # and failed `e2e-critical` on the first real execution of the pipeline — the
+  # redactor refusing a file whose entire content is nothing, in a job whose own
+  # bookkeeping produced it. A file with no bytes has no secret in it.
+  describe "a file with nothing in it" do
+    it "keeps an empty manifest instead of failing the run over it" do
+      redact({ "visual-manifest.jsonl" => "" }) do |report, status, remaining|
+        expect(status).to be_success, report.to_s
+        expect(remaining).to have_key("visual-manifest.jsonl")
+      end
+    end
+
+    it "still refuses an empty artifact whose meaning would be in its pixels" do
+      redact({ "shot.png" => "" }) do |report, status, remaining|
+        expect(status).not_to be_success
+        expect(report["deleted"].map { |entry| entry["patterns"] }.flatten.join)
+          .to include("unproven-visual-artifact")
+        expect(remaining).not_to have_key("shot.png")
+      end
+    end
+  end
+
+  # `.jsonl` reaching the text path has to mean it is *scanned* as text, not that
+  # it is waved through: the manifest sits beside artifacts that carry
+  # credentials, and a format added to the allowlist without a scan is a hole.
+  it "masks a secret in a JSON-lines file rather than publishing it" do
+    leaky = %({"path":"a.png","authorization":"Bearer abcdefghijklmnop"}\n)
+
+    redact({ "visual-manifest.jsonl" => leaky }) do |report, status, remaining|
+      expect(status).to be_success, report.to_s
+      expect(report["masked"]).not_to be_empty
+      expect(remaining["visual-manifest.jsonl"]).not_to include("abcdefghijklmnop")
+    end
+  end
+
   # M00-R02. A screenshot's content is in its pixels. The byte scan finds nothing
   # there — not because the image is clean, but because there is nothing for a
   # regex to find — and "the scanner found nothing" was recorded as "publishable".
