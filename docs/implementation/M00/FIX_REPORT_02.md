@@ -815,13 +815,14 @@ nothing deferred.
 No specification conflict was found in this attempt. Three things belong to the
 reviewer rather than to a silent decision:
 
-1. **`dirty: true` in every artifact, for one file.** The dirty entry is
+1. **`dirty: true` in the artifacts above, for one file.** The dirty entry is
    `docs/implementation/M00/review-state.json`, which
    `review-state.sh <dir> fix-start` wrote to open this attempt and which the
    loop's own protocol leaves uncommitted until `fix-done`. The
    `.claude/settings.json` change that made attempt 02's artifacts dirty is gone:
    `4d2fb44` committed it. `git status --short` at the time of every run above
-   shows that one file and nothing else.
+   shows that one file and nothing else, and the closing verification below —
+   taken after that file was committed — records `dirty: false`.
 2. **The Merge Gate is 8/10 and cannot be more.** `base-branch-current` reports
    HEAD behind `origin/main`; `required-approvals` reports `no pull requests found
    for branch "loop/replace-orchestrator"`. Both are human acts the implementer
@@ -838,14 +839,25 @@ reviewer rather than to a silent decision:
 
 ## Closing verification (attempt 03)
 
-Repeated against the commit that carries this report, so the evidence describes
-the state being handed over rather than the state before it.
+Repeated against `9cdba23`, the commit that carries this report, so the evidence
+describes the state being handed over rather than the state before it.
 
 | Comando | Resultado | Exit |
 |---|---|---|
-| `bin/test` | **723 examples, 0 failures, 0 pending**, `complete: true` | 0 |
+| `bin/test` | **723 examples, 0 failures, 0 pending** — `complete: true`, `skipped: 0`, `commit: 9cdba231c`, **`dirty: false`** | 0 |
 | `bin/gate post-commit --story M00-14` | PASS — 8 checks | 0 |
 | `bin/stop-gate M00 --format text` | **OK — the Milestone may stop**, 10/10 PASS | 0 |
+
+Stop Gate durations at that commit: `workspace-clean` 29 ms, `pack-consistent`
+30 ms, `static` 5 941 ms, `security` 128 619 ms, `unit` 258 425 ms, `integration`
+41 547 ms, `contract` 458 ms, `acceptance` 211 ms, `findings` 4 ms,
+`milestone-report` 1 ms.
+
+`dirty: false` is the one number here that attempt 02 could not produce. Its
+artifacts all recorded `dirty: true` because of an uncommitted orchestrator hook
+the implementer was not allowed to touch; `4d2fb44` committed that file, and with
+`review-state.json` committed by this fix the tree is clean at the moment the
+closing evidence is written.
 
 ## Handoff
 
