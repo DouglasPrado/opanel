@@ -27,14 +27,17 @@ allowlist silenced it.
 Two things happened during the round that the authorisation did not anticipate,
 and both are recorded here rather than worked around silently:
 
-1. **PR #3 was merged by the human at 13:33 UTC**, while the pipeline was still
-   red, so `loop/replace-orchestrator` no longer had an open pull request and a
-   push to it triggered nothing — `.github/workflows/ci.yml` fires on
-   `pull_request`, on `push` to `main`, and on `workflow_dispatch`. Without a pull
-   request there is no `merge-stage` (`e2e-critical`, `swarm-smoke`) and no
-   `merge-gate` job at all, which is most of what F01 asks to see run. **PR #4**
-   was opened from the same branch onto the same base, for the same purpose the
-   authorisation named. It is closeable and changes nothing about the code.
+1. **The branch was merged to `main` twice while this round was running.** PR #3
+   was merged at 13:33 UTC with the pipeline still red, so
+   `loop/replace-orchestrator` no longer had an open pull request and a push to it
+   triggered nothing — `.github/workflows/ci.yml` fires on `pull_request`, on
+   `push` to `main`, and on `workflow_dispatch`. Without a pull request there is no
+   `merge-stage` (`e2e-critical`, `swarm-smoke`) and no `merge-gate` job at all,
+   which is most of what F01 asks to see run. **PR #4** was opened from the same
+   branch onto the same base, for the same purpose the authorisation named, and the
+   human merged that one too once the ten jobs came back green. Both merges are
+   the human's, both are recorded in the run table below, and neither was
+   requested by this session.
 2. **Editing anything under `.github/` required an approval this session cannot
    obtain.** The edit was attempted and refused by the harness, not skipped. One
    defect and one gate consequence are therefore left open below rather than
@@ -241,8 +244,8 @@ recorded rather than applied.
 
 ### The pipeline, run
 
-Four executions on this branch, each one a real event with a URL. The
-progression is the evidence, not the last line of it:
+Six executions, each one a real event with a URL. The progression is the
+evidence, not the last line of it:
 
 | Run | Commit | Result |
 |---|---|---|
@@ -250,6 +253,8 @@ progression is the evidence, not the last line of it:
 | [`34232512326`](https://github.com/DouglasPrado/opanel/actions/runs/34232512326) | `62a2a10` | 6 green, 3 red (`setup`, `security-fast`, `unit`), `pr-gate` and `merge-gate` red |
 | [`34234341338`](https://github.com/DouglasPrado/opanel/actions/runs/34234341338) | `30f4a27` | 9 of 10 green; `security-fast` red on the silenced scan |
 | [`34235400571`](https://github.com/DouglasPrado/opanel/actions/runs/34235400571) | `482c45c` | **all ten `required_for_merge` jobs green, `pr-gate` green** |
+| [`34237841689`](https://github.com/DouglasPrado/opanel/actions/runs/34237841689) | `dcd31cf` | push to `main` after the human merged PR #4 — **`conclusion: success`** |
+| [`34239482957`](https://github.com/DouglasPrado/opanel/actions/runs/34239482957) | `48c9515` | `workflow_dispatch` on this report's own commit — **`conclusion: success`** |
 
 Run `34235400571`, `pull_request` on PR #4, started 13:59:27Z:
 
@@ -506,12 +511,60 @@ run 34235400571 — pull_request, PR #4, commit 482c45c
     two of them the artifact-path defect diagnosed above.
 ```
 
-This report's own commit is documentation only. Its CI run is a fifth execution
-of the same pipeline on the same code, and the reviewer should check it rather
-than take this paragraph for it:
+Two more runs happened after that one, and both belong in the record because the
+branch moved under this report while it was being written.
+
+**The human merged PR #4 at `482c45c`**, once the ten jobs came back green — the
+second merge of this round, and the reason the account here has to be checked
+against `gh` rather than read. That merge pushed to `main`, which is a trigger:
+
+```
+run 34237841689 — push to main, commit dcd31cf (the merge of 482c45c)
+  conclusion: success
+  ten required_for_merge jobs   success
+  pr-gate                       success
+  merge-gate                    skipped — it runs only on a pull request, by
+    design: after a push to main the merge has already happened and there is
+    nothing left to gate.
+```
+
+That is the whole workflow reporting `success` for the first time in this
+repository's history, on a commit containing every fix of this round.
+
+**This report's own commit, `48c9515`, is documentation only** and had no open
+pull request to run against, so the pipeline was dispatched on it directly:
+
+```
+run 34239482957 — workflow_dispatch, branch loop/replace-orchestrator, commit 48c9515
+  conclusion: success
+  static unit integration contract security-fast frontend migrations setup  8/8 success
+  pr-gate                       success
+  merge-stage, merge-gate       skipped
+```
+
+`e2e-critical` and `swarm-smoke` do not run on a `workflow_dispatch` of a
+non-default branch — `merge-stage` is gated on
+`github.base_ref == 'main' || github.ref == 'refs/heads/main'`. So this run proves
+the PR stage at the exact tree being handed to review, and the merge stage is
+proved at `482c45c` and `dcd31cf`, which differ from it by one Markdown file.
+Both statements are checkable:
 
 ```sh
-gh run list --branch loop/replace-orchestrator --limit 3
+gh run view 34239482957 --json conclusion,headSha
+gh run view 34237841689 --json conclusion,headSha
+git diff --stat 482c45c..48c9515
+```
+
+One honest limit, because it is the kind of gap that otherwise looks like a
+missing number: the paragraphs you are reading are in a commit that *postdates*
+run `34239482957` — the branch's last commit amends this report with the two runs
+above. A report cannot carry the id of the run of the commit that carries the
+report. That commit changes one Markdown file, the pipeline is dispatched on it
+too, and the reviewer reads the result where it lives:
+
+```sh
+gh run list --branch loop/replace-orchestrator --limit 2
+git diff --stat 48c9515..HEAD
 ```
 
 ---
@@ -521,7 +574,9 @@ gh run list --branch loop/replace-orchestrator --limit 3
 Stated as checks, not as claims, because that is the whole argument of the round:
 
 1. `gh run view 34235400571` — ten `required_for_merge` jobs `success` and
-   `pr-gate` `success`, at `482c45c`, on a `pull_request` event.
+   `pr-gate` `success`, at `482c45c`, on a `pull_request` event; and
+   `gh run view 34237841689 --json conclusion` — the whole workflow `success` at
+   `dcd31cf` on `main`.
 2. `gh run view 34230657160` — twelve failures at `67776a7`, so the progression is
    an event rather than a story about one.
 3. `git log --all -- spec/integration/setup_spec.rb spec/integration/dev_supervisor_spec.rb spec/integration/health_spec.rb`
