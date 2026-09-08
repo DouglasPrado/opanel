@@ -6,6 +6,7 @@
 #   bin/merge-gate
 #   bin/merge-gate --format json
 #   bin/merge-gate --base origin/main --results tmp/ci-results
+#   bin/merge-gate --root <dir> --security-report <path>
 #
 # The checklist of §15.2, executed rather than affirmed. Every item runs a
 # command and uses its exit code: a gate satisfied by someone ticking a box is
@@ -25,6 +26,7 @@
 require "json"
 require "open3"
 require_relative "../lib/gates/ci_pipeline"
+require_relative "../lib/gates/review_findings"
 
 module MergeGate
   # Changing any of these changes how the repository judges itself, so it may
@@ -60,10 +62,11 @@ module MergeGate
   end
 
   class Runner
-    def initialize(base:, results_dir:, root: Dir.pwd)
+    def initialize(base:, results_dir:, root: Dir.pwd, security_report: nil)
       @base = base
       @results_dir = results_dir
       @root = root
+      @security_report = security_report || SECURITY_REPORT
       @checks = []
     end
 
@@ -156,28 +159,66 @@ module MergeGate
       problems.empty? ? nil : problems.join("; ")
     end
 
-    # Severity comes from the security scan and from any review findings file
-    # the Milestone produced. Both are read; neither is trusted to be present
-    # and green by default.
+    # Where the producers actually write. Both of these were guesses, and both
+    # were wrong: the scan is written to `security-report.json` by
+    # config/ci/jobs.yml, and the reviews are the Markdown of
+    # docs/templates/REVIEW_FINDINGS.md. This gate looked for `report.json` and
+    # for `review/*.json`, found neither, and counted zero — so the two checks
+    # whose whole job is to block a merge on Critical and High passed on every
+    # branch, including the ones with findings.
+    SECURITY_REPORT = "tmp/security/security-report.json"
+
+    # Severity comes from the security scan and from the Milestone's review
+    # findings. Both are read from their canonical form; a missing or unreadable
+    # one fails, because evidence that is not there is not evidence of zero.
     def findings_zero(severity)
       counts = []
+      problem = security_findings(severity, counts)
+      return problem if problem
 
-      security = File.join(@root, "tmp/security/report.json")
-      if File.exist?(security)
-        report = JSON.parse(File.read(security))
-        found = report.fetch("findings", []).count { |f| f["severity"].to_s.downcase == severity }
-        counts << "#{found} in the security scan" if found.positive?
-      end
+      Dir.glob(File.join(@root, "docs/implementation/*/tasks.json")).sort.each do |path|
+        milestone = File.basename(File.dirname(path))
+        directory = File.join(@root, "docs/implementation", milestone, "review")
 
-      Dir.glob(File.join(@root, "docs/implementation/*/review/*.json")).each do |path|
-        findings = JSON.parse(File.read(path)).fetch("findings", [])
-        found = findings.count do |finding|
-          finding["severity"].to_s.downcase == severity && finding["status"].to_s != "resolved"
+        JSON.parse(File.read(path)).fetch("stories", []).each do |story|
+          next unless story["status"] == "done"
+
+          found = Opanel::Gates::ReviewFindings
+            .for_story(directory, story["id"])
+            .count { |finding| finding.severity.to_s == severity && !finding.resolved? }
+          counts << "#{found} unresolved in #{milestone}/review/#{story['id']}" if found.positive?
         end
-        counts << "#{found} unresolved in #{path.delete_prefix("#{@root}/")}" if found.positive?
       end
 
       counts.empty? ? nil : "#{severity.capitalize} must be 0: #{counts.join(', ')}"
+    end
+
+    # The scan is required, not optional. Its absence used to be silence.
+    def security_findings(severity, counts)
+      path = File.expand_path(@security_report, @root)
+      unless File.exist?(path)
+        return "no security report at #{@security_report} — run " \
+               "`bin/security --out #{@security_report}`; " \
+               "a scan nobody ran is not a scan that found nothing"
+      end
+
+      report =
+        begin
+          JSON.parse(File.read(path))
+        rescue JSON::ParserError => error
+          return "the security report at #{@security_report} is not readable JSON (#{error.class})"
+        end
+
+      # The count the report computed from its own findings, so this gate and
+      # the report cannot disagree about what "High" means.
+      recorded = report.dig("counts", severity)
+      if recorded.nil?
+        return "the security report at #{@security_report} records no #{severity} count — " \
+               "it predates the per-vulnerability format and cannot answer this question"
+      end
+
+      counts << "#{recorded} in the security scan" if recorded.to_i.positive?
+      nil
     end
 
     def migration_rollout_safe
@@ -287,6 +328,8 @@ end
 format = "text"
 base = ENV.fetch("OPANEL_MERGE_BASE", "origin/main")
 results_dir = "tmp/ci-results"
+root = File.expand_path("..", __dir__)
+security_report = nil
 
 arguments = ARGV.dup
 until arguments.empty?
@@ -295,14 +338,17 @@ until arguments.empty?
   when "--json" then format = "json"
   when "--base" then base = arguments.shift
   when "--results" then results_dir = arguments.shift
+  when "--root" then root = File.expand_path(arguments.shift)
+  when "--security-report" then security_report = arguments.shift
   else
     warn "unknown option: #{argument}"
     exit 2
   end
 end
 
-root = File.expand_path("..", __dir__)
-runner = MergeGate::Runner.new(base: base, results_dir: results_dir, root: root).run
+runner = MergeGate::Runner.new(
+  base: base, results_dir: results_dir, root: root, security_report: security_report
+).run
 
 if format == "json"
   puts JSON.generate(

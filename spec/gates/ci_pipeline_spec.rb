@@ -296,6 +296,117 @@ RSpec.describe "The CI pipeline", :slow do
 
       expect(approvals["result"]).to eq("fail")
     end
+
+    # M00-R17. The two checks whose whole job is to block a merge on Critical and
+    # High looked for `tmp/security/report.json` and `review/*.json`. The pipeline
+    # writes `security-report.json` and the reviews are Markdown, so both found
+    # nothing, counted zero, and passed on every branch — including the ones with
+    # findings.
+    describe "the sources it reads for Critical and High" do
+      def severity_check(report, severity) =
+        report["checks"].find { |check| check["name"] == "#{severity}-zero" }
+
+      def with_repository(files)
+        Dir.mktmpdir do |root|
+          files.each do |path, content|
+            full = File.join(root, path)
+            FileUtils.mkdir_p(File.dirname(full))
+            File.write(full, content)
+          end
+
+          report, status = merge_gate("--base", "main", "--root", root)
+          yield report, status
+        end
+      end
+
+      let(:clean_report) do
+        JSON.generate(report: "security", counts: { "critical" => 0, "high" => 0 }, findings: [])
+      end
+
+      it "reads the report path the pipeline actually writes" do
+        jobs = YAML.safe_load_file(File.join(PIPELINE_ROOT, "config/ci/jobs.yml"))
+        written = jobs.dig("jobs", "security-fast", "commands").map(&:last)
+          .find { |command| command.include?("--out") }[/--out\s+(\S+)/, 1]
+
+        expect(File.read(File.join(PIPELINE_ROOT, "bin/merge-gate"))).to include(written)
+      end
+
+      it "blocks when the scan never ran, rather than counting zero" do
+        with_repository({}) do |report, status|
+          expect(status).not_to be_success
+          expect(severity_check(report, "critical")["reason"])
+            .to include("a scan nobody ran is not a scan that found nothing")
+        end
+      end
+
+      it "blocks on a report it cannot parse" do
+        with_repository("tmp/security/security-report.json" => "{ not json") do |report, _status|
+          expect(severity_check(report, "high")["reason"]).to include("not readable JSON")
+        end
+      end
+
+      it "blocks on a report that predates the per-vulnerability format" do
+        old = JSON.generate(report: "security",
+          findings: [ { scanner: "npm-audit", severity: "blocking" } ])
+
+        with_repository("tmp/security/security-report.json" => old) do |report, _status|
+          expect(severity_check(report, "high")["reason"]).to include("records no high count")
+        end
+      end
+
+      it "counts a High the scan found" do
+        found = JSON.generate(report: "security", counts: { "critical" => 0, "high" => 2 })
+
+        with_repository("tmp/security/security-report.json" => found) do |report, _status|
+          expect(severity_check(report, "high")["reason"]).to include("2 in the security scan")
+          expect(severity_check(report, "critical")["result"]).to eq("pass")
+        end
+      end
+
+      # The reviews are Markdown. Reading them is the difference between "no
+      # blocking finding" and "no file this glob matched".
+      it "counts a blocking finding in a Markdown review of a done Story" do
+        review = <<~MARKDOWN
+          # Review — M99-01
+
+          ### F-1 — the executor is reachable from a controller
+
+          - **Severidade:** Critical
+          - **Estado:** open
+        MARKDOWN
+
+        with_repository(
+          "tmp/security/security-report.json" => clean_report,
+          "docs/implementation/M99/tasks.json" =>
+            JSON.generate(stories: [ { "id" => "M99-01", "status" => "done", "commit" => "abc" } ]),
+          "docs/implementation/M99/review/M99-01.md" => review
+        ) do |report, status|
+          expect(status).not_to be_success
+          expect(severity_check(report, "critical")["reason"])
+            .to include("1 unresolved in M99/review/M99-01")
+        end
+      end
+
+      it "passes when the same review records the finding as resolved" do
+        review = <<~MARKDOWN
+          # Review — M99-01
+
+          ### F-1 — the executor is reachable from a controller
+
+          - **Severidade:** Critical
+          - **Estado:** resolved
+        MARKDOWN
+
+        with_repository(
+          "tmp/security/security-report.json" => clean_report,
+          "docs/implementation/M99/tasks.json" =>
+            JSON.generate(stories: [ { "id" => "M99-01", "status" => "done", "commit" => "abc" } ]),
+          "docs/implementation/M99/review/M99-01.md" => review
+        ) do |report, _status|
+          expect(severity_check(report, "critical")["result"]).to eq("pass")
+        end
+      end
+    end
   end
 
   # AC11. A gate that any Story may quietly edit is not a gate.
@@ -340,6 +451,24 @@ RSpec.describe "The CI pipeline", :slow do
         next if archive.nil?
 
         expect(archive["if"]).to eq("always()")
+      end
+    end
+
+    # M00-R19. A job name and `result: pass`, on their own, say that something
+    # passed and nothing about what: two branches produce indistinguishable files,
+    # and a result produced over uncommitted changes looks like one produced over
+    # the commit it sits beside.
+    it "names the commit, the branch and whether the tree was dirty" do
+      Dir.mktmpdir do |directory|
+        destination = File.join(directory, "contract.json")
+        _output, status = run("bin/ci-job", "contract", "--out", destination)
+        result = JSON.parse(File.read(destination))
+
+        expect(status).to be_success
+        expect(result["commit"]).to match(/\A[0-9a-f]{40}\z/)
+        expect(result["branch"]).not_to be_empty
+        expect(result).to have_key("dirty")
+        expect(result["finished_at"]).to match(/\A\d{4}-\d{2}-\d{2}T[\d:]+Z\z/)
       end
     end
   end

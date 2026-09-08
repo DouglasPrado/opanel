@@ -31,7 +31,12 @@ gate_begin() {
   GATE_CHECK_NAMES=""
   GATE_STARTED_AT="$(gate_now_ms)"
 
-  if ! GATE_RESULTS_FILE="$(mktemp -t opanel-gate)"; then
+  # An explicit template rather than `mktemp -t opanel-gate`. BSD mktemp appends
+  # the random suffix to a `-t` argument; GNU coreutils — which is what the
+  # Ubuntu runner in .github/workflows has — requires the template to end in at
+  # least three X's and exits non-zero without them. So the gate died at
+  # gate_begin on every Linux runner, before a single check ran.
+  if ! GATE_RESULTS_FILE="$(mktemp "${TMPDIR:-/tmp}/opanel-gate.XXXXXXXX")"; then
     echo "$GATE_NAME: cannot create a results file — the gate did not run" >&2
     exit 2
   fi
@@ -131,15 +136,25 @@ PY
 # one from the other, or running the gate twice to get both, is how they start
 # disagreeing.
 gate_write_json() {
-  local path="$1" duration result
+  local path="$1" duration result commit branch dirty
   duration=$(( $(gate_now_ms) - GATE_STARTED_AT ))
   if [ "$GATE_FAILURES" -eq 0 ]; then result="pass"; else result="fail"; fi
 
-  mkdir -p "$(dirname "$path")" || return 1
-  python3 - "$GATE_RESULTS_FILE" "$GATE_NAME" "$result" "$duration" "$path" <<'PY' || return 1
-import json, sys
+  # Which code this result describes. A job name and `result: pass`, on their
+  # own, say that something passed and nothing about what: the archived results
+  # of two different branches are indistinguishable. `dirty` matters as much —
+  # a green result produced over uncommitted changes was not produced over the
+  # commit it sits next to.
+  commit="$(git rev-parse HEAD 2>/dev/null || echo "")"
+  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+  if [ -n "$(git status --porcelain 2>/dev/null)" ]; then dirty="true"; else dirty="false"; fi
 
-results, name, result, duration, destination = sys.argv[1:6]
+  mkdir -p "$(dirname "$path")" || return 1
+  python3 - "$GATE_RESULTS_FILE" "$GATE_NAME" "$result" "$duration" "$path" \
+    "$commit" "$branch" "$dirty" <<'PY' || return 1
+import datetime, json, sys
+
+results, name, result, duration, destination, commit, branch, dirty = sys.argv[1:9]
 try:
     with open(results) as handle:
         checks = json.load(handle)
@@ -151,6 +166,11 @@ with open(destination, "w") as handle:
         "gate": name,
         "result": result,
         "duration_ms": int(duration),
+        "commit": commit,
+        "branch": branch,
+        "dirty": dirty == "true",
+        "finished_at": datetime.datetime.now(datetime.timezone.utc)
+                               .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "checks": checks,
     }, handle, indent=2)
 PY
