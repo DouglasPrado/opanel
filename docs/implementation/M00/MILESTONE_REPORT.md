@@ -13,12 +13,18 @@ M00 builds no Opanel domain entity. It builds the machinery every later
 Milestone is judged by: the runtime, the harnesses, the gates, and the loop's
 own memory.
 
-> **This report describes the first implementation pass.**
-> `CODEX_REVIEW_01.md` returned `NOT_ACCEPTED` (Critical 1, High 15) against
-> `2a38d11`. Every one of those findings is answered in
-> [`FIX_REPORT_01.md`](FIX_REPORT_01.md), which carries the fix, its evidence and
-> the re-run of every suite and gate. Read the two together: the numbers below
-> were measured before the fix, and the ones that changed are restated there.
+> **This report describes the first implementation pass.** Two independent
+> reviews have followed it, and the numbers below predate both.
+>
+> - `CODEX_REVIEW_01.md` returned `NOT_ACCEPTED` (Critical 1, High 15) against
+>   `2a38d11`; answered by [`FIX_REPORT_01.md`](FIX_REPORT_01.md).
+> - `CODEX_REVIEW_02.md` returned `NOT_ACCEPTED` (Critical 1, High 9) against
+>   `4b357cf`; answered by [`FIX_REPORT_02.md`](FIX_REPORT_02.md), which carries
+>   each fix, its negative test, and the re-run of every suite and gate against
+>   the resulting code.
+>
+> Read them in order. Where a number here disagrees with `FIX_REPORT_02.md`, the
+> fix report is the current one.
 
 ## Stories
 
