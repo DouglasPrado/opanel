@@ -74,18 +74,103 @@ module Opanel
         []
       end
 
-      # Where a justification may live. A Story Report is the place Annex I §10.1
-      # names; an ADR is where a stack-level choice goes instead.
-      def justifications(root)
+      # What Annex I §10.1 requires a justification to answer, in the shape
+      # docs/templates/DEPENDENCY_JUSTIFICATION.md writes it. The gate checked
+      # `corpus.include?(name)` — a substring search over every report and ADR in
+      # the repository. The word `redis` in a paragraph about something else
+      # justified adding redis, and so did the gem's own name in an unrelated
+      # dependency table.
+      # What is checked instead is a **declaration in the section that exists for
+      # it** — "Dependências novas" in a Story Report, or an ADR — with the
+      # questions of Annex I §10.1 answered there.
+      SECTION = /^#{'#'}{2,3}\s+(?:Depend[êe]ncias\s+novas|New\s+dependencies)\s*$(.*?)(?=^#{'#'}{1,2}\s|\z)/mi
+
+      # The template's per-dependency block, answered field by field.
+      BLOCK_FIELDS = {
+        "the problem it solves" => /(?:Problema resolvido|Problem solved)[^:\n]*:\**\s*\S/i,
+        "the alternatives" => /(?:Alternativas avaliadas|Alternatives evaluated)[^:\n]*:\**\s*\S/i,
+        "its maintenance" => /Maintenance[^:\n]*:\**\s*\S/i,
+        "its security posture" => /Security[^:\n]*:\**\s*\S/i,
+        "its licence" => /Licen[cs]e[^:\n]*:\**\s*\S/i,
+        "the lockfile it is pinned in" => /Lockfile[^:\n]*:\**\s*\S/i
+      }.freeze
+
+      # What the section as a whole has to state when a dependency is declared in
+      # a table row or on its own line rather than in a full block: the two facts
+      # a row has no column for.
+      SECTION_FIELDS = {
+        "its licence" => /\b(?:MIT|Apache|BSD|ISC|MPL|LGPL|permissive|licen[cs]ed?)\b/i,
+        "the lockfile it is pinned in" => /(?:Gemfile\.lock|package-lock\.json)/
+      }.freeze
+
+      # The block header the template declares: `### Dependency: \`name\` version`.
+      def justification_sections(root)
         Dir.glob([
           File.join(root, "docs/implementation/*/reports/*.md"),
           File.join(root, "docs/decisions/*.md")
-        ]).map { |path| File.read(path) }.join("\n")
+        ]).flat_map { |path| File.read(path).scan(SECTION).flatten }
+      end
+
+      def block_for(name, section)
+        section[/^#{'#'}{2,4}\s+Dependency:\s*`?#{Regexp.escape(name)}`?[^\n]*\n(.*?)(?=^#{'#'}{1,6}\s|\z)/m, 1]
+      end
+
+      # Where a name counts as *declared* rather than merely mentioned: the first
+      # cell of a table row, or the start of its own line — optionally in a
+      # comma-separated list, which is how the reports group packages that arrive
+      # together. Either way it has to carry something besides the name.
+      def declared_row(name, section)
+        quoted = "`#{name}`"
+
+        section.lines.map(&:strip).find do |line|
+          next false unless line.include?(quoted)
+
+          if (cells = line[/\A\|(.+)\z/, 1])
+            columns = cells.split("|")
+            columns.first.to_s.include?(quoted) && columns.drop(1).any? { |cell| cell.strip.length > 1 }
+          else
+            line.match?(/\A(?:[-*]\s*)?(?:`[^`]+`(?:\s*,\s*|\s+(?:and|e)\s+))*#{Regexp.escape(quoted)}(?:\W|\z)/) &&
+              line.length > quoted.length + 2
+          end
+        end
+      end
+
+      # nil when nothing declares it; otherwise the questions still unanswered.
+      # A heading with nothing under it is the "for convenience" this gate exists
+      # to refuse.
+      def justification_for(name, sections)
+        sections.filter_map do |section|
+          if (block = block_for(name, section))
+            BLOCK_FIELDS.reject { |_field, pattern| block.match?(pattern) }.keys
+          elsif declared_row(name, section)
+            SECTION_FIELDS.reject { |_field, pattern| section.match?(pattern) }.keys
+          end
+        end.min_by(&:length)
+      end
+
+      # Declared in the lockfile, as a dependency rather than as a substring.
+      # `lockfile.include?("rack")` was satisfied by `rack-test`, by a URL, and by
+      # a gem that merely depends on it.
+      def locked?(name, lockfile, lockfile_name)
+        case lockfile_name
+        when GEMFILE_LOCK
+          # `    rack (3.1.8)` under specs, or a name in DEPENDENCIES.
+          lockfile.match?(/^\s{4}#{Regexp.escape(name)}\s\(/) ||
+            lockfile.match?(/^\s{2}#{Regexp.escape(name)}(?:\s|$)/)
+        when PACKAGE_LOCK
+          document = JSON.parse(lockfile)
+          document.fetch("packages", {}).key?("node_modules/#{name}") ||
+            document.fetch("dependencies", {}).key?(name)
+        else
+          false
+        end
+      rescue JSON::ParserError
+        false
       end
 
       def check(root: Dir.pwd, base: nil)
         ref = base_ref(root, base)
-        corpus = justifications(root)
+        corpus = justification_sections(root)
 
         added = {
           GEMFILE => [
@@ -105,8 +190,9 @@ module Opanel
 
       def violations_for(manifest, name, corpus, lockfile, lockfile_name)
         violations = []
+        incomplete = justification_for(name, corpus)
 
-        unless corpus.include?(name)
+        if incomplete.nil?
           violations << Violation.new(
             manifest: manifest, name: name,
             message: "`#{name}` was added and no Story Report or ADR justifies it",
@@ -114,12 +200,19 @@ module Opanel
                     "security and licence posture, and the long-term impact, in the Story Report " \
                     "that adds it. Template: #{TEMPLATE}"
           )
-        end
-
-        unless lockfile.include?(name)
+        elsif !incomplete.empty?
           violations << Violation.new(
             manifest: manifest, name: name,
-            message: "`#{name}` is declared but does not appear in #{lockfile_name}",
+            message: "the justification for `#{name}` answers neither #{incomplete.join(' nor ')}",
+            remedy: "a heading with nothing under it is the \"for convenience\" this gate refuses. " \
+                    "Fill in every field of #{TEMPLATE}"
+          )
+        end
+
+        unless locked?(name, lockfile, lockfile_name)
+          violations << Violation.new(
+            manifest: manifest, name: name,
+            message: "`#{name}` is declared but is not pinned in #{lockfile_name}",
             remedy: "an unpinned dependency resolves to a different version on every machine; " \
                     "install it and commit the lockfile"
           )

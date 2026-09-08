@@ -49,6 +49,16 @@ if [ "$mode" = "waivers" ]; then
   exec bin/security-waivers --format "$format"
 fi
 
+# Where each scanner's own machine-readable output is kept.
+#
+# The report used to be built from this gate's check list: one entry per tool,
+# `severity: blocking`. That is a description of the run, not of what was found —
+# it cannot say which advisory, in which package, at which severity, so nothing
+# downstream can count Critical and High. Annex D §24 asks for findings and their
+# severities, so the scanners' own results are preserved and parsed.
+SCANNER_DIR="tmp/security/scanners"
+mkdir -p "$SCANNER_DIR"
+
 # The Security Report of Annex D §24, written from this run rather than from a
 # second one. `finish` is called instead of `gate_finish` everywhere below, so an
 # early exit still archives what it found.
@@ -95,12 +105,16 @@ else
       --config config/security/gitleaks.toml \
       --redact \
       --no-banner \
+      --report-format json \
+      --report-path "$SCANNER_DIR/gitleaks.json" \
       --exit-code 1
   else
     gate_run "secret-scan" gitleaks dir . \
       --config config/security/gitleaks.toml \
       --redact \
       --no-banner \
+      --report-format json \
+      --report-path "$SCANNER_DIR/gitleaks.json" \
       --exit-code 1
   fi
 
@@ -111,6 +125,8 @@ else
       --config config/security/gitleaks.toml \
       --redact \
       --no-banner \
+      --report-format json \
+      --report-path "$SCANNER_DIR/gitleaks-history.json" \
       --exit-code 1
   fi
 fi
@@ -127,18 +143,28 @@ fi
 # vulnerable".
 gate_run "dependency-gate" ruby bin/dependency-gate
 
-gate_run "bundler-audit" bundle exec bundle-audit check --update --config config/bundler-audit.yml
+gate_run "bundler-audit" bundle exec bundle-audit check --update \
+  --config config/bundler-audit.yml \
+  --format json --output "$SCANNER_DIR/bundler-audit.json"
 
 # npm audit exits non-zero for any severity; --audit-level makes the policy
-# explicit rather than accidental.
-gate_run "npm-audit" npm audit --audit-level=high
+# explicit rather than accidental. The structured result is captured separately,
+# because the exit code says whether anything blocked and nothing about what.
+capture_npm_audit() {
+  npm audit --json > "$SCANNER_DIR/npm-audit.json" 2>/dev/null
+  npm audit --audit-level=high
+}
+gate_run "npm-audit" capture_npm_audit
 
 # --- Static analysis ---------------------------------------------------------
 # Informative in M00 (there is almost no code for it to judge yet), blocking for
 # new Critical/High from M01. `--no-exit-on-warn` is what makes it informative,
 # and removing it is the one-line change that flips the policy.
 
+# Two outputs, formats inferred from the destinations: the JSON is the evidence
+# the report parses, the text is what a person reads in the log.
 gate_run "brakeman" bundle exec brakeman --quiet --no-pager --no-exit-on-warn \
-  --output /dev/stdout --format plain
+  --output "$SCANNER_DIR/brakeman.json" \
+  --output /dev/stdout
 
 finish

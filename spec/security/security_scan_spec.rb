@@ -349,7 +349,8 @@ RSpec.describe "security scanning", type: :security do
         "Gemfile" => %(source "https://rubygems.org"\ngem "some_convenient_gem"\n),
         "Gemfile.lock" => "    some_convenient_gem (1.0.0)\n",
         "docs/implementation/M99/reports/M99-01.md" =>
-          "## Dependências novas\n\n`some_convenient_gem` — solves X; alternatives evaluated; MIT.\n"
+          "## Dependências novas\n\n`some_convenient_gem` — solves X; alternatives evaluated; " \
+          "MIT; pinned in `Gemfile.lock`.\n"
       )
 
       expect(violations).to be_empty
@@ -359,10 +360,119 @@ RSpec.describe "security scanning", type: :security do
       violations = dependency_violations(
         "package.json" => JSON.generate("dependencies" => { "some-package" => "^1.0.0" }),
         "package-lock.json" => JSON.generate("packages" => {}),
-        "docs/implementation/M99/reports/M99-01.md" => "`some-package` is justified here.\n"
+        "docs/implementation/M99/reports/M99-01.md" =>
+          "## Dependências novas\n\n`some-package` — solves X; MIT; pinned in `package-lock.json`.\n"
       )
 
-      expect(violations.map(&:message).join).to match(/does not appear in package-lock\.json/)
+      expect(violations.map(&:message).join).to match(/is not pinned in package-lock\.json/)
+    end
+
+    # M00-R09. The gate asked `corpus.include?(name)` — a substring search over
+    # every report and ADR in the repository. Any occurrence answered for the
+    # dependency, so a name that appeared for an unrelated reason justified it.
+    describe "what counts as a justification" do
+      let(:manifest) { %(source "https://rubygems.org"\ngem "redis"\n) }
+      let(:lockfile) { "    redis (5.4.0)\n" }
+
+      it "rejects the name appearing in prose about something else" do
+        violations = dependency_violations(
+          "Gemfile" => manifest,
+          "Gemfile.lock" => lockfile,
+          "docs/implementation/M99/reports/M99-01.md" =>
+            "## Decisões locais\n\nSC-02 resolved the queue to Solid Queue rather than redis.\n"
+        )
+
+        expect(violations.map(&:message).join).to match(/no Story Report or ADR justifies it/)
+      end
+
+      it "rejects a name inside a dependency section that says nothing about it" do
+        violations = dependency_violations(
+          "Gemfile" => manifest,
+          "Gemfile.lock" => lockfile,
+          "docs/implementation/M99/reports/M99-01.md" =>
+            "## Dependências novas\n\n`none`. The cache layer will not use redis.\n"
+        )
+
+        expect(violations.map(&:message).join).to match(/no Story Report or ADR justifies it/)
+      end
+
+      it "rejects a template block whose fields are empty" do
+        violations = dependency_violations(
+          "Gemfile" => manifest,
+          "Gemfile.lock" => lockfile,
+          "docs/implementation/M99/reports/M99-01.md" => <<~MARKDOWN
+            ## Dependências novas
+
+            ### Dependency: `redis` `5.4.0`
+
+            - **Story:** `M99-01`
+            - **Ecosystem:** rubygems
+          MARKDOWN
+        )
+
+        expect(violations.map(&:message).join)
+          .to match(/answers neither|answers no|does not answer/)
+      end
+
+      it "accepts a completed template block" do
+        violations = dependency_violations(
+          "Gemfile" => manifest,
+          "Gemfile.lock" => lockfile,
+          "docs/implementation/M99/reports/M99-01.md" => <<~MARKDOWN
+            ## Dependências novas
+
+            ### Dependency: `redis` `5.4.0`
+
+            - **Story:** `M99-01`
+            - **Problema resolvido:** the shared rate-limit counter.
+            - **Alternativas avaliadas:** a PostgreSQL table.
+            - **Maintenance:** actively maintained.
+            - **Security:** no known advisory.
+            - **License:** MIT — compatible.
+            - **Lockfile:** `Gemfile.lock` — pinned at `5.4.0`.
+          MARKDOWN
+        )
+
+        expect(violations).to be_empty
+      end
+    end
+
+    # `lockfile.include?(name)` is a substring test. Every name below appears in
+    # the lockfile and none of them is pinned.
+    describe "what counts as pinned" do
+      it "rejects a gem whose name is only a prefix of another gem's" do
+        violations = dependency_violations(
+          "Gemfile" => %(source "https://rubygems.org"\ngem "rack"\n),
+          "Gemfile.lock" => "GEM\n  specs:\n    rack-test (2.2.0)\n",
+          "docs/implementation/M99/reports/M99-01.md" =>
+            "## Dependências novas\n\n`rack` — solves X; MIT; pinned in `Gemfile.lock`.\n"
+        )
+
+        expect(violations.map(&:message).join).to match(/`rack` is declared but is not pinned/)
+      end
+
+      it "rejects an npm package that only appears inside another package's path" do
+        violations = dependency_violations(
+          "package.json" => JSON.generate("dependencies" => { "debug" => "^4.0.0" }),
+          "package-lock.json" =>
+            JSON.generate("packages" => { "node_modules/vite/node_modules/debug-fork" => {} }),
+          "docs/implementation/M99/reports/M99-01.md" =>
+            "## Dependências novas\n\n`debug` — solves X; MIT; pinned in `package-lock.json`.\n"
+        )
+
+        expect(violations.map(&:message).join).to match(/`debug` is declared but is not pinned/)
+      end
+
+      it "accepts a gem pinned under specs" do
+        violations = dependency_violations(
+          "Gemfile" => %(source "https://rubygems.org"\ngem "rack"\n),
+          "Gemfile.lock" => "GEM\n  specs:\n    rack (3.1.8)\n    rack-test (2.2.0)\n",
+          "docs/implementation/M99/reports/M99-01.md" =>
+            "## Dependências novas\n\n`rack` — solves X; MIT; pinned in `Gemfile.lock`.\n"
+        )
+
+        expect(violations).to be_empty
+      end
     end
 
     it "runs inside bin/security, so CI executes it on every push" do
@@ -392,14 +502,6 @@ RSpec.describe "security scanning", type: :security do
       expect(report[:tools].map { |tool| tool[:version] }).to all(be_a(String))
     end
 
-    it "records each finding with a severity and a disposition" do
-      finding = report[:findings].find { |entry| entry[:scanner] == "npm-audit" }
-
-      expect(finding[:severity]).to eq("blocking")
-      expect(finding[:disposition]).to eq("blocked the run")
-      expect(report[:findings].map { |entry| entry[:scanner] }).not_to include("secret-scan")
-    end
-
     it "records the waivers, so an accepted finding is visible as accepted" do
       expect(report[:waivers].keys).to contain_exactly(:active, :expiring_soon, :expired)
     end
@@ -415,6 +517,120 @@ RSpec.describe "security scanning", type: :security do
 
       expect(scan).to include("--out tmp/security/")
       expect(Rails.root.join(".github/actions/archive/action.yml").read).to include("tmp/security/")
+    end
+
+    # M00-R09. The report was built from the gate's check list — one entry per
+    # tool, `severity: "blocking"`. A check is not a vulnerability: it cannot
+    # name the advisory, the package or the severity, so every consumer asking
+    # "how many High?" read zero, including from runs that had found something.
+    describe "findings taken from the scanners' own results" do
+      def report_for(checks, outputs)
+        Dir.mktmpdir do |root|
+          directory = File.join(root, Opanel::Gates::SecurityScanners::DIRECTORY)
+          FileUtils.mkdir_p(directory)
+          outputs.each { |name, body| File.write(File.join(directory, name), JSON.generate(body)) }
+
+          Opanel::Gates::SecurityReport.build(
+            { "gate" => "security", "result" => "fail", "duration_ms" => 1, "checks" => checks },
+            root
+          )
+        end
+      end
+
+      it "carries one finding per advisory, with the severity bundler-audit assigned" do
+        found = report_for(
+          [ { "check" => "bundler-audit", "result" => "fail", "reason" => "1 advisory" } ],
+          "bundler-audit.json" => {
+            "results" => [ {
+              "type" => "unpatched_gem",
+              "gem" => { "name" => "rack", "version" => "2.0.1" },
+              "advisory" => { "cve" => "2020-8184", "criticality" => "High",
+                              "title" => "Percent-encoded cookies" }
+            } ]
+          }
+        )[:findings]
+
+        expect(found.length).to eq(1)
+        expect(found.first).to include(scanner: "bundler-audit", severity: "high", blocking: true)
+        expect(found.first[:subject]).to eq("rack 2.0.1")
+        expect(found.first[:id]).to eq("2020-8184")
+      end
+
+      it "carries one finding per npm advisory, at the severity npm assigned" do
+        found = report_for(
+          [ { "check" => "npm-audit", "result" => "fail", "reason" => "1 high" } ],
+          "npm-audit.json" => {
+            "vulnerabilities" => {
+              "tar" => {
+                "name" => "tar", "severity" => "high", "range" => "<6.2.1", "fixAvailable" => true,
+                "via" => [ { "source" => 1103, "title" => "Arbitrary File Creation",
+                             "severity" => "high" } ]
+              }
+            }
+          }
+        )[:findings]
+
+        expect(found.map { |entry| entry[:severity] }).to eq([ "high" ])
+        expect(found.first[:subject]).to eq("tar <6.2.1")
+      end
+
+      it "counts Critical and High, so the Merge Gate has a number to read" do
+        report = report_for(
+          [ { "check" => "secret-scan", "result" => "fail", "reason" => "1 leak" } ],
+          "gitleaks.json" => [ { "RuleID" => "generic-api-key", "File" => "config/x.yml",
+                                 "StartLine" => 4, "Description" => "Generic API Key" } ]
+        )
+
+        expect(report[:counts]).to eq({ "critical" => 1, "high" => 0 })
+        expect(report[:findings].first[:severity]).to eq("critical")
+      end
+
+      it "never carries the secret itself — rule, file and line only" do
+        found = report_for(
+          [ { "check" => "secret-scan", "result" => "fail", "reason" => "1 leak" } ],
+          "gitleaks.json" => [ { "RuleID" => "generic-api-key", "File" => "config/x.yml",
+                                 "StartLine" => 4, "Description" => "Generic API Key",
+                                 "Secret" => "sk-live-abcdefghijklmnop", "Match" => "sk-live-abc" } ]
+        )[:findings]
+
+        expect(JSON.generate(found)).not_to include("sk-live")
+      end
+
+      # Static analysis is reported and tracked in M00 and blocks from M01. The
+      # severity stays the scanner's; the policy is a separate field with its
+      # reason attached, rather than a quiet downgrade that would make the report
+      # disagree with brakeman.
+      it "records a brakeman warning at its own severity, marked non-blocking for M00" do
+        found = report_for(
+          [ { "check" => "brakeman", "result" => "pass", "reason" => "" } ],
+          "brakeman.json" => {
+            "warnings" => [ { "warning_type" => "SQL Injection", "message" => "Possible SQL injection",
+                              "file" => "app/x.rb", "line" => 3, "confidence" => "High",
+                              "check_name" => "SQL" } ]
+          }
+        )[:findings]
+
+        expect(found.first).to include(severity: "high", blocking: false)
+        expect(found.first[:disposition]).to match(/informational in M00/)
+      end
+
+      # A scanner that ran and left nothing readable has not reported zero.
+      it "treats a missing scanner result as a finding rather than as no findings" do
+        found = report_for(
+          [ { "check" => "bundler-audit", "result" => "pass", "reason" => "" } ], {}
+        )[:findings]
+
+        expect(found.first).to include(severity: "high", blocking: true)
+        expect(found.first[:id]).to eq("scanner-output-missing")
+      end
+
+      it "carries a red gate check that has no scanner behind it" do
+        found = report_for(
+          [ { "check" => "dependency-gate", "result" => "fail", "reason" => "2 unjustified" } ], {}
+        )[:findings]
+
+        expect(found.first).to include(scanner: "dependency-gate", severity: "high", blocking: true)
+      end
     end
   end
 end

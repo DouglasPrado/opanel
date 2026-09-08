@@ -4,6 +4,7 @@ require "json"
 require "open3"
 require "time"
 
+require_relative "security_scanners"
 require_relative "security_waivers"
 
 # The Security Report of Annex D §24 — M00-10 AC8.
@@ -49,22 +50,18 @@ module Opanel
         status.success? ? stdout.strip : nil
       end
 
-      # A check that failed is a finding; its `reason` is what the scanner said.
-      # Severity follows the policy of bin/security: a secret or a new
-      # Critical/High blocks, so anything that turned the gate red is blocking.
-      def findings(gate)
-        gate.fetch("checks", []).reject { |check| check["result"] == "pass" }.map do |check|
-          {
-            scanner: check["check"],
-            severity: check["result"] == "skip" ? "informational" : "blocking",
-            disposition: check["result"] == "skip" ? "skipped" : "blocked the run",
-            detail: check["reason"].to_s[0, 2000]
-          }
-        end
-      end
+      # One finding per vulnerability, with the severity the scanner assigned.
+      #
+      # This used to be one finding per *check*, with `severity: "blocking"`. A
+      # check is not a vulnerability: the report could not name the advisory, the
+      # package or the severity, so every consumer asking "how many High?" got
+      # zero — including from runs that had found something. The scanners' own
+      # results are parsed instead (see SecurityScanners).
+      def findings(gate, root) = SecurityScanners.findings(gate, root)
 
       def build(gate, root)
         waivers = SecurityWaivers.load(File.join(root, "config/security/waivers.yml"))
+        found = findings(gate, root)
 
         {
           report: "security",
@@ -75,13 +72,23 @@ module Opanel
           duration_ms: gate["duration_ms"],
           tools: tools(root),
           checks: gate.fetch("checks", []),
-          findings: findings(gate),
+          findings: found,
+          # Counted here so the Merge Gate reads a number this file computed from
+          # the findings rather than recomputing it from a shape it might read
+          # differently.
+          counts: counts(found),
           waivers: {
             active: waivers.active.map(&:to_h),
             expiring_soon: waivers.expiring_soon.map(&:to_h),
             expired: waivers.expired.map(&:to_h)
           }
         }
+      end
+
+      def counts(found)
+        SecurityScanners::BLOCKING_SEVERITIES.to_h do |severity|
+          [ severity, found.count { |finding| finding[:severity] == severity && finding[:blocking] } ]
+        end
       end
     end
   end

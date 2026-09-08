@@ -77,6 +77,13 @@ boundaries:
     - lib/gates/dependency_gate.rb
     - lib/gates/secret_allowlist.rb
     - lib/gates/security_report.rb
+    # Widened during the fix of CODEX_REVIEW_02, deliberately.
+    #
+    # M00-R09 requires the report to carry one finding per vulnerability at the
+    # severity the scanner assigned, which means parsing what each scanner
+    # actually wrote. That is a parser per tool — four of them — and putting it
+    # inside security_report.rb would bury the report's own shape.
+    - lib/gates/security_scanners.rb
     - lib/gates/workspace_guardrail.rb
     - config/security/**
     - config/bundler-audit.yml
