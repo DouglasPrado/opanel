@@ -116,12 +116,13 @@ module Opanel
                         "#{unmapped.one? ? 'is' : 'are'} missing. Template: #{STORY_REPORT_TEMPLATE}")
         end
 
-        unaccounted = AcceptanceMapping.unaccounted(story_file, report)
+        unaccounted = AcceptanceMapping.unaccounted(story_file, report, root)
         return ok if unaccounted.empty?
 
         failed("criteri#{unaccounted.one? ? 'on' : 'a'} #{unaccounted.join(', ')} of #{story} " \
-               "#{unaccounted.one? ? 'is' : 'are'} neither satisfied nor deferred to a named ADR or " \
-               "Story. Tick the box with its evidence, or say which decision it waits on.")
+               "#{unaccounted.one? ? 'is' : 'are'} neither satisfied by evidence that exists nor " \
+               "deferred to an ADR or Story that exists. Name the file or the test that proves it, " \
+               "or say which decision it waits on.")
       end
 
       # Critical = 0 and High = 0 block DONE and block merge.
@@ -192,10 +193,17 @@ module Opanel
                         "the evidence contradicts itself")
         end
 
+        skipped = metadata["skipped"].to_i
+        unless skipped.zero?
+          return failed("the recorded run skipped #{skipped} example(s). A skipped example is not a " \
+                        "passing one, and the run reports `pass` either way — make the dependency " \
+                        "they need available (bin/swarm-lab up, bin/setup) and run bin/test again")
+        end
+
         uncovered = required_suites(story, root) - covered_suites(metadata)
         return ok if uncovered.empty?
 
-        failed("the evidence is from a `#{metadata['type']}` run, which does not cover the " \
+        failed("the evidence is from #{described(metadata)}, which does not cover the " \
                "#{uncovered.join(', ')} suite(s) #{story} declares under Required Tests. " \
                "Run `bin/test` — evidence from a narrower run is evidence about something else.")
       end
@@ -213,8 +221,35 @@ module Opanel
         SuiteTypes.names.select { |type| section.match?(/\b#{Regexp.escape(type)}\b/i) }
       end
 
+      # What the recorded run actually covers.
+      #
+      # `type` alone answered this, and `type` stayed `all` for a run narrowed to
+      # three files by `--changed`, for one that dropped every `:slow` example
+      # with `--fast`, and for one given explicit paths. So a Story declaring six
+      # suites was cleared by a run of three spec files. The other fields
+      # bin/test-metadata records are read too, and evidence that predates them
+      # covers nothing — an unanswerable question is not a yes.
       def covered_suites(metadata)
-        metadata["type"].to_s == "all" ? SuiteTypes.names : [ metadata["type"].to_s ]
+        return [] unless metadata.key?("complete")
+        return SuiteTypes.names if metadata["complete"]
+
+        narrowed = metadata["scope"].to_s != "all" || metadata["fast"] ||
+          metadata["type"].to_s == "all"
+        return [] if narrowed
+
+        [ metadata["type"].to_s ]
+      end
+
+      def described(metadata)
+        return "evidence written before the run's selection was recorded" unless metadata.key?("complete")
+        return "a full `bin/test` run" if metadata["complete"]
+
+        parts = [ "a `#{metadata['type']}` run" ]
+        parts << "scoped to #{metadata['scope']}" if metadata["scope"].to_s != "all"
+        parts << "with --fast" if metadata["fast"]
+        selected = Array(metadata["selected_paths"])
+        parts << "limited to #{selected.length} path(s)" unless selected.empty?
+        parts.join(", ")
       end
 
       # tasks.json, the Story report and the commit hash agree.

@@ -3,16 +3,22 @@
 
 # Writes the metadata that turns a test run into release evidence (Annex D §24).
 #
-#   bin/test-metadata <exit-status> <duration-ms> <suite-type> <parallel?>
+#   bin/test-metadata <exit-status> <duration-ms> <suite-type> <parallel?> <scope> <fast?> <paths>
 #
 # "the suite passed" is not evidence. Which commit, on which branch, in which
 # environment, against which database, how long it took and how many examples ran
 # — that is. Called by bin/test; not meant to be run by hand.
+#
+# **What was selected is part of the answer.** `type` alone said `all` for a run
+# filtered to three files by `--changed`, for a run that dropped every `:slow`
+# example with `--fast`, and for a run given explicit paths — and the Post-commit
+# Gate read `all` as "every suite ran". Scope, fast and the paths are recorded
+# next to it so a narrow run cannot be read as a full one.
 
 require "json"
 require "time"
 
-status, duration_ms, suite_type, parallel = ARGV
+status, duration_ms, suite_type, parallel, scope, fast, paths = ARGV
 root = File.expand_path("..", __dir__)
 Dir.chdir(root)
 
@@ -38,9 +44,19 @@ def junit_counts(glob)
   end.merge("reports" => reports.length)
 end
 
+selected = paths.to_s.split(/\s+/).reject(&:empty?)
+
 metadata = {
   suite: "rspec",
   type: suite_type,
+  # `all` when nothing narrowed the run, and the narrowing otherwise. A consumer
+  # asking "did the integration suite run?" needs both.
+  scope: scope.to_s.empty? ? "all" : scope,
+  fast: fast == "yes",
+  selected_paths: selected,
+  # The one field that answers "was this the whole suite?" without the consumer
+  # having to reason about the other three.
+  complete: suite_type == "all" && scope.to_s == "all" && fast != "yes" && selected.empty?,
   result: status.to_i.zero? ? "pass" : "fail",
   exit_status: status.to_i,
   duration_ms: duration_ms.to_i,

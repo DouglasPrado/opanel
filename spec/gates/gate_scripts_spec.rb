@@ -35,6 +35,58 @@ RSpec.describe "The local gates", :slow do
     report.fetch("checks").find { |entry| entry["check"] == name }
   end
 
+  # M00-R18. The gate library asked `mktemp` for its results file. `mktemp -t
+  # opanel-gate` is the BSD form: BSD appends the random suffix itself, GNU
+  # coreutils requires the template to end in at least three X's and exits
+  # non-zero without them. The CI runner is Ubuntu, so `gate_begin` died before a
+  # single check ran — on every gate, on every push.
+  #
+  # A stand-in enforcing the GNU rule, so the portable form is proven rather than
+  # assumed.
+  describe "the results file the gate library creates" do
+    def with_gnu_mktemp
+      Dir.mktmpdir do |bin|
+        stub = File.join(bin, "mktemp")
+        File.write(stub, <<~SH)
+          #!/bin/sh
+          # GNU coreutils: -t is deprecated, and a template needs three X's.
+          case "$1" in
+            -*) echo "mktemp: the GNU form takes a template, not $1" >&2; exit 1 ;;
+            *XXX*) exec /usr/bin/mktemp "$1" ;;
+            *) echo "mktemp: too few X's in template '$1'" >&2; exit 1 ;;
+          esac
+        SH
+        FileUtils.chmod(0o755, stub)
+
+        yield({ "PATH" => "#{bin}:#{ENV.fetch('PATH')}" })
+      end
+    end
+
+    it "uses a template GNU mktemp accepts, so the gate runs on the CI runner" do
+      with_gnu_mktemp do |environment|
+        output, status = Open3.capture2e(
+          environment, "bash", "-c",
+          "source bin/_gate_lib.sh; gate_begin probe text; gate_pass one ok; gate_finish",
+          chdir: GATE_ROOT
+        )
+
+        expect(status).to be_success, output
+        expect(output).to include("probe: PASS")
+      end
+    end
+
+    it "is the stand-in that catches it: the BSD form fails against it" do
+      with_gnu_mktemp do |environment|
+        _output, status = Open3.capture2e(
+          environment, "bash", "-c", "mktemp -t opanel-gate", chdir: GATE_ROOT
+        )
+
+        expect(status).not_to be_success,
+          "the stand-in has to reject the old form, or this proves nothing"
+      end
+    end
+  end
+
   # Genuinely staged, not `--intent-to-add`: the gate reads
   # `git diff --cached`, which does not list an intent-to-add entry, so a
   # probe added that way would never reach the check it is meant to trip.
@@ -584,8 +636,68 @@ RSpec.describe "The local gates", :slow do
         - **integration**: against real PostgreSQL.
       MARKDOWN
 
-      with_test_evidence({ "type" => "all", "tests" => 40 }, story_body: story) do |outcome|
+      with_test_evidence({ "type" => "all", "scope" => "all", "fast" => false, "complete" => true,
+                           "selected_paths" => [], "tests" => 40 }, story_body: story) do |outcome|
         expect(outcome).to be_ok
+      end
+    end
+
+    # M00-R06. `type` stayed `all` however the run had been narrowed, and the gate
+    # read `all` as "every suite ran". A Story declaring six suites was cleared by
+    # a run of three spec files.
+    describe "a run that was narrowed" do
+      let(:story) do
+        <<~MARKDOWN
+          # M99-01 — Probe
+
+          ## Required Tests
+          - **unit**: the rules.
+          - **integration**: against real PostgreSQL.
+        MARKDOWN
+      end
+
+      {
+        "--changed" => { "scope" => "changed", "selected_paths" => [ "spec/unit/a_spec.rb" ] },
+        "--fast" => { "fast" => true },
+        "a path" => { "selected_paths" => [ "spec/unit/a_spec.rb" ] }
+      }.each do |narrowing, fields|
+        it "refuses evidence from a run narrowed by #{narrowing}" do
+          metadata = { "type" => "all", "scope" => "all", "fast" => false, "selected_paths" => [],
+                       "complete" => false, "tests" => 40 }.merge(fields)
+
+          with_test_evidence(metadata, story_body: story) do |outcome|
+            expect(outcome).not_to be_ok
+            expect(outcome.reason).to include("unit", "integration")
+          end
+        end
+      end
+
+      # A `--type integration` run is narrow and honest about it: it covers that
+      # suite and says nothing about the others.
+      it "credits a whole-type run for the type it ran" do
+        metadata = { "type" => "integration", "scope" => "all", "fast" => false,
+                     "selected_paths" => [ "spec/integration" ], "complete" => false, "tests" => 40 }
+        integration_only = "# M99-01 — Probe\n\n## Required Tests\n- **integration**: real PostgreSQL.\n"
+
+        with_test_evidence(metadata, story_body: integration_only) do |outcome|
+          expect(outcome).to be_ok
+        end
+      end
+
+      it "refuses evidence written before the selection was recorded" do
+        with_test_evidence({ "type" => "all", "tests" => 40 }, story_body: story) do |outcome|
+          expect(outcome).not_to be_ok
+          expect(outcome.reason).to include("before the run's selection was recorded")
+        end
+      end
+    end
+
+    # A skipped example reports `pass` for the same reason a green one does.
+    it "refuses a run that skipped examples" do
+      with_test_evidence({ "type" => "all", "scope" => "all", "fast" => false, "complete" => true,
+                           "selected_paths" => [], "tests" => 40, "skipped" => 9 }) do |outcome|
+        expect(outcome).not_to be_ok
+        expect(outcome.reason).to include("skipped 9 example(s)")
       end
     end
   end
@@ -594,12 +706,23 @@ RSpec.describe "The local gates", :slow do
   # checked that the word "acceptance" appeared, which a report mapping three of
   # nine criteria also does.
   describe "the acceptance mapping" do
-    def with_story_and_report(story_body, report_body)
+    # The referenced specs are created, because the gate now asks whether the
+    # evidence points at anything. A report naming a file nobody wrote is the
+    # declaratory case, and it has its own example below.
+    def with_story_and_report(story_body, report_body, files: %w[
+      spec/unit/first_spec.rb spec/unit/second_spec.rb spec/unit/third_spec.rb
+    ])
       Dir.mktmpdir do |directory|
         FileUtils.mkdir_p(File.join(directory, "docs/implementation/M99/stories"))
         FileUtils.mkdir_p(File.join(directory, "docs/implementation/M99/reports"))
         File.write(File.join(directory, "docs/implementation/M99/stories/M99-01-probe.md"), story_body)
         File.write(File.join(directory, "docs/implementation/M99/reports/M99-01.md"), report_body)
+
+        files.each do |path|
+          full = File.join(directory, path)
+          FileUtils.mkdir_p(File.dirname(full))
+          File.write(full, "# probe\n")
+        end
 
         yield POST_COMMIT.run("acceptance-mapping", story: "M99-01", root: directory)
       end
@@ -648,7 +771,7 @@ RSpec.describe "The local gates", :slow do
 
       with_story_and_report(story, report) do |outcome|
         expect(outcome).not_to be_ok
-        expect(outcome.reason).to include("neither satisfied nor deferred")
+        expect(outcome.reason).to include("neither satisfied by evidence that exists")
       end
     end
 
@@ -663,7 +786,9 @@ RSpec.describe "The local gates", :slow do
         - [ ] 3. **Deferred.** Waits on ADR-0002, which is still Proposed.
       MARKDOWN
 
-      with_story_and_report(story, report) { |outcome| expect(outcome).to be_ok }
+      with_story_and_report(story, report, files: %w[
+        spec/unit/first_spec.rb spec/unit/second_spec.rb docs/decisions/adr-0002-identifiers.md
+      ]) { |outcome| expect(outcome).to be_ok }
     end
 
     it "accepts the table form the template offers" do
@@ -680,6 +805,96 @@ RSpec.describe "The local gates", :slow do
       MARKDOWN
 
       with_story_and_report(story, report) { |outcome| expect(outcome).to be_ok }
+    end
+
+    # M00-R07. A ticked box and a non-empty cell are things the author writes
+    # about their own work. The Autonomous Loop writes them for every criterion,
+    # which is why the tick cannot be the evidence.
+    describe "evidence that points at nothing" do
+      it "refuses a claim with no reference at all" do
+        report = <<~MARKDOWN
+          # Story Report — M99-01
+
+          ## Acceptance Criteria
+
+          | # | Critério | Evidência |
+          |---|---|---|
+          | 1 | The first thing | done |
+          | 2 | The second thing | works as specified |
+          | 3 | The third thing | verified manually |
+        MARKDOWN
+
+        with_story_and_report(story, report) do |outcome|
+          expect(outcome).not_to be_ok
+          expect(outcome.reason).to include("evidence points at nothing that exists")
+        end
+      end
+
+      it "refuses a claim naming a file nobody wrote" do
+        report = <<~MARKDOWN
+          # Story Report — M99-01
+
+          ## Acceptance Criteria
+
+          | # | Critério | Evidência |
+          |---|---|---|
+          | 1 | The first thing | `spec/unit/first_spec.rb` |
+          | 2 | The second thing | `spec/unit/second_spec.rb` |
+          | 3 | The third thing | `spec/unit/imagined_spec.rb` |
+        MARKDOWN
+
+        with_story_and_report(story, report) do |outcome|
+          expect(outcome).not_to be_ok
+          expect(outcome.reason).to include("3 (evidence points at nothing that exists)")
+        end
+      end
+
+      it "refuses a deferral to a decision nobody wrote" do
+        report = <<~MARKDOWN
+          # Story Report — M99-01
+
+          ## Acceptance Criteria
+
+          - [x] 1. The first thing — `spec/unit/first_spec.rb`.
+          - [x] 2. The second thing — `spec/unit/second_spec.rb`.
+          - [ ] 3. **Deferred.** Waits on ADR-0099, which does not exist.
+        MARKDOWN
+
+        with_story_and_report(story, report) do |outcome|
+          expect(outcome).not_to be_ok
+          expect(outcome.reason).to include("nor deferred to an ADR or Story that exists")
+        end
+      end
+
+      # A criterion proven by a test rather than by a file: the sentence either is
+      # in the suites or it is not, and that is checkable without running them.
+      it "accepts a claim quoting a test that exists" do
+        report = <<~MARKDOWN
+          # Story Report — M99-01
+
+          ## Acceptance Criteria
+
+          | # | Critério | Evidência |
+          |---|---|---|
+          | 1 | The first thing | `"rejects an unsigned webhook"` |
+          | 2 | The second thing | `spec/unit/second_spec.rb` |
+          | 3 | The third thing | `spec/unit/third_spec.rb` |
+        MARKDOWN
+
+        Dir.mktmpdir do |directory|
+          FileUtils.mkdir_p(File.join(directory, "docs/implementation/M99/stories"))
+          FileUtils.mkdir_p(File.join(directory, "docs/implementation/M99/reports"))
+          FileUtils.mkdir_p(File.join(directory, "spec/unit"))
+          File.write(File.join(directory, "docs/implementation/M99/stories/M99-01-probe.md"), story)
+          File.write(File.join(directory, "docs/implementation/M99/reports/M99-01.md"), report)
+          File.write(File.join(directory, "spec/unit/second_spec.rb"), "# probe\n")
+          File.write(File.join(directory, "spec/unit/third_spec.rb"), "# probe\n")
+          File.write(File.join(directory, "spec/unit/webhook_spec.rb"),
+            %(it "rejects an unsigned webhook" do\nend\n))
+
+          expect(POST_COMMIT.run("acceptance-mapping", story: "M99-01", root: directory)).to be_ok
+        end
+      end
     end
   end
 

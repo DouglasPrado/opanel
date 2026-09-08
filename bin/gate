@@ -63,6 +63,23 @@ check_boundary() {
   '
 }
 
+# What the Ruby spec selector cannot see. `bin/test --changed` maps changed Ruby
+# to related specs; a change under app/frontend/ selects nothing there, and the
+# local gate ran no frontend suite at all — so a commit that touched only the
+# React tree passed a gate that had tested none of it.
+FRONTEND='^(app/frontend/|spec/frontend/|e2e/|package(-lock)?\.json|vite\.config|vitest\.config|tsconfig|playwright\.config)'
+
+frontend_changed() {
+  gate_files changed '.' | grep -qE "$FRONTEND"
+}
+
+# The tests applicable to what changed, in every language the change touched.
+check_related_tests() {
+  bin/test --changed --fast || return 1
+  frontend_changed || return 0
+  bin/test:js
+}
+
 check_no_stray_files() {
   local stray
   stray="$(staged_files | grep -E "$STRAY" || true)"
@@ -144,6 +161,14 @@ case "$gate" in
     gate_run "lint" bin/lint --changed
     gate_run "typecheck" bin/typecheck
     gate_run "tests" bin/test --changed
+    # Reported separately from the Ruby suite, because "tests passed" that covers
+    # one of the two languages in the diff is the claim this whole file exists to
+    # stop being an opinion.
+    if frontend_changed; then
+      gate_run "frontend-tests" bin/test:js
+    else
+      gate_skip "frontend-tests" "no frontend file changed"
+    fi
     gate_run "migrations" bin/migration-gate
     if git diff --name-only "$(git merge-base HEAD "${OPANEL_GATE_BASE:-main}" 2>/dev/null || echo HEAD)" \
         | grep -qE '^(app/contracts/|app/controllers/api/|config/ci/jobs\.yml)'; then
@@ -167,7 +192,11 @@ case "$gate" in
     # `--fast` drops the `:slow` gate suites, which run other gates against
     # planted failures and cost tens of seconds. CI runs them on every push, so
     # the check moved rather than disappeared (Annex I §12.1, §21.2).
-    gate_run "tests" bin/test --changed --fast
+    #
+    # Both languages: the Ruby selector cannot see a change under app/frontend/,
+    # and this stays one of the eight items of Annex I §12.1 rather than becoming
+    # a ninth.
+    gate_run "tests" check_related_tests
     # Mandatory and not skippable. A secret that reached the repository is
     # compromised and needs rotation, not a `git rm`. Scoped to the diff for
     # speed; the `security-fast` CI job scans the whole tree and the history.
