@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# Stop hook — the per-turn state machine of the Milestone loop (Annex H §4.2).
+#
+# The loop cannot rely on the agent deciding it is finished: "an agent asked
+# whether its work is finished will say yes". So stopping is a decision this
+# script makes from the recorded state, and every branch either blocks the stop
+# with a concrete next action or stops deliberately.
+#
+#   block  -> {"decision":"block","reason":"..."} on stdout, exit 0
+#   stop   -> remove .backlog-active, exit 0
+#
+# Nothing here runs unless .backlog-active exists, so a normal interactive
+# session is never touched by it.
+
+set -uo pipefail
+
+ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+ACTIVE="$ROOT/.backlog-active"
+[ -f "$ACTIVE" ] || exit 0
+
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+TASKS_SH="$PLUGIN_ROOT/scripts/tasks.sh"
+STATE_SH="$PLUGIN_ROOT/scripts/review-state.sh"
+
+MDIR="$(head -n1 "$ACTIVE" | tr -d '[:space:]')"
+case "$MDIR" in /*) ;; *) MDIR="$ROOT/$MDIR" ;; esac
+
+stop_now() { rm -f "$ACTIVE"; exit 0; }
+
+block() {
+  # jq keeps the reason valid JSON no matter what it contains.
+  jq -nc --arg r "$1" '{decision:"block", reason:$r}'
+  exit 0
+}
+
+if [ ! -d "$MDIR" ] || [ ! -f "$MDIR/tasks.json" ]; then
+  block "'.backlog-active' points at '$MDIR', which has no tasks.json. Fix the path or delete .backlog-active."
+fi
+
+command -v jq >/dev/null 2>&1 || stop_now
+MILESTONE="$(basename "$MDIR")"
+
+# --- turn budget -----------------------------------------------------------
+# Six turns per Story plus thirty for the review and fix phases. This is the
+# backstop for a loop that is progressing in appearance only; hitting it is a
+# defect to read, not a threshold to raise.
+TURNS="$(bash "$TASKS_SH" "$MDIR" turns increment 2>/dev/null || echo 0)"
+STORIES="$(jq '.stories | length' "$MDIR/tasks.json" 2>/dev/null || echo 0)"
+LIMIT=$((STORIES * 6 + 30))
+if [ "$TURNS" -gt "$LIMIT" ]; then
+  bash "$STATE_SH" "$MDIR" block TURN_LIMIT_EXCEEDED >/dev/null 2>&1 || true
+  stop_now
+fi
+
+STATUS="$(bash "$STATE_SH" "$MDIR" status 2>/dev/null || echo implementing)"
+
+case "$STATUS" in
+  human_acceptance|blocked)
+    stop_now
+    ;;
+  ready_for_review)
+    block "M00 handoff: the Milestone is ready_for_review. Run /review-milestone $MDIR now. Do not implement anything else."
+    ;;
+  reviewing)
+    block "A Milestone review is in progress. Finish it and record the verdict with review-state.sh $MDIR verdict <ACCEPTED|NOT_ACCEPTED> <c> <h> <m> <l>."
+    ;;
+  fix_required)
+    block "The independent review returned NOT_ACCEPTED. Run /fix-milestone $MDIR and correct only the Critical and High findings."
+    ;;
+  fixing)
+    block "A fix phase is in progress. Finish the blocking findings, write FIX_REPORT_<NN>.md, then run review-state.sh $MDIR fix-done."
+    ;;
+esac
+
+# --- implementing ----------------------------------------------------------
+ACTIVE_STORY="$(bash "$TASKS_SH" "$MDIR" active 2>/dev/null || true)"
+if [ -n "$ACTIVE_STORY" ]; then
+  block "Story $ACTIVE_STORY is still open. Close it — review, counts, done, commit — before starting anything else."
+fi
+
+# A checkpoint is a legitimate reason to stop: the run did the work it was
+# budgeted for and the state is clean between Stories.
+MAX_PER_RUN="${OPANEL_MAX_STORIES_PER_RUN:-0}"
+if [ "$MAX_PER_RUN" -gt 0 ]; then
+  DONE_THIS_RUN="$(jq --arg s "$(jq -r '.run.startedAt // ""' "$MDIR/tasks.json")" \
+    '[.stories[] | select(.status == "done")] | length' "$MDIR/tasks.json" 2>/dev/null || echo 0)"
+  if [ "$DONE_THIS_RUN" -ge "$MAX_PER_RUN" ]; then
+    stop_now
+  fi
+fi
+
+NEXT="$(bash "$TASKS_SH" "$MDIR" next 2>/dev/null || true)"
+if [ -n "$NEXT" ]; then
+  block "Next Story: $NEXT. Mark it in_progress, record the attempt, and open a task titled exactly '$NEXT: <title>'."
+fi
+
+REMAINING="$(bash "$TASKS_SH" "$MDIR" remaining 2>/dev/null || echo 0)"
+BLOCKED_REQUIRED="$(jq -r '[.stories[] | select(.required == true and .status == "blocked")] | length' "$MDIR/tasks.json")"
+
+if [ "$BLOCKED_REQUIRED" -gt 0 ]; then
+  bash "$STATE_SH" "$MDIR" block REQUIRED_STORY_BLOCKED >/dev/null 2>&1 || true
+  stop_now
+fi
+
+if [ "$REMAINING" -gt 0 ]; then
+  block "$REMAINING Stories remain but none is ready. Record why in BLOCKERS.md with a reproducible diagnosis, and mark the dependent Stories blocked."
+fi
+
+# --- closing the Milestone -------------------------------------------------
+GATE_OUT="$(cd "$ROOT" && bin/stop-gate "$MILESTONE" 2>/dev/null || true)"
+GATE_OK="$(printf '%s' "$GATE_OUT" | jq -r '.ok // false' 2>/dev/null || echo false)"
+
+if [ "$GATE_OK" != "true" ]; then
+  REASON="$(printf '%s' "$GATE_OUT" | jq -r '[.checks[]? | select(.result != "pass") | .name] | join(", ")' 2>/dev/null || true)"
+  [ -n "$REASON" ] || REASON="see bin/stop-gate $MILESTONE"
+  block "bin/stop-gate $MILESTONE is not ok ($REASON). Fix what it names and generate MILESTONE_REPORT.md with 'Status: READY_FOR_REVIEW'."
+fi
+
+bash "$STATE_SH" "$MDIR" set ready_for_review >/dev/null 2>&1 || true
+block "Every Story is done and bin/stop-gate $MILESTONE is ok. Next turn: run /review-milestone $MDIR."

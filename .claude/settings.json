@@ -1,16 +1,3 @@
 {
-    "hooks": {
-        "Stop": [
-            {
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "${CLAUDE_PROJECT_DIR}/scripts/agent-orchestrator.sh dispatch",
-                        "async": true,
-                        "timeout": 10
-                    }
-                ]
-            }
-        ]
-    }
+    "hooks": {}
 }

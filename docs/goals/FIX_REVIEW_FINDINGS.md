@@ -9,7 +9,7 @@ Você não é o reviewer e não pode aceitar o Milestone.
 2. `docs/MASTER.md`
 3. `docs/AGENT_RULES.md`
 4. `docs/implementation/<MILESTONE>/GOAL.md`
-5. `docs/implementation/<MILESTONE>/CODEX_REVIEW_<NN>.md`
+5. `docs/implementation/<MILESTONE>/MILESTONE_REVIEW_<NN>.md`
 6. apenas as Stories e referências afetadas pelos findings bloqueantes.
 
 ## Trabalho permitido
@@ -35,5 +35,5 @@ Quando as correções e gates estiverem verdes, altere somente
 `review-state.json.status` para `ready_for_review`, limpe `verdict` e os counts
 do review anterior, e encerre.
 
-Não escreva `accepted`, `human_acceptance` ou qualquer verdict. Somente o Codex
-pode emitir o verdict independente.
+Não escreva `accepted`, `human_acceptance` ou qualquer verdict. Somente o reviewer independente
+pode emitir o verdict.

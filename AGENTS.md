@@ -76,9 +76,11 @@ Return: verdict · executive summary · Story coverage matrix · tests and gates
 with results · architecture/security/scope review · findings by severity ·
 required fixes · evidence · final recommendation.
 
-Do not write the report file directly. The read-only Codex run returns structured
-output; `scripts/run-codex-review.sh` validates it and writes the numbered review
-artifact outside the reviewer sandbox.
+Do not write the report file directly. The read-only review run returns
+structured output; the `/review-milestone` skill of `tools/opanel-loop`
+validates its coherence and writes `MILESTONE_REVIEW_<NN>.md` outside the
+reviewer's context. Milestones reviewed before that plugin carry
+`CODEX_REVIEW_<NN>.md`, written by `scripts/legacy/run-codex-review.sh`.
 
 ## Context recovery
 

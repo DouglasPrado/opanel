@@ -68,3 +68,6 @@ node_modules
 # Vite uses dotenv and suggests to ignore local-only env files. See
 # https://vitejs.dev/guide/env-and-mode.html#env-files
 *.local
+
+# Marker of an active autonomous Milestone run (tools/opanel-loop).
+.backlog-active

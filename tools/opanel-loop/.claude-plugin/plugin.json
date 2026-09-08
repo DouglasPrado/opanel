@@ -1,0 +1,6 @@
+{
+  "name": "opanel-loop",
+  "version": "1.0.0",
+  "description": "Autonomous Milestone loop for Opanel: one Story per turn, an independent reviewer in a fresh context, and deterministic Stop Gates that decide when the loop may stop.",
+  "author": { "name": "Opanel" }
+}
