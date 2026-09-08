@@ -598,6 +598,30 @@ attention rather than being silently absorbed:
    refuses to treat an unverifiable control as satisfied. The eight checks that
    *are* decidable from the workspace pass. Recorded below with the output.
 
+## Closing verification
+
+Repeated against `6e6322b`, the commit that adds this report — so the evidence
+describes the state being handed to review rather than the state before it.
+
+| Comando | Resultado | Exit |
+|---|---|---|
+| `bin/ci-job <name> --out …`, all ten required for merge | **10/10 PASS**, each naming `commit: 6e6322b9c` | 0 |
+| `bin/test` | **723 examples, 0 failures, 0 pending**, `complete: true`, `skipped: 0` | 0 |
+| `bin/gate pre-commit` (the hook, on the commit itself) | PASS — 8 checks | 0 |
+| `bin/gate post-commit --story M00-14` | PASS — 8 checks | 0 |
+| `bin/stop-gate M00` | **OK — the Milestone may stop**, all 10 checks PASS | 0 |
+| `bin/merge-gate` | 8/10 — `base-branch-current` and `required-approvals` red, as above | 1 |
+
+Individual CI durations at `6e6322b`: `static` 6 217 ms, `unit` 248 964 ms,
+`integration` 37 597 ms, `contract` 339 ms, `security-fast` 126 684 ms,
+`frontend` 2 183 ms, `migrations` 963 ms, `setup` 9 297 ms, `e2e-critical`
+4 187 ms, `swarm-smoke` 21 562 ms.
+
+Every result records `dirty: true`, for the single reason given under "Conflicts
+and blockers": the pre-existing, uncommitted `.claude/settings.json` orchestrator
+hook, which the implementer may not touch. `git status --short` at this commit
+shows that file and nothing else.
+
 ## Handoff
 
 `review-state.json` is set to `ready_for_review` with `verdict` and all four
