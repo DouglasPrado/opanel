@@ -3,7 +3,7 @@
   "status": "ready_for_review",
   "reviewAttempt": 3,
   "fixAttempt": 4,
-  "maxReviewAttempts": 4,
+  "maxReviewAttempts": 5,
   "maxFixAttempts": 5,
   "lastReviewer": "claude",
   "verdict": null,

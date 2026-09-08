@@ -93,8 +93,12 @@ jobs:
 
       - uses: ./.github/actions/setup
 
+      # `unit` carries two examples that plant a real secret and assert the scan
+      # catches it. Without gitleaks on this runner they skip — loudly, never
+      # silently green — so the job passes while the check it exists for never
+      # runs. Installing it here is what makes those two examples mean anything.
       - name: gitleaks
-        if: matrix.job == 'security-fast'
+        if: matrix.job == 'security-fast' || matrix.job == 'unit'
         run: |
           curl -sSfL -o /tmp/gitleaks.tar.gz \
             "https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz"
@@ -221,11 +225,17 @@ jobs:
 
       # The results of the runs that produced them. The gate reads results; it
       # does not trust a summary of them.
+      # `path: tmp`, because the producer writes tmp/ci-results/<job>.json and
+      # bin/merge-gate reads it back from there. Downloading to `.` landed the
+      # evidence at ./ci-results/, so ten artifacts arrived intact and every
+      # required job was reported missing. Fixed on this side on purpose: the
+      # alternative is teaching the gate to look wherever the producer happened
+      # to drop things, which turns a gate into a search.
       - uses: actions/download-artifact@v4
         with:
           pattern: evidence-*-${{ github.run_id }}-*
           merge-multiple: true
-          path: .
+          path: tmp
 
       - name: Merge Gate
         env:
