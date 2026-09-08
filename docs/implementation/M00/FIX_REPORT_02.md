@@ -1,13 +1,18 @@
-# Fix Report — M00, attempt 02
+# Fix Report — M00, attempts 02 and 03
 
 Answers [`CODEX_REVIEW_02.md`](CODEX_REVIEW_02.md) — `NOT_ACCEPTED`, Critical 1,
 High 9, Medium 0, Low 0, reviewed at `4b357cf`.
 
 - Milestone: `M00` — Foundation
-- Branch: `docs/agent-bootstrap`
-- Fix attempt: **2** (`review-state.json.fixAttempt`)
+- Fix attempts: **2** and **3** (`review-state.json.fixAttempt`), both against
+  the same review — see "Attempt 03" at the end for why there are two.
 - Role: IMPLEMENTER. This report carries **no verdict**. Only the independent
-  Codex review may emit one.
+  reviewer may emit one.
+
+Read it in two passes. Everything up to "Closing verification" is attempt 02, on
+branch `docs/agent-bootstrap`, ending at `6e6322b`. "Attempt 03" re-establishes
+the same evidence on branch `loop/replace-orchestrator`, at `ca7f2a3`, which is
+the state actually being handed to review.
 
 Ten findings, all blocking, all addressed. Every fix carries the negative test
 that proves the defect is gone rather than the assertion that it is — which is
@@ -621,6 +626,226 @@ Every result records `dirty: true`, for the single reason given under "Conflicts
 and blockers": the pre-existing, uncommitted `.claude/settings.json` orchestrator
 hook, which the implementer may not touch. `git status --short` at this commit
 shows that file and nothing else.
+
+---
+
+# Attempt 03 — the same ten findings, re-proved at `ca7f2a3`
+
+## Why there is a third attempt
+
+Review 03 never returned a verdict. The Codex CLI stopped on its usage limit after
+189,915 tokens, and the orchestrator recorded that as
+`CODEX_REVIEW_EXECUTION_FAILED` rather than as a rejection (`f4d869a`) — an
+execution failure is not a review.
+
+`4d2fb44` then replaced that orchestrator with `tools/opanel-loop` and set M00
+back to `fix_required` against the last verdict that exists, which is still
+`CODEX_REVIEW_02`'s 1 Critical and 9 High. `ca7f2a3` raised `maxFixAttempts` from
+3 to 4 so the new loop's first run would not spend the Milestone's last correction
+on machinery nothing had exercised end to end.
+
+So this attempt answers the same ten findings — not new ones — and the question it
+has to settle is whether they are still answered **here**, on this branch, at this
+commit.
+
+## What changed in the code since attempt 02
+
+Nothing.
+
+```console
+$ git diff --stat 6e6322b..HEAD -- bin/ lib/ app/ spec/ e2e/ config/ db/ \
+    package.json package-lock.json Gemfile Gemfile.lock
+$ echo $?
+0
+```
+
+Empty. The four commits between `6e6322b` and `ca7f2a3` are the loop replacement
+and its bookkeeping:
+
+```console
+$ git log --oneline 6e6322b..HEAD
+ca7f2a3 chore(M00): give the fix budget a spare attempt before the new loop's first run
+4d2fb44 feat(loop): run the whole Milestone inside Claude Code, without a second CLI
+f4d869a chore(M00): record the third review stopping on the Codex usage limit
+8e6701e docs(pack): record the closing verification of FIX_REPORT_02
+```
+
+`4d2fb44` adds `tools/opanel-loop/`, moves `scripts/agent-orchestrator.sh` and its
+two runners to `scripts/legacy/`, empties the `Stop` hook from
+`.claude/settings.json` and rewrites three documents. It touches no file under
+`bin/`, `lib/`, `app/`, `spec/`, `e2e/`, `config/` or `db/`. The other three are
+state and documentation.
+
+**No new code was written in this attempt**, and none was needed: the ten fixes
+are byte-identical to the ones attempt 02 verified. What this attempt adds is that
+the evidence was produced again against the commit being handed over. "Green at
+`6e6322b`" and "green at `ca7f2a3`" are different claims, and the second is the one
+a reviewer of this branch can check.
+
+## Per finding, re-proved at `ca7f2a3`
+
+Each row is an execution at this commit, not a re-reading of attempt 02.
+
+| Finding | Sev | What re-proves it here | Result |
+|---|---|---|---|
+| M00-R11 | Critical | `spec/integration/swarm_lab_spec.rb` — 41 examples, incl. the context, exact-host and loopback-resolution negatives; plus `bin/swarm-lab status` naming the endpoint it resolved from the current context | 0 failures, exit 0 |
+| M00-R16 | High | same file — the four per-listing negatives and `"stops \`down\` before \`swarm leave\`"`; plus `bin/swarm-lab status` on a torn-down lab reporting `orphans unknown — …not a swarm manager` instead of `none` | 0 failures, exit 0 |
+| M00-R02 | High | `spec/security/artifact_redaction_spec.rb` — 25 examples; `bin/ci-job e2e-critical` PASS | 0 failures, exit 0 |
+| M00-R06 | High | `spec/gates/gate_scripts_spec.rb` — 68 examples, incl. the three narrowing negatives and the skip refusal; `bin/gate local` reporting `frontend-tests` as its own check | 0 failures, exit 0 |
+| M00-R07 | High | `spec/gates/gate_scripts_spec.rb` + `spec/gates/stop_gate_spec.rb` — 89 examples; `bin/stop-gate M00` `acceptance` and `milestone-report` PASS | 0 failures, exit 0 |
+| M00-R17 | High | `spec/gates/ci_pipeline_spec.rb` — 35 examples; `bin/merge-gate` `critical-zero`/`high-zero` green **having read** `tmp/security/security-report.json`, whose `counts` is `{"critical":0,"high":0}` | 0 failures, exit 0 |
+| M00-R10 | High | `spec/gates/fitness_functions_spec.rb` — 61 examples; `bin/fitness` AF-01..AF-10 each reported individually | 0 failures, exit 0 |
+| M00-R09 | High | `spec/security/security_scan_spec.rb` — 56 examples; `bin/security` writing a report with `findings`, `counts` and the four scanners' versions | 0 failures, exit 0 |
+| M00-R18 | High | `spec/gates/gate_scripts_spec.rb` — the GNU-`mktemp` stand-in and the example asserting the stand-in rejects the old form | 0 failures, exit 0 |
+| M00-R19 | High | all ten `required_for_merge` CI jobs run here, each result naming `commit: ca7f2a37d`, `branch: loop/replace-orchestrator`, `dirty: true`; `bin/test` complete with `skipped: 0` | 0 failures, exit 0 |
+
+The seven spec files together are **307 examples, 0 failures** — the same 307 as
+attempt 02, which is what an unchanged diff should produce.
+
+## Commands, with exit codes
+
+All run at `ca7f2a3` on `loop/replace-orchestrator`, with the Swarm lab up unless
+noted.
+
+### Suites
+
+| Comando | Resultado | Exit |
+|---|---|---|
+| `bin/test` | **723 examples, 0 failures**, `complete: true`, `skipped: 0` | 0 |
+| the seven spec files carrying the findings' negatives | **307 examples, 0 failures** | 0 |
+| `bundle exec rspec spec/gates/ci_pipeline_spec.rb -e "a red check blocks"` | **5 examples, 0 failures** — typecheck, lint, test, secret, migration | 0 |
+
+`tmp/test-results/rspec-metadata.json` for that run:
+
+```json
+{"result": "pass", "type": "all", "scope": "all", "fast": false, "complete": true,
+ "tests": 723, "failures": 0, "errors": 0, "skipped": 0,
+ "commit": "ca7f2a37d254391472d6fb20e6225d828f2ea696",
+ "branch": "loop/replace-orchestrator", "dirty": true, "duration_ms": 375022}
+```
+
+### Gates
+
+| Gate | Resultado | Exit |
+|---|---|---|
+| `bin/gate local` | PASS — 9 checks, `frontend-tests` among them | 0 |
+| `bin/gate pre-commit` | PASS — the eight items of Annex I §12.1 | 0 |
+| `bin/gate pre-commit` (synthetic credential staged) | **FAIL** — `tests` red, `secret-scan` red, `pre-commit evidence not recorded` | 1 |
+| `bin/gate post-commit --story M00-14` | PASS — 8 checks | 0 |
+| `bin/fitness` | PASS — AF-01..AF-10 individually | 0 |
+| `bin/pack validate` | PASS — 15 milestones | 0 |
+| `bin/security --out tmp/security/security-report.json` | PASS — 7 checks | 0 |
+| `bin/stop-gate M00 --format text` | **OK — the Milestone may stop**, all 10 checks PASS | 0 |
+| `bin/stop-gate M99 --only acceptance` | `ok:false`, `"no tasks.json for M99"` | 0 (JSON mode) |
+| `bin/merge-gate` | 8/10 — the two reds are the two human controls, below | 1 |
+| `bin/swarm-lab up`/`down`, twice | 0 on all four calls | 0 |
+
+The planted-credential negative, in full, because GOAL condition 5 asks for a
+controlled failure and not for the assertion that one would fail. A synthetic
+AWS-shaped pair was staged in `config/planted_credential.rb`:
+
+```
+  tests                  FAIL  125509ms
+      1) security scanning secret scan passes on this repository, tree and history
+  secret-scan            FAIL  282ms
+        secret-scan-staged     FAIL  35ms
+            WRN leaks found: 1
+  pre-commit evidence not recorded: the gate did not pass
+gate:pre-commit: FAIL   EXIT=1
+```
+
+`tmp/gate/` held 49 certificates before the run and 49 after, and none for the
+staged tree `4650f5db15cd650b64aecfdfc8daeb72cfc02728` — the M00-R05 fix from the
+first round still holding. The file was unstaged and deleted immediately after;
+`git status --short` shows only `docs/implementation/M00/review-state.json`.
+
+### CI jobs
+
+`bin/ci-job <name> --out tmp/ci-results/<name>.json`, all ten of
+`config/ci/jobs.yml`'s `required_for_merge`:
+
+| Job | Resultado | Duração |
+|---|---|---|
+| `static` | PASS | 5 464 ms |
+| `unit` | PASS | 248 600 ms |
+| `integration` | PASS | 37 633 ms |
+| `contract` | PASS | 308 ms |
+| `security-fast` | PASS | 126 331 ms |
+| `frontend` | PASS | 2 173 ms |
+| `migrations` | PASS | 845 ms |
+| `setup` | PASS | 9 417 ms |
+| `e2e-critical` | PASS | 4 473 ms |
+| `swarm-smoke` | PASS | 21 392 ms |
+
+Every result file names `commit: ca7f2a37d`, `branch: loop/replace-orchestrator`
+and `dirty: true`.
+
+### The Swarm Lab
+
+```console
+$ bin/swarm-lab status
+swarm-lab: up
+  engine        29.7.2 (Engine API 1.55)
+  endpoint      unix:///Users/douglasprado/.docker/run/docker.sock
+  swarm         active, 1 node(s)
+  services      none
+  orphans       none
+```
+
+`DOCKER_HOST` is unset here and the current context is `desktop-linux`, so the
+endpoint printed is the one M00-R11 required: resolved through the CLI's own
+precedence rather than assumed to be the local socket. After `down`, the same
+command reports
+
+```
+  services      unknown
+  orphans       unknown — Error response from daemon: This node is not a swarm manager…
+```
+
+which is M00-R16 in the field — a listing that failed says `unknown`, not `none`.
+
+## Findings left open
+
+None. All ten findings of `CODEX_REVIEW_02.md` are Critical or High and all ten
+remain answered at `ca7f2a3`. The review recorded Medium 0 and Low 0, so there is
+nothing deferred.
+
+## Conflicts and observations
+
+No specification conflict was found in this attempt. Three things belong to the
+reviewer rather than to a silent decision:
+
+1. **`dirty: true` in every artifact, for one file.** The dirty entry is
+   `docs/implementation/M00/review-state.json`, which
+   `review-state.sh <dir> fix-start` wrote to open this attempt and which the
+   loop's own protocol leaves uncommitted until `fix-done`. The
+   `.claude/settings.json` change that made attempt 02's artifacts dirty is gone:
+   `4d2fb44` committed it. `git status --short` at the time of every run above
+   shows that one file and nothing else.
+2. **The Merge Gate is 8/10 and cannot be more.** `base-branch-current` reports
+   HEAD behind `origin/main`; `required-approvals` reports `no pull requests found
+   for branch "loop/replace-orchestrator"`. Both are human acts the implementer
+   must not perform, and the gate refusing to call an unverifiable control
+   satisfied is the behaviour M00-11 AC8 asks for. The eight decidable checks pass,
+   including the three — `ci-green`, `critical-zero`, `high-zero` — that M00-R17
+   made capable of reading anything at all.
+3. **A stale path in `scripts/legacy/tests/agent-orchestrator-test.sh`.**
+   `4d2fb44` moved the orchestrator into `scripts/legacy/` but its test still
+   points at `$REPO_ROOT/scripts/agent-orchestrator.sh`, which no longer exists.
+   Nothing runs it — no CI job, gate or spec references `scripts/` — so it is
+   inert, and it is orchestrator machinery, which `CLAUDE.md` forbids the
+   implementer from modifying while fixing review findings. Recorded, not touched.
+
+## Closing verification (attempt 03)
+
+Repeated against the commit that carries this report, so the evidence describes
+the state being handed over rather than the state before it.
+
+| Comando | Resultado | Exit |
+|---|---|---|
+| `bin/test` | **723 examples, 0 failures, 0 pending**, `complete: true` | 0 |
+| `bin/gate post-commit --story M00-14` | PASS — 8 checks | 0 |
+| `bin/stop-gate M00 --format text` | **OK — the Milestone may stop**, 10/10 PASS | 0 |
 
 ## Handoff
 

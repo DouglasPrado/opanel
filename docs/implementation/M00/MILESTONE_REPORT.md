@@ -22,6 +22,10 @@ own memory.
 >   `4b357cf`; answered by [`FIX_REPORT_02.md`](FIX_REPORT_02.md), which carries
 >   each fix, its negative test, and the re-run of every suite and gate against
 >   the resulting code.
+> - Review 03 produced no verdict — the reviewer's CLI stopped on a usage limit —
+>   so the same ten findings were re-proved at `ca7f2a3` on branch
+>   `loop/replace-orchestrator`. That pass is the "Attempt 03" section of
+>   `FIX_REPORT_02.md`.
 >
 > Read them in order. Where a number here disagrees with `FIX_REPORT_02.md`, the
 > fix report is the current one.
