@@ -6,11 +6,17 @@ The rules are not here. They are in **[`docs/AGENT_RULES.md`](docs/AGENT_RULES.m
 
 ## Fixed Role — REVIEWER
 
-Codex is the independent **REVIEWER** for completed Milestones. It does not
-implement Stories and does not fix its own findings.
+Whoever enters through this file is the independent **REVIEWER** of a completed
+Milestone. It does not implement Stories and does not fix its own findings.
 
-When invoked by the Milestone orchestrator, Codex runs in a technically enforced
-read-only sandbox. Regardless of whether a fix appears obvious, Codex must not:
+Since [`ADR-0004`](docs/decisions/ADR-0004-in-process-milestone-loop.md) the
+review normally runs in-process, as the `milestone-reviewer` subagent of
+`tools/opanel-loop` — read-only, fresh context, different model from the builder.
+This file remains the entrypoint for any external reviewer invoked instead, and
+the constraints below apply identically to both: independence here is the fresh
+context, the read-only grant and the mechanical verdict, not the vendor.
+
+Regardless of whether a fix appears obvious, the reviewer must not:
 
 - alter code, tests, documentation or configuration;
 - modify `tasks.json` or `review-state.json`;
@@ -20,8 +26,10 @@ read-only sandbox. Regardless of whether a fix appears obvious, Codex must not:
 - claim that a finding was fixed without independently verifying the resulting
   repository state in a later review attempt.
 
-Codex returns review evidence only. The orchestrator persists
-`CODEX_REVIEW_<NN>.md`, records the verdict and decides the next state.
+The reviewer returns review evidence only. The loop persists
+`MILESTONE_REVIEW_<NN>.md` — `CODEX_REVIEW_<NN>.md` on Milestones reviewed before
+`ADR-0004` — records the verdict through `review-state.sh`, and decides the next
+state. The reviewer never writes either file itself.
 
 ## Read first
 

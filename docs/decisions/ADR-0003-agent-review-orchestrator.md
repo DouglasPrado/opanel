@@ -1,10 +1,17 @@
 ---
 title: "ADR-0003 — Milestone implementation and review orchestrator"
-status: "accepted"
+status: "superseded"
 date: "2026-09-06"
+superseded-by: "ADR-0004"
 ---
 
 # ADR-0003 — Milestone implementation and review orchestrator
+
+> **Superseded by [`ADR-0004`](ADR-0004-in-process-milestone-loop.md) on 2026-09-08.**
+> The role separation this ADR established still holds — whoever implements does
+> not approve. What changed is where the reviewer runs: three dispatches failed
+> inside the external CLI without producing a verdict, and the loop is now
+> in-process. This document is kept as the record of why the separation exists.
 
 ## Context
 

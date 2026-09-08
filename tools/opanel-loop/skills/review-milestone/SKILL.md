@@ -28,7 +28,9 @@ it the milestone directory, the attempt number, `HEAD` and the branch — nothin
 about how the work went, and none of your own opinion about it.
 
 It executes `docs/goals/REVIEW_MILESTONE.md` and returns a markdown report plus
-JSON matching `scripts/schemas/codex-review.schema.json`.
+JSON matching `<repo>/scripts/schemas/codex-review.schema.json` — resolved from
+the repository root. The plugin has its own `scripts/`, and a bare relative path
+here sent the first reviewer looking in the wrong directory.
 
 ## 3. Validate before recording
 

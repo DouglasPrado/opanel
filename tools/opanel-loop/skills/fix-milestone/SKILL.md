@@ -44,6 +44,12 @@ Write `<dir>/FIX_REPORT_<NN>.md`: each blocking finding with the evidence of its
 correction, the files changed, the commands run **with their exit codes**, the
 findings left open and why, and any conflict encountered.
 
+**Write it even when no code changed.** A round that concludes the fixes are
+already in place still has to say so, in the file the next reviewer looks for,
+naming the commits it verified and the commands it re-ran. Folding that into an
+earlier report leaves the record for attempt `<NN>` missing, and a reviewer who
+cannot find it is right to treat the attempt as unevidenced.
+
 Every number in that report is something the next reviewer will check. One that
 does not survive checking discredits the whole document.
 

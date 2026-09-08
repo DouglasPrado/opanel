@@ -139,6 +139,33 @@ Complementa — não substitui — [`docs/decisions/pending-documentation-update
 - **Impacto:** operacional e bloqueante. Um Milestone concluído ficaria parado: o review nunca seria disparado, e o implementer estaria declarando aceitação humana, algo que `CLAUDE.md` proíbe explicitamente.
 - **Resolução aplicada:** todos os `GOAL.md` de M01 a M14 foram normalizados para a forma canônica de `M00`: gerar `MILESTONE_REPORT.md` com `Status: READY_FOR_REVIEW`, mover `review-state.json.status` para `ready_for_review`, não iniciar o Milestone seguinte e **nunca** declarar `accepted` ou `human_acceptance`.
 
+## SC-16 — Quem é o reviewer independente do Milestone
+
+- **Estado:** `resolved`
+- **Documentos envolvidos:** `CLAUDE.md` §Fixed Role; `AGENTS.md` §Fixed Role;
+  `docs/decisions/ADR-0003-agent-review-orchestrator.md`;
+  `docs/implementation/AGENT_ORCHESTRATOR.md`; `tools/opanel-loop/**`.
+- **Situação:** o commit `4d2fb44` substituiu o orquestrador externo por um loop
+  in-process no qual um subagente Claude é o reviewer independente e um script
+  escreve `reviewing`, `fix_required` e `human_acceptance`. O `CLAUDE.md` vigente
+  proibia nominalmente as três coisas, o `ADR-0003` continuava `accepted` e o
+  `AGENTS.md` ainda declarava o Codex como reviewer. O repositório passou a
+  conter um conjunto de governança que se contradizia — e justamente sobre quem
+  pode declarar um Milestone aceito.
+- **Impacto:** governança e segurança do processo. Uma exceção permanente a um
+  invariante precisa virar ADR **antes** de virar padrão implícito
+  (`AGENT_RULES`, §Documentation), e um conflito entre documentação e
+  implementação se registra, não se resolve em silêncio.
+- **Como apareceu:** finding **F03** do `MILESTONE_REVIEW_03.md` — o primeiro
+  review executado pela própria máquina nova, que a apontou contra si mesma.
+- **Resolução aplicada:** escrito o `ADR-0004`, que assume explicitamente o que
+  se perde (o reviewer deixa de ser de outro fornecedor) e o que sustenta a
+  independência (contexto novo, modelo diferente, read-only, verdict mecânico).
+  `ADR-0003` marcado `superseded`; `CLAUDE.md` e `AGENTS.md` alinhados à máquina
+  em uso. Fica em aberto, por exigir Story própria, incluir `tools/**` e
+  `.claude/**` no `PIPELINE_PATHS` do `bin/merge-gate` — hoje uma mudança no loop
+  é invisível para o check de alteração de pipeline.
+
 ## SC-13 — Referências informativas sem conflito
 
 Registradas para evitar releitura como pendência. **Nenhuma ação necessária.**
@@ -157,7 +184,7 @@ Registradas para evitar releitura como pendência. **Nenhuma ação necessária.
 
 | Estado | Quantidade | Itens |
 |---|---|---|
-| `resolved` | 10 | SC-01, SC-02, SC-03, SC-05, SC-06, SC-09, SC-10, SC-12, SC-14, SC-15 |
+| `resolved` | 11 | SC-01, SC-02, SC-03, SC-05, SC-06, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16 |
 | `deferred` | 2 | SC-07 (inventário de componentes, dono `M00-05`), SC-11 (backend de métricas, dono `M09-03`) |
 | `unresolved` | 2 | **SC-04** (prefixo de label — bloqueia `M01-16`), **SC-08** (estratégia de ID — bloqueia `M01-01`) |
 | informativo | 5 | SC-13.1 … SC-13.5 |

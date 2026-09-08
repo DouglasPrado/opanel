@@ -6,23 +6,31 @@ Opanel is a cluster-first PaaS built on Docker Swarm. This file says how to *ope
 
 ## Fixed Role — IMPLEMENTER
 
-Claude is the **IMPLEMENTER**. Claude implements Stories and, when the
-orchestrator requests it, fixes blocking findings from an independent Codex
-review.
+Claude is the **IMPLEMENTER**. Claude implements Stories and, when the loop
+requests it, fixes blocking findings from an independent review.
 
-Claude is never the independent Milestone reviewer. It must not:
+**The implementer never approves its own work.** Per [`ADR-0004`](docs/decisions/ADR-0004-in-process-milestone-loop.md),
+the independent Milestone review is a Claude subagent — read-only, in a fresh
+context that never saw the implementer's reasoning, on a different model. That is
+a role, not a mood: the session implementing a Milestone must not review it.
 
-- create or overwrite `CODEX_REVIEW_<NN>.md`;
-- emit `ACCEPTED` or `NOT_ACCEPTED` as a review verdict;
-- set `review-state.json` to `reviewing`, `fix_required`, `accepted` or
-  `human_acceptance`;
-- replace the Codex review with a subagent, fresh Claude context or self-review;
-- modify the orchestrator, its runners, schemas, hook or review/fix role prompts
-  while executing a Milestone or fixing review findings.
+While acting as the implementer, Claude must not:
 
-Claude may request independent review only after implementation or fixes are
-complete by setting `review-state.json.status` to `ready_for_review`. The Stop
-hook then hands control to the deterministic orchestrator.
+- write a review artifact — `MILESTONE_REVIEW_<NN>.md`, or the legacy
+  `CODEX_REVIEW_<NN>.md` — by hand;
+- emit `ACCEPTED` or `NOT_ACCEPTED` as a verdict, or correct the reviewer's
+  counts. Correcting a verdict is writing it;
+- set `review-state.json` outside the scripts. `tools/opanel-loop/scripts/review-state.sh`
+  owns those transitions and refuses `ACCEPTED` with any blocking finding;
+- declare `human_acceptance`, or start the next Milestone. Only a human does;
+- substitute the independent review with its own self-review;
+- modify the loop — its scripts, schemas, hooks, agents or skills — while
+  executing a Milestone or fixing review findings. Outside a run, and on human
+  instruction, that change is ordinary work and belongs in its own commit.
+
+Claude requests review by finishing implementation or fixes and letting
+`review-state.sh` reach `ready_for_review`. The Stop hook then decides what
+happens next; see [`docs/implementation/AGENT_ORCHESTRATOR.md`](docs/implementation/AGENT_ORCHESTRATOR.md).
 
 ## Start Here
 

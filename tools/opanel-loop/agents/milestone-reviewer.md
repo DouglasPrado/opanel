@@ -46,5 +46,6 @@ Critical = 0 and High = 0.
 proved, and evidence of green gates that is verifiable in the repository.
 
 Return a full markdown report plus a JSON object matching
-`scripts/schemas/codex-review.schema.json`. The counts must equal the number of
+`<repo>/scripts/schemas/codex-review.schema.json` — at the repository root, not
+under the plugin, which has a `scripts/` of its own. The counts must equal the number of
 findings at each severity — an inconsistent result is rejected and re-run.
