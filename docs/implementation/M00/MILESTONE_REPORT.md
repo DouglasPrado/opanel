@@ -3,48 +3,54 @@
 Status: READY_FOR_REVIEW
 
 - Milestone: `M00` — Foundation
-- Branch: `docs/agent-bootstrap`
-- Head: `f32a344`
-- Date: `2026-09-06`
+- Branch: `loop/replace-orchestrator`
+- Head: `fe7e1a6`
+- Repository: `DouglasPrado/opanel` — **public**, recreated on `2026-09-08` (see
+  "The security incident")
+- Date: `2026-09-08`
 - Implementer: Claude (IMPLEMENTER role — this is **not** an independent review
   and carries no verdict)
 
-M00 builds no Opanel domain entity. It builds the machinery every later
-Milestone is judged by: the runtime, the harnesses, the gates, and the loop's
-own memory.
+M00 builds no Opanel domain entity. It builds the machinery every later Milestone
+is judged by: the runtime, the harnesses, the gates, and the loop's own memory.
 
-> **This report describes the first implementation pass.** Two independent
-> reviews have followed it, and the numbers below predate both.
->
-> - `CODEX_REVIEW_01.md` returned `NOT_ACCEPTED` (Critical 1, High 15) against
->   `2a38d11`; answered by [`FIX_REPORT_01.md`](FIX_REPORT_01.md).
-> - `CODEX_REVIEW_02.md` returned `NOT_ACCEPTED` (Critical 1, High 9) against
->   `4b357cf`; answered by [`FIX_REPORT_02.md`](FIX_REPORT_02.md), which carries
->   each fix, its negative test, and the re-run of every suite and gate against
->   the resulting code.
-> - Review 03 produced no verdict — the reviewer's CLI stopped on a usage limit —
->   so the same ten findings were re-proved at `ca7f2a3` on branch
->   `loop/replace-orchestrator`. That pass is the "Attempt 03" section of
->   `FIX_REPORT_02.md`.
->
-> Read them in order. Where a number here disagrees with `FIX_REPORT_02.md`, the
-> fix report is the current one.
+## Review history
+
+Five independent reviews. This report is written **after** all of them and
+describes the state at `fe7e1a6`, not the first pass.
+
+| Review | Against | Verdict | Answered by |
+|---|---|---|---|
+| `CODEX_REVIEW_01.md` | `2a38d11` | NOT_ACCEPTED — C1 H15 | [`FIX_REPORT_01.md`](FIX_REPORT_01.md) |
+| `CODEX_REVIEW_02.md` | `4b357cf` | NOT_ACCEPTED — C1 H9 | [`FIX_REPORT_02.md`](FIX_REPORT_02.md) |
+| `MILESTONE_REVIEW_03.md` | `b9aa412` | NOT_ACCEPTED — C0 H3 | [`FIX_REPORT_03.md`](FIX_REPORT_03.md) |
+| `MILESTONE_REVIEW_04.md` | `31a2cae` | NOT_ACCEPTED — C0 H4 | [`FIX_REPORT_04.md`](FIX_REPORT_04.md) |
+| `MILESTONE_REVIEW_05.md` | `03435fb` | NOT_ACCEPTED — C0 H2 | this report |
+
+Three further dispatches produced no verdict at all: the external reviewer's CLI
+stopped on its account usage limit, twice after burning six figures of tokens.
+That is why `a14b632` separated an execution failure from a verdict, and
+ultimately why `ADR-0004` moved the loop in-process.
+
+The trajectory is the honest summary of this Milestone: Critical 1 → 1 → 0 → 0 →
+0; High 15 → 9 → 3 → 4 → 2. The one increase, review 04, was damage caused by the
+correction of review 03 — recorded under "The security incident".
 
 ## Stories
 
-18 required, 18 `done`, 0 blocked. One commit per Story, plus three
-bookkeeping commits and one fix.
+18 required, 18 `done`, 0 blocked. Every commit hash below is in this branch's
+history.
 
-| Story | Título | Commit |
+| Story | Title | Commit |
 |---|---|---|
-| M00-01 | Repository and Rails skeleton | `d85418b` |
-| M00-02 | Inertia + React + Vite integration | `86163d7` |
-| M00-03 | Solid Queue and the job runtime | `2d1d290` |
-| M00-04 | Frontend toolchain and HMR | `7241a05` |
-| M00-05 | Component library import and inventory | `a999b21` |
+| M00-01 | Repository layout and Rails 8.1 application skeleton | `d85418b` |
+| M00-02 | PostgreSQL, database bootstrap and migration tooling | `86163d7` |
+| M00-03 | Solid Queue and asynchronous job baseline | `2d1d290` |
+| M00-04 | Inertia + React + TypeScript + Vite + Tailwind integration | `7241a05` |
+| M00-05 | Import and inventory the existing React component library | `a999b21` |
 | M00-06 | Reproducible local development environment | `b8a5f82` |
-| M00-07 | Backend test harness on real PostgreSQL | `d10e688` |
-| M00-08 | Component and browser test harnesses | `97eabb3` |
+| M00-07 | Backend test harness with real PostgreSQL | `d10e688` |
+| M00-08 | Frontend component tests and browser E2E harness | `97eabb3` |
 | M00-09 | Lint, format and typecheck toolchain | `202c052` |
 | M00-10 | Security scanning baseline | `e12d5c8` |
 | M00-11 | CI pipeline with PR and Merge gates | `e256b12` |
@@ -52,168 +58,193 @@ bookkeeping commits and one fix.
 | M00-13 | Architecture fitness functions AF-01..AF-10 | `0214fb4` |
 | M00-14 | Autonomous Development Loop scaffolding | `11c9a16` |
 | M00-15 | Structured logging, correlation IDs and health endpoints | `524e9ed` |
-| M00-16 | Environment configuration and secrets management | `4070dab` |
+| M00-16 | Environment configuration and development secrets management | `4070dab` |
 | M00-17 | Disposable Docker/Swarm Lab harness | `f230511` |
 | M00-18 | ADR, Story Report and Milestone Report templates | `319aa15` |
 
-Every Story has a report in `reports/` mapping its acceptance criteria to
-evidence, and a self-review in `review/`.
+The titles above are read from the Story files. An earlier version of this report
+transposed M00-02 and M00-04 — calling the PostgreSQL Story "Inertia + React" and
+the Inertia Story "Frontend toolchain" — which `MILESTONE_REVIEW_05.md` F02
+caught by comparing them against `git log`.
 
-## Quality
+Every Story has a report in `reports/` and a self-review in `review/`.
 
-Commands run on `f32a344`, with their exit codes.
+**Known gap, carried openly:** the eighteen self-reviews are dated `2026-09-06`
+and roughly thirty commits have since rewritten parts of what they certify
+(`MILESTONE_REVIEW_05.md` F09). The Exit Gate item "Critical = 0 e High = 0 no
+review de todas as Stories" is therefore satisfied by reviews of superseded code
+for the files those commits touched. Refreshing them is not done here.
 
-| Comando | Resultado | Exit |
+## The fifteen Acceptance Criteria
+
+Each maps to a command and its exit code, run at `fe7e1a6` unless stated.
+
+| # | Criterion | Evidence | Exit |
+|---|---|---|---|
+| 1 | Clean clone starts with one command, serves a rendered Inertia page | `bin/setup` then `bin/dev`; `spec/integration/development_environment_spec.rb`, `spec/requests/inertia_spec.rb` — in `bin/test` | 0 |
+| 2 | `db:prepare` on an empty database; migrations reversible or forward-fixed | `spec/integration/database_spec.rb`; `bin/migration-gate` | 0 |
+| 3 | A Solid Queue job runs and carries the request's `correlation_id` | `spec/integration/job_correlation_spec.rb`, `spec/integration/jobs_spec.rb` | 0 |
+| 4 | Missing required configuration fails with an actionable message and non-zero exit | `spec/integration/boot_configuration_spec.rb` | 0 |
+| 5 | `bin/gate local` runs format, lint, typecheck, related tests | `bin/gate local` | 0 |
+| 6 | `bin/gate pre-commit` runs Annex I §12.1 and blocks the commit on any failure | the hook ran on every commit in this branch; negative cases in `spec/gates/gate_scripts_spec.rb` | 0 |
+| 7 | `bin/gate post-commit` runs Annex I §14.2 and reports objectively | `bin/gate post-commit --story M00-12`; five reason-specific negatives in `spec/gates/gate_scripts_spec.rb` | 0 |
+| 8 | AF-01..AF-10 exist, run, report individually, each with a failing negative | `bin/fitness` — 10 functions reported one by one; `spec/gates/fitness_functions_spec.rb` | 0 |
+| 9 | CI rejects a PR with typecheck, lint, test or secret failing; job names are stable | **PRs [#2](https://github.com/DouglasPrado/opanel/pull/2)–[#6](https://github.com/DouglasPrado/opanel/pull/6)**, one per class, each blocked — see [`reports/negative-prs/`](reports/negative-prs/) | — |
+| 10 | `bin/pack validate` validates every `tasks.json` and fails on invalid state | `bin/pack validate` — 15 milestones; `spec/gates/pack_spec.rb` | 0 |
+| 11 | The Stop Gate exists, runs, returns `ok:false` with an objective reason | `bin/stop-gate M00` — 10 checks; `spec/gates/stop_gate_spec.rb` | 0 |
+| 12 | `bin/swarm-lab up/down` are idempotent; no test points at production Docker | `spec/integration/swarm_lab_spec.rb`; AF-02 | 0 |
+| 13 | `INVENTORY.md` lists the imported components | `app/frontend/components/INVENTORY.md`; `spec/frontend/component_inventory_spec.rb` | 0 |
+| 14 | No development secret is versioned, proven over the whole branch history | `bin/security --fast --history` — includes `secret-scan-history` | 0 |
+| 15 | ADR, Story Report and Milestone Report templates exist and are referenced | `docs/templates/`; `spec/documentation/templates_spec.rb` | 0 |
+
+### Criterion 9 in full
+
+The Required Test of `M00-11` asks for five pull requests, one per failure class,
+each demonstrably blocked. Opened against the **protected** `main`, each planting
+one defect verified to fire locally beforehand:
+
+| PR | Criterion | Class | Gate that rejected it | State |
+|---|---|---|---|---|
+| [#2](https://github.com/DouglasPrado/opanel/pull/2) | AC2 | typecheck | `static` | CLOSED |
+| [#3](https://github.com/DouglasPrado/opanel/pull/3) | AC3 | lint | `static` | CLOSED |
+| [#4](https://github.com/DouglasPrado/opanel/pull/4) | AC4 | test | `unit` | CLOSED |
+| [#5](https://github.com/DouglasPrado/opanel/pull/5) | AC5 | secret | `security-fast` | CLOSED |
+| [#6](https://github.com/DouglasPrado/opanel/pull/6) | AC6 | migration | `migrations` | CLOSED |
+
+Closed, never merged. A closed pull request stays verifiable by a third party;
+the per-job results are archived in [`reports/negative-prs/`](reports/negative-prs/)
+with the cascades explained.
+
+## Quality gates at `fe7e1a6`
+
+| Command | Result | Exit |
 |---|---|---|
-| `bin/test` (whole suite, lab image present) | **554 examples, 0 failures, 0 pending** | 0 |
-| `bin/gate local --story M00-12` | PASS — 8 checks | 0 |
-| `bin/gate pre-commit` | PASS — 8 checks, 62.8 s on the full-Milestone diff | 0 |
-| `bin/gate pre-commit` (staged secret planted) | **FAIL** — `secret-scan` red | 1 |
-| `bin/gate post-commit --story M00-12` | PASS — 8 checks | 0 |
-| `bin/fitness` | PASS — 10 functions, each reported individually | 0 |
 | `bin/pack validate` | PASS — 15 milestones | 0 |
-| `bin/security` | PASS — secret scan, bundler-audit, npm audit, Brakeman | 0 |
-| `bin/ci-job --stage pr` | PASS — 7/7 jobs | 0 |
-| `bin/swarm-lab up`/`down` ×2 | 0, 0, 0, 0 | 0 |
-| `bin/stop-gate M00` | **OK — the Milestone may stop**; all 10 checks PASS | 0 |
-| `bin/stop-gate M99 --only acceptance` | `ok:false`, `"no tasks.json for M99"` | 0 (JSON mode) |
+| `bin/fitness` | PASS — 10 functions, each reported individually | 0 |
+| `bin/stop-gate M00` | **OK — the Milestone may stop**; 10 checks PASS | 0 |
+| `bin/lint` | PASS | 0 |
+| `bin/typecheck` | PASS | 0 |
+| `bin/format --check` | PASS | 0 |
+| `bin/gate local` | PASS — 9 checks, 462 s | 0 |
+| `bin/security --fast --history` | PASS — including `secret-scan-history` | 0 |
+| `bin/fitness` | PASS — 10 functions | 0 |
+| `bin/gate pre-commit` (hook) | PASS on every commit in this branch | 0 |
 
-Per-check detail is in the transcript. The negative cases — one per Pre-commit
-item, one per fitness function, one per pack rule, five per CI failure class —
-are in `spec/gates/` and run as part of the suite above.
+### Two things the gate runs taught, recorded because a number alone hides them
 
-### Test classes
+**Both commands above failed on their first attempt, with `exit=1`.** The cause
+was not the code: the branch of negative PR #5 still existed locally as
+`refs/remotes/origin/neg/secret-09082138` after being deleted on the server, so
+`secret-scan-history` still reached the planted key. `git fetch --prune` fixed
+it and both went green.
 
-| Classe | Estado |
+That is the third time in this Milestone that "cleaned on one side" was mistaken
+for "cleaned": the same shape as the leaked object that stayed served by the API
+(F04), and as `security-fast` failing across every open PR while the secret
+branch existed. The rule the Milestone leaves behind is narrow and worth stating:
+**after deleting a branch that carried a secret, prune the other side and re-run
+the scan before claiming anything.**
+
+**`bin/gate local` takes 462 seconds, and 408 of them are the test suite.**
+Everything else — format, lint, typecheck, frontend, migrations, contracts — sums
+to nine seconds. The suite is slow because it re-enters itself:
+`spec/gates/gate_scripts_spec.rb` makes 27 `Open3.capture2e` calls to gate
+binaries, one of them `bin/gate`, which runs `bin/test`, which runs the suite
+again. Two `rspec` processes are visible during a run, and the outer one spends
+its time waiting rather than working.
+
+At three gate runs per Story, M01's 23 Stories carry roughly three hours of
+waiting before any of the work is judged. That is a defect in the harness, not in
+any Story, and it needs its own Story: the fix — proving the gate against a
+minimal fixture repository instead of this one, and leaving the full
+`gitleaks dir .` to CI while pre-commit uses `--staged` — is a change to
+`lib/gates/` and the gate scripts, which are not edited from inside the work they
+judge.
+
+### CI
+
+| | |
 |---|---|
-| unit | green |
-| integration (real PostgreSQL) | green |
-| request | green |
-| policy | **empty, declared** — the first entity with an owner arrives in M01 |
-| contract | **empty, declared** — the first external contract arrives in M02 |
-| security | green |
-| frontend (Vitest) | green |
-| e2e (Playwright) | green — `smoke`, `gallery` |
-| docker/swarm (real Engine) | green — 15 examples, Docker 29.7.2, Engine API 1.55 |
+| Run | [`34266395044`](https://github.com/DouglasPrado/opanel/actions/runs/34266395044) |
+| Commit | `7ddfc63` on `main` |
+| Result | **11 of 11 jobs `success`**, 3m39s |
+| Jobs | `static` `unit` `integration` `contract` `security-fast` `frontend` `migrations` `setup` `e2e-critical` `swarm-smoke` `pr-gate` |
 
-`policy` and `contract` are empty directories with a README saying what belongs
-there and which Milestone brings the first one. They are declared because
-`lib/gates/suite_types.rb` names them and the pipeline schedules them: a type
-with nowhere to live fails the job that runs it, which is how it was found.
+`merge-gate` reports `skipped` on a push to `main` — it belongs to the merge
+stage. On a pull request it runs and currently fails on `required-approvals`:
+GitHub does not allow an author to approve their own pull request, so that check
+closes only with a human's signature. That is the gate working, not a defect.
 
-## Findings
+**PR [#1](https://github.com/DouglasPrado/opanel/pull/1)** carries `fe7e1a6` —
+the commit this report describes — so the handed-over state has its own pipeline
+run rather than inheriting one.
 
-From the 18 self-reviews. These are implementation self-review findings, **not**
-an independent review verdict.
+## Branch protection
 
-| Severidade | Abertos | Resolvidos na própria Story |
-|---|---|---|
-| Critical | 0 | 0 |
-| High | 0 | 2 |
-| Medium | 6 | 11 |
-| Low | 12 | 28 |
+Active on `main` since `2026-09-08`, verified through the API:
 
-`Critical = 0` and `High = 0`.
+```
+required_status_checks.contexts = static, unit, integration, contract,
+  security-fast, frontend, migrations, setup, e2e-critical, swarm-smoke, pr-gate
+allow_force_pushes = false
+required_pull_request_reviews.required_approving_review_count = 1
+```
 
-The **six open Medium findings** are all accepted with their reasoning recorded,
-and all six are things a reviewer should look at rather than take on trust. Four
-of them are a constraint the environment or the imported library imposed, not a
-preference:
+Two constraints shape what this means. **The repository had to become public**:
+GitHub's free plan refuses branch protection on a private repository. And
+**`enforce_admins` is false**, because with one maintainer and no self-approval
+an enforcing rule would deadlock the repository. An admin can still bypass; what
+changed is that a bypass is now a deliberate act rather than the default.
 
-| Finding | O quê | Por que aceito |
-|---|---|---|
-| M00-17 F-2 | Three test-only files added to the Tier-0 `docker_boundaries` list | The harness is what makes the executor testable at all; it has no route and no application caller. **A fourth entry should stop and write the ADR** — at that point the list has drifted from "the executor" to "whatever needs Docker". |
-| M00-12 F-1 | Pre-commit secret scan reads the staged diff, not the whole tree | That is the question a pre-commit gate asks; CI still scans the whole tree and the history on every push. The alternative was a 13-second hook, which Annex I §12.1 names as the cause of bypasses. |
-| M00-08 F-2 | `style-src 'unsafe-inline'` | Radix writes to `element.style` to position floating elements, and a nonce cannot authorize a CSSOM mutation. `script_src` stays `'self'` outside development — inline script is code execution, inline style is presentation. |
-| M00-05 F-2 | `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess` dropped project-wide | Six errors, all inside imported components. Editing vendored files is drift nobody reconciles; per-directory options need project references and declaration emit. `strict` itself is on. **The clearest candidate for revisiting**, because the cost falls on Opanel's own code. |
-| M00-05 F-3 | Three WCAG 2.2 AA violations baselined | All upstream and unreachable from here. The baseline can only shrink, is enforced in both directions, and Opanel's own pages carry no baseline at all. |
-| M00-03 F-1 | Solid Queue runs `async` on macOS instead of `fork` | `fork` segfaults inside libpq on arm64-darwin; four strategies were tried and the reproduction contains no Rails and no Opanel code. Linux and CI keep `fork`. |
+## The security incident
 
-Two High findings were found and fixed inside their own Story: the missing
-`vite_react_refresh_tag` (M00-06 — development loaded the page and never mounted
-React, silently) and the nested `bin/test` overwriting the outer run's evidence
-(M00-12 — a 508-example run recorded itself as one example, and the post-commit
-gate reads that file as proof the suite ran).
+Recorded here because a reader of this report should not have to find it in a fix
+report. Full account: [`FIX_REPORT_04.md`](FIX_REPORT_04.md).
 
-Two more of the same class were found by the final evidence run and fixed:
+On `2026-09-08`, five negative pull requests carrying planted defects — including
+a synthetic RSA private key — were **merged** instead of being closed. `main`
+briefly carried the key, a `drop_table :users` migration, a failing spec, a lint
+offence and a type error.
 
-- `a0373c2` — the `--no-verify` checker matched nothing, because `git grep -E` is
-  POSIX ERE and `\b` is a literal `b` there. A checker that quietly stops
-  checking is worse than one that is too loud.
-- `f32a344` — two Stop Gate examples asserted the exit-code contract using M00's
-  own *missing* `MILESTONE_REPORT.md`. Writing this report turned a "must be red"
-  case green, which is a test passing for a reason unrelated to what it claims.
-  They now ask about a Milestone that does not exist.
+The first correction rewound `main` by force-push. It was insufficient: deleting
+refs does not delete objects on GitHub, and the commit remained served by the API
+while the local repository reported clean. The repository was therefore
+**recreated**; `DouglasPrado/opanel` today contains only clean history, and the
+object returns `422 No commit found`.
 
-Both were caught by running the whole suite rather than the changed subset, which
-is the argument for the `unit` job running `:slow` on every push.
+The key was synthetic, 127 bytes, and protected nothing. The cost was real: pull
+requests #1–#13 of the previous repository no longer exist, and with them the
+public CI evidence of the first negative-test attempt.
 
-## Resultado funcional
+Cause: leaving five mergeable pull requests open after CI had already recorded
+their results. What prevents a repeat: branch protection, which now refuses a
+merge with failing checks, and the rule that a negative pull request is closed as
+soon as its result is recorded — applied to PRs #2–#6 above.
 
-- A clean clone runs `bin/setup` and `bin/dev` and serves a rendered Inertia
-  page. Verified by cloning to `/tmp/opanel-clone`, running the documented single
-  command, and driving the result in a real browser — which is what found the two
-  development-mode defects nothing else could.
-- `GET /up` reports application, PostgreSQL and queue separately, and answers 503
-  with a classified cause when a dependency is down.
-- Logs are one JSON object per line with the reserved correlation fields, and a
-  `request_id` from the HTTP edge reaches the job that request enqueued.
-- Jobs run on Solid Queue across six declared queues.
-- A disposable Swarm lab comes up, hosts a Service, reports its Tasks, and comes
-  down — and refuses to touch a daemon that is not the lab.
-- `bin/ci-job --stage pr` runs the same seven jobs GitHub runs.
-- `bin/pack next M00` and `git log` rebuild the loop's state without the
-  conversation.
+## Not done, and named
 
-## Blocked
+- **The five Story self-reviews predate their code** (F09). Not refreshed here.
+- **`StopGate#milestone_report` still only checks that headings have bodies**
+  (F02's second half). Making it require the report to name HEAD and branch is a
+  change to `lib/gates/`, which needs its own Story or ADR — a gate is not edited
+  from inside the work it judges.
+- **The loop's attempt budgets were raised by hand** (F10). `review-state.sh`
+  writes `3`/`3` at init and offers no command to change them; this Milestone
+  carries `5`/`5`, set in `ca7f2a3`, `4b357cf` and `35be86e`. Each raise was
+  authorised and explained in its commit, but the number gating the loop was not
+  produced by the loop.
+- **Eight Medium and two Low findings** from `MILESTONE_REVIEW_05.md` are
+  recorded and not corrected: this state was reached with the fix budget at 5 of
+  5, and only blocking findings were addressed.
 
-None. No Story is `blocked`; no `BLOCKERS.md` was needed.
+## Handover
 
-Two things were worked around rather than blocked, both recorded in their Story
-reports: `docker pull` was unreachable from this environment (the lab image is
-therefore configurable, and the suite skips explicitly when it is absent), and
-Solid Queue's fork supervisor segfaults on macOS (`bin/jobs` uses `async` on
-Darwin, `fork` elsewhere, with the reproduction in the script).
+`review-state.json` is `fix_required` at `reviewAttempt` 5 of 5 and `fixAttempt`
+5 of 5. Both budgets are exhausted, so this Milestone cannot return to the
+automated loop: the next decision is a human's, which is what
+`MILESTONE_REVIEW_05.md` §12 recommends.
 
-## Dependências novas
-
-| Dependência | Story | Justificativa |
-|---|---|---|
-| `rspec-rails`, `factory_bot_rails`, `parallel_tests`, `rspec_junit_formatter` | M00-07 | The declared test runner (SC-03) and the harness the pipeline consumes. |
-| `bundler-audit`, `brakeman` | M00-10 | Required by that Story's acceptance criteria; both maintained inside the Rails security ecosystem. |
-| `rubocop-rails-omakase` | M00-09 | The Rails default ruleset; project rules specialize it in `.rubocop.yml`. |
-| `rexml` | M00-11 | `bin/flaky-rate` reads JUnit output back, which needs the per-test outcomes only the XML carries. Ruby's own parser, pure Ruby, stdlib until 3.0 — the line is the unbundling catching up. Alternatives evaluated: hand-rolled parsing (fragile against a format we do not own) and nokogiri (present transitively; depending on a transitive gem directly is how a dependency disappears under you). |
-
-Each is pinned in `Gemfile.lock`. gitleaks is a binary, installed by `bin/setup`
-and by CI; its absence is reported as a setup failure, never as a pass.
-
-## Conflitos de especificação
-
-Recorded in `docs/implementation/SPEC_CONFLICTS.md`. Resolved during M00: SC-01
-(Inertia, not a separate frontend), SC-02 (Solid Queue), SC-03 (test runners
-delegated to the pack), SC-07 (the component library, closed by M00-05).
-
-**SC-04 and SC-08 remain open and block M01, not M00.** Neither was resolved
-here: M00 implements no domain entity, so neither could be decided by
-implementation, and deciding one silently is exactly what `AGENT_RULES`
-forbids. They need a decision before M01-01 starts.
-
-## Human acceptance requested
-
-The human is asked to accept:
-
-1. **The six open Medium findings above**, and in particular the two that touch a
-   security boundary: the Tier-0 widening of `docker_boundaries` (M00-17 F-2) and
-   `style-src 'unsafe-inline'` (M00-08 F-2).
-2. **The two TypeScript strictness flags dropped project-wide** (M00-05 F-2).
-   This is the one whose cost falls on code Opanel has not written yet, so it is
-   the cheapest to revisit now and the most expensive to revisit later.
-3. **`policy` and `contract` shipping as declared-empty suites.** They report
-   zero examples, which is honest today, but it is the kind of thing that stays
-   empty quietly.
-4. **That M00 is engineering infrastructure only**, and that the first thing the
-   next Milestone needs is a decision on SC-04 and SC-08.
-
-Independent review has not been performed. This report is the implementer's
-account of its own work; `review-state.json` is set to `ready_for_review` and
-control returns to the orchestrator. M01 has not been started.
+What is being handed over is a Milestone whose two blocking findings have been
+answered in acts — five pull requests genuinely blocked by a protected branch,
+and this report rewritten against the commit it describes — with the remaining
+gaps named above rather than left to be discovered.

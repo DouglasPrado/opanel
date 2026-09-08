@@ -1,0 +1,62 @@
+[
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102248724664",
+    "name": "merge-gate",
+    "state": "FAILURE"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102248724534",
+    "name": "pr-gate",
+    "state": "FAILURE"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102247849654",
+    "name": "frontend",
+    "state": "SUCCESS"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102247849966",
+    "name": "integration",
+    "state": "SUCCESS"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102247849711",
+    "name": "contract",
+    "state": "SUCCESS"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102247849827",
+    "name": "setup",
+    "state": "SUCCESS"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102247849593",
+    "name": "swarm-smoke",
+    "state": "SUCCESS"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102247849747",
+    "name": "static",
+    "state": "FAILURE"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102247849761",
+    "name": "unit",
+    "state": "SUCCESS"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102247849773",
+    "name": "security-fast",
+    "state": "FAILURE"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102247849659",
+    "name": "migrations",
+    "state": "SUCCESS"
+  },
+  {
+    "link": "https://github.com/DouglasPrado/opanel/actions/runs/34281734508/job/102247849319",
+    "name": "e2e-critical",
+    "state": "SUCCESS"
+  }
+]
