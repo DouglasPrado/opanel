@@ -4,7 +4,7 @@
   "reviewAttempt": 2,
   "fixAttempt": 2,
   "maxReviewAttempts": 4,
-  "maxFixAttempts": 3,
+  "maxFixAttempts": 4,
   "lastReviewer": "codex",
   "verdict": "NOT_ACCEPTED",
   "criticalCount": 1,
