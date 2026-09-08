@@ -91,6 +91,50 @@ RSpec.describe Opanel::Gates::StopGate do
       end
     end
 
+    # M00-R07. A report declaring only `Status:` passed. That is the one line the
+    # orchestrator needs and the one line that says nothing: the Milestone could be
+    # handed on for review with no account of its Stories, its gates, its findings,
+    # or what a human is being asked to accept.
+    describe "a Milestone Report that says only that it is ready" do
+      def milestone_report(contents)
+        Dir.mktmpdir do |root|
+          directory = File.join(root, "docs/implementation/M99")
+          FileUtils.mkdir_p(directory)
+          File.write(File.join(directory, "MILESTONE_REPORT.md"), contents)
+
+          yield described_class::Runner.new(
+            milestone: "M99", root: root, only: [ "milestone-report" ]
+          ).run
+        end
+      end
+
+      let(:sections) { described_class::Runner::MILESTONE_SECTIONS }
+
+      it "is refused, naming every section it left out" do
+        milestone_report("# Milestone Report — M99\n\nStatus: READY_FOR_REVIEW\n") do |runner|
+          expect(runner).not_to be_ok
+          sections.each { |heading| expect(runner.reason).to include(heading) }
+        end
+      end
+
+      it "is refused when a section is present but empty" do
+        body = +"# Milestone Report — M99\n\nStatus: READY_FOR_REVIEW\n"
+        sections.each { |heading| body << "\n## #{heading}\n\n#{heading == 'Blocked' ? '' : 'ok.'}\n" }
+
+        milestone_report(body) do |runner|
+          expect(runner).not_to be_ok
+          expect(runner.reason).to include("Blocked")
+        end
+      end
+
+      it "is accepted once every section says something" do
+        body = +"# Milestone Report — M99\n\nStatus: READY_FOR_REVIEW\n"
+        sections.each { |heading| body << "\n## #{heading}\n\n`none`.\n" }
+
+        milestone_report(body) { |runner| expect(runner).to be_ok }
+      end
+    end
+
     it "refuses a Milestone whose required Stories are not done" do
       Dir.mktmpdir do |root|
         directory = File.join(root, "docs/implementation/M99")

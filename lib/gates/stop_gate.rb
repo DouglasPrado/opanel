@@ -177,11 +177,11 @@ module Opanel
           return "#{story} maps #{declared.length - unmapped.length}/#{declared.length} criteria " \
                  "(missing #{unmapped.join(', ')})" unless unmapped.empty?
 
-          unaccounted = AcceptanceMapping.unaccounted(story_file, report)
+          unaccounted = AcceptanceMapping.unaccounted(story_file, report, @root)
           return nil if unaccounted.empty?
 
-          "#{story} criteria #{unaccounted.join(', ')} are neither satisfied nor deferred to a " \
-            "named ADR or Story"
+          "#{story} criteria #{unaccounted.join(', ')} are neither satisfied by evidence that " \
+            "exists nor deferred to an ADR or Story that exists"
         end
 
         # Critical = 0 and High = 0 block DONE and block merge.
@@ -212,6 +212,19 @@ module Opanel
             "Severities and their blocking policy: #{TEMPLATES[:review_findings]}"
         end
 
+        # The sections docs/templates/MILESTONE_REPORT.md declares, each of which
+        # a human reads to decide acceptance. Named here so a report that omits
+        # one fails rather than passing as a shorter document nobody compared
+        # against anything.
+        MILESTONE_SECTIONS = [
+          "Stories", "Quality", "Findings", "Resultado funcional", "Blocked",
+          "Dependências novas", "Conflitos de especificação", "Human acceptance requested"
+        ].freeze
+
+        # A report that only declared `Status:` passed this. That is the one line
+        # the orchestrator needs and the one line that says nothing: the Milestone
+        # can be handed on for review with no account of its Stories, its gates,
+        # its findings or what a human is being asked to accept.
         def milestone_report
           path = File.join(milestone_directory, "MILESTONE_REPORT.md")
           unless File.exist?(path)
@@ -221,9 +234,18 @@ module Opanel
           end
 
           contents = File.read(path)
-          return nil if contents.match?(/^Status:\s*\S+/)
+          unless contents.match?(/^Status:\s*\S+/)
+            return "MILESTONE_REPORT.md declares no Status: — see #{TEMPLATES[:milestone_report]}"
+          end
 
-          "MILESTONE_REPORT.md declares no Status: — see #{TEMPLATES[:milestone_report]}"
+          missing = MILESTONE_SECTIONS.reject do |heading|
+            body = contents[/^#{'#'}{2,3}\s+#{Regexp.escape(heading)}\s*$(.*?)(?=^#{'#'}{1,3}\s|\z)/m, 1]
+            body.to_s.strip.length > 3
+          end
+          return nil if missing.empty?
+
+          "MILESTONE_REPORT.md has no #{missing.join(', ')} section, or leaves it empty — " \
+            "see #{TEMPLATES[:milestone_report]}"
         end
       end
     end
