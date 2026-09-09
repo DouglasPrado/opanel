@@ -4,18 +4,30 @@ require "rails_helper"
 # routed back out, so what is under test is ApplicationController's real
 # configuration rather than a stub of it — and no probe route reaches production.
 class CsrfProbeController < ApplicationController
+  # M01-01 made ApplicationController deny by default. These probes are about
+  # CSRF and error rendering, not about authentication, so they declare
+  # themselves public exactly as any other public controller has to.
+  allow_unauthenticated_access
+
   def create
     head :ok
   end
 end
 
 class BoomProbeController < ApplicationController
+  allow_unauthenticated_access
+
   def show
     raise "probe failure with an internal detail: SELECT * FROM secrets"
   end
 end
 
 RSpec.describe "CSRF protection and error rendering", type: :request do
+  # Rails' session cookie carries the CSRF token and is `Secure` from M01-01 on
+  # (AC9), so it is only sent back over TLS. Driving the spec over https is what
+  # makes the token round-trip below exercise the real configuration.
+  before { https! }
+
   # Error responses are rendered the way production renders them: ShowExceptions
   # handles the failure and Rails' developer page is off. The middleware reads
   # both per request, so they can be overridden here without rebuilding the stack.

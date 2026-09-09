@@ -8,6 +8,12 @@ class ApplicationController < ActionController::Base
   # request visible instead of silently anonymous.
   protect_from_forgery with: :exception
 
+  # Deny by default (M01-01). Included after CSRF protection so an unauthenticated
+  # forged request is refused as forgery rather than as a redirect to sign in, and
+  # so every controller written from here on is authenticated unless it declares
+  # `allow_unauthenticated_access`.
+  include Authentication
+
   # Props shared with every page.
   #
   # Nothing sensitive goes here. Shared props are serialized into the HTML of

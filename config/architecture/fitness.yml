@@ -42,6 +42,10 @@ sensitive_field_names:
   - access_token
   - refresh_token
   - client_secret
+  # M01-01. The raw session token exists only in the response cookie; the column
+  # holds its SHA-256. Named consistently so this entry catches it wherever it is
+  # written.
+  - session_token
 
 # AF-02 — the single boundary allowed to reach the Docker Engine API, plus the
 # test harness that drives the disposable lab.

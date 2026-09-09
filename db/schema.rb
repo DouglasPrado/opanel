@@ -10,9 +10,25 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_06_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_09_120300) do
   # These are extensions that must be enabled in order to support this database
+  enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "authentication_attempts", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.integer "attempt_count", default: 0, null: false
+    t.timestamptz "created_at", null: false
+    t.string "key_digest", limit: 64, null: false
+    t.text "scope", null: false
+    t.timestamptz "updated_at", null: false
+    t.timestamptz "window_started_at", null: false
+    t.index ["scope", "key_digest"], name: "index_authentication_attempts_on_scope_and_key_digest", unique: true
+    t.index ["window_started_at"], name: "index_authentication_attempts_on_window_started_at"
+    t.check_constraint "attempt_count >= 0", name: "authentication_attempts_count_non_negative"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "authentication_attempts_id_is_ulid"
+    t.check_constraint "key_digest ~ '^[0-9a-f]{64}$'::text", name: "authentication_attempts_key_digest_is_sha256"
+    t.check_constraint "scope = ANY (ARRAY['login_email'::text, 'login_ip'::text, 'registration_ip'::text])", name: "authentication_attempts_scope_is_known"
+  end
 
   create_table "infrastructure_checkpoints", force: :cascade do |t|
     t.bigint "counter", default: 0, null: false
@@ -21,6 +37,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_130000) do
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_infrastructure_checkpoints_on_name", unique: true
     t.check_constraint "counter >= 0", name: "infrastructure_checkpoints_counter_non_negative"
+  end
+
+  create_table "sessions", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.timestamptz "created_at", null: false
+    t.timestamptz "expires_at", null: false
+    t.inet "ip_address"
+    t.timestamptz "last_seen_at", null: false
+    t.text "mfa_level", default: "password", null: false
+    t.timestamptz "revoked_at"
+    t.string "token_digest", limit: 64, null: false
+    t.timestamptz "updated_at", null: false
+    t.text "user_agent"
+    t.string "user_id", limit: 26, null: false
+    t.index ["token_digest"], name: "index_sessions_on_token_digest", unique: true
+    t.index ["user_id", "created_at"], name: "index_sessions_on_user_id_and_created_at", order: { created_at: :desc }
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "sessions_id_is_ulid"
+    t.check_constraint "mfa_level = 'password'::text", name: "sessions_mfa_level_is_known"
+    t.check_constraint "token_digest ~ '^[0-9a-f]{64}$'::text", name: "sessions_token_digest_is_sha256"
+    t.check_constraint "user_agent IS NULL OR length(user_agent) <= 512", name: "sessions_user_agent_length"
+    t.check_constraint "user_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "sessions_user_id_is_ulid"
   end
 
   create_table "solid_queue_batch_executions", force: :cascade do |t|
@@ -173,6 +209,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_130000) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
+  create_table "users", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.timestamptz "created_at", null: false
+    t.text "display_name", null: false
+    t.citext "email", null: false
+    t.timestamptz "email_verified_at"
+    t.text "password_digest", null: false
+    t.text "status", default: "ACTIVE", null: false
+    t.timestamptz "updated_at", null: false
+    t.index ["email"], name: "index_users_on_email", unique: true
+    t.check_constraint "btrim(display_name) <> ''::text AND length(display_name) <= 120", name: "users_display_name_present"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "users_id_is_ulid"
+    t.check_constraint "length(email::text) >= 3 AND length(email::text) <= 254", name: "users_email_length"
+    t.check_constraint "password_digest ~~ '$argon2id$%'::text", name: "users_password_digest_is_argon2id"
+    t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'SUSPENDED'::text, 'DELETED_PENDING'::text])", name: "users_status_is_known"
+  end
+
+  add_foreign_key "sessions", "users", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

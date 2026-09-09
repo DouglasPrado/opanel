@@ -166,6 +166,45 @@ Complementa — não substitui — [`docs/decisions/pending-documentation-update
   `.claude/**` no `PIPELINE_PATHS` do `bin/merge-gate` — hoje uma mudança no loop
   é invisível para o check de alteração de pipeline.
 
+## SC-17 — `char(26)` do ADR-0002 não sobrevive ao round-trip de `db/schema.rb`
+
+- **Documentos envolvidos:** `docs/decisions/ADR-0002-identifier-strategy.md`
+  §Decision.1 (“Toda tabela de domínio usa `id char(26) PRIMARY KEY`”), aceito em
+  2026-09-08; contra o pipeline de schema aprovado em M00 —
+  `config.active_record.schema_format` no padrão `:ruby` e
+  `ActiveRecord::Migration.maintain_test_schema!` em `spec/rails_helper.rb:14`,
+  que carrega `db/schema.rb` no banco de teste.
+- **Situação:** o adapter PostgreSQL do Active Record 8.1 mapeia o OID `bpchar`
+  para `varchar` (`activerecord-8.1.3.1/lib/active_record/connection_adapters/postgresql_adapter.rb:702`,
+  `m.alias_type "bpchar", "varchar"`). Verificado empiricamente em banco descartável:
+  uma coluna `char(26)` volta do `SchemaDumper` como
+  `create_table "…", id: { type: :string, limit: 26 }`. Um banco **migrado** fica
+  com `character(26)`; um banco **carregado a partir do dump** — que é como o
+  banco de teste é construído — fica com `character varying(26)`. A suíte inteira,
+  incluindo os testes que provam as constraints do próprio ADR, roda contra uma
+  forma que a migration não produz.
+- **Impacto:** persistência, e a chave primária de **todas** as entidades da
+  plataforma. Não há impacto comportamental enquanto a `CHECK
+  (id ~ '^[0-9A-HJKMNP-TV-Z]{26}$')` exigida por `M01-01` estiver presente: com
+  todo valor tendo exatamente 26 caracteres, `char(26)` e `varchar(26)` são
+  indistinguíveis em armazenamento, comparação, índice e join — o padding do
+  `bpchar` nunca ocorre. O que diverge é a representação no dump, não o dado.
+- **Como apareceu:** planejamento de `M01-01`, a primeira Story a criar tabela.
+- **Resolução aplicada:** `open`. `M01-01` implementa `char(26)` **literalmente
+  como o ADR aceito manda** (`AGENT_RULES`, §Specification Conflicts item 4: a
+  decisão mais recente é inequívoca), com a `CHECK` que torna a perda do dump
+  inerte. Não se reescreve um ADR aceito de passagem.
+- **Decisão que falta ao dono do repositório**, e que não é do implementer:
+  1. emendar o `ADR-0002` para `varchar(26)` + `CHECK` — mesmo armazenamento,
+     garantia de banco mais forte (Crockford Base32, não só comprimento), dump
+     fiel, nenhuma mudança de infraestrutura; ou
+  2. `config.active_record.schema_format = :sql`, que é fiel à letra do ADR e
+     muda o pipeline de banco do M00 (`db/structure.sql`, jobs de CI,
+     `bin/migration-gate`) — fora do boundary de qualquer Story de domínio.
+  Enquanto nenhuma das duas for tomada, a divergência é esta: o dump diz
+  `varchar(26)`, a migration diz `char(26)`, e a `CHECK` garante que isso não
+  muda o comportamento de nenhum valor válido.
+
 ## SC-13 — Referências informativas sem conflito
 
 Registradas para evitar releitura como pendência. **Nenhuma ação necessária.**

@@ -32,10 +32,17 @@
     {
       "id": "M01-01",
       "file": "stories/M01-01-user-and-authentication.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
-      "attempts": 0,
-      "required": true
+      "attempts": 2,
+      "required": true,
+      "review": {
+        "critical": 0,
+        "high": 0,
+        "medium": 4,
+        "low": 3
+      },
+      "commit": "7c9d812"
     },
     {
       "id": "M01-02",
@@ -270,8 +277,8 @@
     }
   ],
   "run": {
-    "startedAt": "2026-09-09T02:47:04Z",
-    "turns": 2,
+    "startedAt": "2026-09-09T08:39:59Z",
+    "turns": 1,
     "doneAtStart": 1
   }
 }

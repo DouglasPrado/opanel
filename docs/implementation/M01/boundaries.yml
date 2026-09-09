@@ -38,3 +38,78 @@ boundaries:
     - spec/security/security_scan_spec.rb
     - spec/spec_helper.rb
     - spec/support/**
+
+  # The first domain Story: it creates the identity tables, the platform-wide
+  # identifier layer and the authentication surface. Wider than a later Story
+  # will be, for one structural reason — it switches the application to
+  # deny-by-default, so every controller that already existed must declare its
+  # access and every request spec that exercised an open route needs a signed-in
+  # user. Those files are listed individually rather than as `app/controllers/**`
+  # so the boundary still says no to a controller this Story has no business in.
+  M01-01:
+    # Schema: the first three domain migrations and the regenerated dump.
+    - db/migrate/*.rb
+    - db/schema.rb
+    # Domain.
+    - app/models/user.rb
+    - app/models/session.rb
+    - app/models/authentication_attempt.rb
+    - app/models/concerns/ulid_primary_key.rb
+    # Application layer.
+    - app/commands/register_user.rb
+    - app/commands/authenticate_user.rb
+    - app/commands/revoke_session.rb
+    - app/queries/user_sessions.rb
+    # Delivery. The four pre-existing controllers are here only because
+    # deny-by-default forces each to state whether it is public.
+    - app/controllers/application_controller.rb
+    - app/controllers/errors_controller.rb
+    - app/controllers/gallery_controller.rb
+    - app/controllers/home_controller.rb
+    - app/controllers/sessions_controller.rb
+    - app/controllers/registrations_controller.rb
+    - app/controllers/concerns/authentication.rb
+    - app/controllers/concerns/error_envelope.rb
+    # UI. Pages and one feature component; no primitive under ui/ is touched.
+    - app/frontend/pages/Auth/**
+    - app/frontend/pages/Account/**
+    - app/frontend/components/features/auth/**
+    # Platform library: the identifier layer ADR-0002 requires, the KDF wrapper
+    # Annex B §13 requires, and the Result shape the Commands return.
+    - lib/opanel/identifier.rb
+    - lib/opanel/password_hashing.rb
+    - lib/opanel/result.rb
+    # Configuration. fitness.yml is *widened* here (session_token joins the
+    # sensitive field names) — never narrowed.
+    - config/application.rb
+    - config/routes.rb
+    - config/initializers/session_store.rb
+    - config/architecture/fitness.yml
+    # Tests.
+    - spec/factories/users.rb
+    - spec/factories/sessions.rb
+    - spec/unit/identifier_spec.rb
+    - spec/unit/password_hashing_spec.rb
+    - spec/unit/password_policy_spec.rb
+    - spec/unit/session_expiry_spec.rb
+    - spec/unit/authentication_attempt_spec.rb
+    - spec/integration/user_registration_spec.rb
+    - spec/integration/user_authentication_spec.rb
+    - spec/integration/session_revocation_spec.rb
+    - spec/integration/login_rate_limit_spec.rb
+    - spec/requests/authentication_spec.rb
+    - spec/requests/session_cookie_spec.rb
+    - spec/requests/error_envelope_spec.rb
+    - spec/requests/account_sessions_spec.rb
+    - spec/requests/root_spec.rb
+    - spec/requests/gallery_spec.rb
+    - spec/requests/inertia_spec.rb
+    - spec/requests/csrf_and_errors_spec.rb
+    - spec/security/password_storage_spec.rb
+    - spec/security/login_response_indistinguishability_spec.rb
+    - spec/security/authentication_logging_spec.rb
+    # The Argon2id dependency (Annex B §13); justified in the Story report.
+    - Gemfile
+    - Gemfile.lock
+    # SC-17 was found by this Story and is recorded by it.
+    - docs/implementation/SPEC_CONFLICTS.md

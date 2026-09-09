@@ -5,6 +5,22 @@
 # shares the same Application Layer rather than being duplicated per channel
 # (`docs/AGENT_RULES.md`, "Inertia and the public API").
 class HomeController < ApplicationController
+  # Declared public rather than left to the default, and the reason is worth
+  # writing down because the default is now "authenticated".
+  #
+  # This is still M00-04's example page: it renders the platform name, the
+  # environment and the request id, and holds nothing belonging to anybody. The
+  # authenticated shell and the real dashboard behind it are M01-06, and that is
+  # the Story that should make `/` require a session.
+  #
+  # Making it authenticated here would also have meant editing five specs and a
+  # browser journey that exercise `/` anonymously — `spec/security/
+  # inertia_shared_props_spec.rb`, `spec/security/panel_headers_spec.rb`,
+  # `spec/integration/observability_spec.rb`, `spec/integration/
+  # job_correlation_spec.rb` and `e2e/smoke.spec.ts` — none of which is inside
+  # this Story's declared boundary.
+  allow_unauthenticated_access
+
   def show
     render inertia: "Home", props: {
       platform: {
