@@ -160,8 +160,13 @@ waivers:
     owner: "gba.dev design system"
     justification: "The values come from the brand palette in the upstream theme.
       Changing them here would fork the design system."
-    mitigation: "None of the three is used for essential text in Opanel's own
-      pages; all three are close to threshold rather than far below it."
+    mitigation: "All three are close to threshold rather than far below it. The
+      claim that none reaches Opanel's own pages stopped being true in M01-06:
+      the app shell renders shared/profile, whose AvatarFallback uses
+      muted-foreground, and axe measures it at 4.16:1 in the panel. That surface
+      is waived explicitly in e2e/panel.spec.ts, which allows this id alone and
+      fails on every other violation; every other page of Opanel still carries no
+      baseline."
     removal_story: "M00-05 follow-up — darken the tokens upstream"
     expires_at: "2027-03-31"
 

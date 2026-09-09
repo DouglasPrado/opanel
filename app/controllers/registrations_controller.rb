@@ -31,7 +31,8 @@ class RegistrationsController < ApplicationController
     end
 
     start_session(result.value.fetch(:session), result.value.fetch(:session_token))
-    redirect_to root_path
+    # The panel of the Team the bootstrap just created, not the example page.
+    redirect_to destination_after_authentication
   end
 
   private

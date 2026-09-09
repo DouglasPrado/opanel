@@ -250,3 +250,58 @@ boundaries:
     # sem limpar `audit_logs` eles passam a contaminar os arquivos seguintes.
     - spec/integration/installation_bootstrap_concurrency_spec.rb
     - spec/integration/instance_role_revocation_concurrency_spec.rb
+
+  # O app shell e os estados universais. A Story é de frontend e o Reuse Gate é o
+  # gate central: `app-shell`, `sidebar`, `profile` e as primitivas já existem, e
+  # o que se acrescenta são composições em `shared/` — usadas por várias features
+  # — mais as páginas e as rotas do doc 10 §3.2 que existem em M01.
+  M01-06:
+    # Estados universais, compostos sobre as primitivas do inventário.
+    - app/frontend/components/shared/states/**
+    # O seletor de Team e o badge de Environment.
+    - app/frontend/components/shared/team-switcher/**
+    - app/frontend/components/shared/environment-badge/**
+    # O layout que compõe o shell para as páginas autenticadas.
+    # Em `components/layouts/`, não numa segunda raiz `app/frontend/layouts/`:
+    # fora da árvore que o inventário e a galeria varrem, um layout escapa das
+    # próprias verificações que esta Story invoca.
+    - app/frontend/components/layouts/panel-layout/**
+    # O shell precisa de usuário e Teams em toda página autenticada, e isso é
+    # shared prop de verdade — estender o tipo existente é o Reuse Gate aplicado
+    # a tipos, não um SharedProps paralelo.
+    - app/frontend/types/inertia.d.ts
+    # Páginas e rotas.
+    - app/frontend/pages/**
+    - app/controllers/teams_controller.rb
+    - app/controllers/panel_controller.rb
+    - app/controllers/errors_controller.rb
+    - app/controllers/application_controller.rb
+    - config/routes.rb
+    # Alargamento deliberado, feito durante a implementação e registrado aqui: o
+    # AC1 diz que o usuário autenticado vê o app shell, e até esta Story o destino
+    # após autenticar era `root_path` — a página de exemplo do M00. Para onde se
+    # vai depois de entrar é parte de entregar o shell, não da autenticação.
+    #
+    # Os três abaixo vêm do mesmo alargamento: o Command que redireciona, e os dois
+    # specs cujas asserções nomeavam o destino antigo. Estavam declarados na entrada
+    # `M01-01` — errado por dois motivos que a revisão apontou: `StoryBoundary.check`
+    # lê `boundaries[story]`, então um caminho arquivado sob outra Story é invisível
+    # à checagem desta; e alargar o boundary de uma Story já `done` transforma a
+    # declaração dela em descrição do que aconteceu, que é justamente o que o
+    # mecanismo existe para impedir.
+    - app/controllers/concerns/authentication.rb
+    - app/controllers/registrations_controller.rb
+    - spec/requests/authentication_spec.rb
+    - spec/requests/session_cookie_spec.rb
+    # O inventário é atualizado quando um componente entra em shared/ ou layouts/.
+    - app/frontend/components/INVENTORY.md
+    - app/frontend/components/features/gallery/registry.tsx
+    # Testes.
+    - spec/frontend/**
+    - spec/requests/panel_spec.rb
+    - spec/security/inertia_shared_props_spec.rb
+    - e2e/**
+    # A mitigação registrada dizia que nenhuma das cores waivadas alcança página
+    # própria do Opanel; o shell desta Story tornou isso falso, e o registro tem
+    # de dizer o que é verdade.
+    - config/quality/waivers.yml

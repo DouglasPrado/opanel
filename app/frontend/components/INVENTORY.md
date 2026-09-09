@@ -97,12 +97,16 @@ for the loading state of doc 10 §25 rather than inventing a placeholder.
 |---|---|---|---|---|
 | `notifications` | Notification bell with an unread count and a list. | `notifications: NotificationItem[]`, `unreadCount`, `label`, `emptyLabel`, `viewAllLabel`, `viewAllHref`, `onNotificationSelect`, `onViewAll`, `disabled`, `align`, `side` | The app shell's notification surface. | Inline page feedback — use `alert` or a flash prop. |
 | `profile` | Account menu: identity, settings, sign out. | `name`, `email`, `avatarSrc`, `avatarAlt`, `fallback`, `settingsLabel`, `logoutLabel`, `onSettings`, `onLogout`, `disabled`, `align`, `side` | The app shell's account menu. | Displaying a user inside a list — use `avatar` with `item`. |
+| `states` | The universal states of doc 10 §25 as components: loading, empty, no permission, error, offline, stale. | `LoadingState(label, lines)`, `EmptyState(title, description, action)`, `NoPermissionState(title, description)`, `ErrorState(title, description, requestId, onRetry)`, `OfflineState(lastSeenAt, description)`, `StaleState(observedAt)` | Every page that can be loading, empty, forbidden, broken, offline or stale — which is every page. | A one-off inline message — use `alert` directly. |
+| `team-switcher` | The Team the operator is acting in, and the way to change it. | `teams: TeamOption[]`, `currentTeamId`, `onSelect`, `onCreate`, `label`, `className` | The app shell's header. | Choosing a Team inside a form — use `select`. |
+| `environment-badge` | Which Environment a page is showing, `PRODUCTION` persistently. | `kind: 'PRODUCTION' \| 'STAGING' \| 'DEVELOPMENT' \| 'PREVIEW'`, `className` | Any page or row scoped to an Environment. | A generic status label — use `badge`. |
 
 ## layouts — shells, navigation, page layouts
 
 | Component | Responsibility | Public props | Use when | Do **not** use when |
 |---|---|---|---|---|
 | `app-shell` | The application frame: navbar, sidebar, main region. | `AppShell(navbarHeight, …SidebarProvider props)`, `AppShellNavbar`, `AppShellTrigger`, `AppShellSidebar`, `AppShellMain`, `AppShellContent` | Every authenticated page of the Control Plane. | Sign-in, error and other standalone pages. |
+| `panel-layout` | The frame every authenticated page renders inside: navbar with team switcher and account menu, product-first sidebar. | `PanelLayout(children, section)`, `PANEL_NAVIGATION` | Every authenticated page of the Control Plane. | Sign-in, sign-up and the error page — they are standalone by design. |
 | `sidebar` | Collapsible navigation sidebar with groups, menus and sub-menus. | `SidebarProvider(defaultOpen, open, onOpenChange)`, `Sidebar(side, variant, collapsible)`, `SidebarHeader/Content/Footer`, `SidebarGroup*`, `SidebarMenu`, `SidebarMenuItem`, `SidebarMenuButton(isActive, tooltip)`, `SidebarMenuAction`, `SidebarMenuBadge`, `SidebarMenuSub*`, `SidebarMenuSkeleton`, `SidebarTrigger`, `SidebarRail`, `SidebarInset`, `SidebarInput`, `SidebarSeparator`, `useSidebar()` | Inside `app-shell`. | Standalone — it expects `SidebarProvider`. |
 
 ---

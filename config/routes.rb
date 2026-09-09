@@ -18,6 +18,17 @@ Rails.application.routes.draw do
   # The user's own devices: list and revoke individually (doc 04 §8.2).
   resources :sessions, only: %i[index destroy], path: "settings/sessions", as: :account_sessions
 
+  # The panel, addressed by Team slug (doc 10 §3.2). The slug is human and
+  # mutable, so it is resolved to a Team inside the tenancy boundary on every
+  # request rather than trusted from the path — a slug in the URL is an argument,
+  # not an authorization.
+  scope "t/:team_slug", as: :panel do
+    get "projects", to: "panel#projects", as: :projects
+    get "clusters", to: "panel#clusters", as: :clusters
+    get "audit", to: "panel#audit", as: :audit
+    get "settings", to: "panel#settings", as: :settings
+  end
+
   # Teams (M01-02). Three actions only: the tenant is created here and read
   # here, and everything else about it — members, invitations, ownership
   # transfer — belongs to the Stories that own those concepts. Suspension has no

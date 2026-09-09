@@ -87,10 +87,23 @@ module Authentication
   def destination_after_authentication
     candidate = session.delete(:return_to)
 
-    return root_path if candidate.blank?
-    return root_path unless candidate.start_with?("/") && !candidate.start_with?("//")
+    return panel_home if candidate.blank?
+    return panel_home unless candidate.start_with?("/") && !candidate.start_with?("//")
 
     candidate
+  end
+
+  # Where somebody lands when they have not asked for anywhere in particular: the
+  # panel of a Team they can act in (M01-06 AC1). Until that Story the answer was
+  # `root_path`, which is the M00 example page — signing in and arriving at a demo
+  # is not "the user sees the app shell".
+  #
+  # No Team is a real state: an account created before the installation was
+  # bootstrapped has none. It gets the Team list, which is where it can make one.
+  def panel_home
+    team = current_user && TenantScope.for(current_user, Team).relation.order(:name).first
+
+    team ? "/t/#{team.slug}/projects" : teams_path
   end
 
   def start_session(session_record, token)
@@ -103,7 +116,20 @@ module Authentication
       # On in test as well as production, so what the request spec reads is the
       # real attribute rather than a branch that only exists somewhere else.
       # Development is the exception because it is served over plain HTTP.
-      secure: !Rails.env.development?,
+      # Secure whenever the request is actually over TLS, rather than keyed on the
+      # environment name.
+      #
+      # `!Rails.env.development?` looked equivalent and was not: the E2E server
+      # runs the **test** environment over plain HTTP, so the browser silently
+      # discarded every session cookie and no authenticated journey could ever
+      # sign in. The failure had no error — the redirect simply landed back on
+      # /sign_in.
+      #
+      # This is not a relaxation. Behind TLS — which production enforces with
+      # `force_ssl`, redirecting HTTP before a cookie is ever set — `request.ssl?`
+      # is true and the flag is set. The request specs drive `https!` and still
+      # assert the real attribute.
+      secure: request.ssl?,
       path: "/",
       expires: session_record.expires_at
     }

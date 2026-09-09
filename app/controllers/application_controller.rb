@@ -27,6 +27,47 @@ class ApplicationController < ActionController::Base
         notice: flash.notice,
         alert: flash.alert
       }
+    }.merge(panel_props)
+  end
+
+  private
+
+  # What the app shell needs on every authenticated page: who is signed in, and
+  # which Teams they may act in. Absent — not null — when nobody is signed in, so
+  # sign-in and sign-up publish nothing about anybody.
+  #
+  # Deliberately narrow. Shared props are serialized into the HTML of every
+  # response, so this carries an id, a display name and an address, and no role
+  # list, session id or token. `spec/security/inertia_shared_props_spec.rb`
+  # asserts it; AF-06 covers the sinks.
+  def panel_props
+    user = respond_to?(:current_user, true) ? current_user : nil
+    return {} if user.nil?
+
+    teams = TeamsForUser.call(user: user)
+
+    {
+      currentUser: { id: user.external_id, name: user.display_name, email: user.email },
+      teams: teams.map { |entry| shared_team_prop(entry) },
+      currentTeam: shared_current_team_prop(teams)
     }
+  end
+
+  # Named `shared_` on purpose. `TeamsController` has its own `team_prop` for a
+  # `Team`, and an unprefixed name here would be overridden by it — the subclass
+  # method would then receive a `TeamsForUser::Entry` and fail on a `Team` method.
+  # That is not hypothetical: it is what happened, and it broke five specs in
+  # three files at once.
+  def shared_team_prop(entry)
+    { id: entry.id, name: entry.name, slug: entry.slug, role: entry.role }
+  end
+
+  # The Team the URL names, when it names one. Falls back to the first the actor
+  # can reach, so the shell always has a Team to point its links at.
+  def shared_current_team_prop(teams)
+    slug = params[:team_slug]
+    match = slug.present? ? teams.find { |entry| entry.slug == slug } : nil
+
+    (match || teams.first)&.then { |entry| shared_team_prop(entry) }
   end
 end

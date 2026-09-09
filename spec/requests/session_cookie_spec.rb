@@ -36,7 +36,9 @@ RSpec.describe "the session cookie", type: :request do
   end
 
   it "signs the user in, so the headers below are the ones a real login sets" do
-    expect(response).to redirect_to(root_path)
+    # M01-06 changed where authentication lands; this example is about the cookie
+    # a real login sets, not about the destination.
+    expect(response).to redirect_to(teams_path)
   end
 
   describe "the authentication cookie" do

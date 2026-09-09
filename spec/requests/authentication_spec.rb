@@ -19,7 +19,10 @@ RSpec.describe "authentication", type: :request do
         params: { email: "new@example.test", password: password, display_name: "New Person" },
         headers: modern_browser
 
-      expect(response).to redirect_to(root_path)
+      # M01-06 changed where authentication lands: the panel of a Team the actor
+      # can act in, not the M00 example page. AC1 of that Story is "the
+      # authenticated user sees the app shell", and arriving at a demo is not that.
+      expect(response).to redirect_to(%r{/t/[^/]+/projects})
       expect(User.sole.email).to eq("new@example.test")
 
       follow_redirect!
@@ -66,7 +69,9 @@ RSpec.describe "authentication", type: :request do
     it "opens a session and sends the user on" do
       sign_in(email: "person@example.test")
 
-      expect(response).to redirect_to(root_path)
+      # No Team yet — this account was created after the bootstrap — so the
+      # destination is the Team list, which is where one can be made.
+      expect(response).to redirect_to(teams_path)
       expect(user.sessions.count).to eq(1)
     end
 
@@ -110,7 +115,9 @@ RSpec.describe "authentication", type: :request do
       get sign_in_path, params: { return_to: "https://evil.test/steal" }, headers: modern_browser
       sign_in(email: "person@example.test")
 
-      expect(response).to redirect_to(root_path)
+      # The point of this example is that the non-local destination is *refused*;
+      # what it falls back to is M01-06's business, not this assertion's.
+      expect(response).to redirect_to(teams_path)
     end
 
     it "requires every controller written after this Story to declare its access" do
