@@ -66,9 +66,43 @@ cmd_set() {
   need_state
   local status="$1"
   valid_status "$status" || die "invalid status: $status"
+  # `ready_for_review` is reachable only through `fix-done` or the Stop hook,
+  # because both run the Stop Gate first. M00 entered its sixth review in a state
+  # its own gate rejected, by writing this status directly — so the status that
+  # hands work to a reviewer is not one a caller may simply assert.
+  [ "$status" != "ready_for_review" ] || die \
+"refusing to set ready_for_review directly: it is what hands the Milestone to a
+reviewer, and it must pass bin/stop-gate first. Use 'fix-done', which runs the
+gate and refuses a red result."
   with_lock "$LOCK" write_json "$STATE" \
     '.status = $s | .updatedAt = $now' --arg s "$status" --arg now "$(touch_now)"
   printf '%s\n' "$status"
+}
+
+# The gate that decides whether work may be handed to a reviewer at all.
+#
+# It runs `bin/stop-gate <Mxx>` and treats anything other than `ok:true` as a
+# refusal — including a gate that could not run. A check that did not execute is
+# not a check that passed, and the alternative is what M00 lived through: the
+# reviewer becoming the first thing to run the gates, which is the most expensive
+# component doing the cheapest work.
+stop_gate_ok() {
+  local root gate out ok
+  root="$(cd "$(dirname "$MDIR")/../.." && pwd)"
+  # OPANEL_STOP_GATE exists so the loop's own tests can drive this branch with a
+  # gate they control. It is a seam for tests, not a way to opt out: an unset or
+  # missing binary is a refusal, so pointing it at nothing fails closed.
+  gate="${OPANEL_STOP_GATE:-$root/bin/stop-gate}"
+  [ -x "$gate" ] || { STOP_GATE_REASON="stop gate not found or not executable: $gate"; return 1; }
+
+  out="$(cd "$root" && "$gate" "$MILESTONE" 2>/dev/null)" || true
+  ok="$(printf '%s' "$out" | jq -r '.ok // false' 2>/dev/null || echo false)"
+  if [ "$ok" = "true" ]; then return 0; fi
+
+  STOP_GATE_REASON="$(printf '%s' "$out" \
+    | jq -r '[.checks[]? | select(.result != "pass") | "\(.name): \(.reason // "failed")"] | join("; ")' 2>/dev/null || true)"
+  [ -n "$STOP_GATE_REASON" ] || STOP_GATE_REASON="bin/stop-gate $MILESTONE did not report ok (it may not have run)"
+  return 1
 }
 
 cmd_review_start() {
@@ -144,6 +178,16 @@ cmd_fix_start() {
 # review for the current state of the Milestone.
 cmd_fix_done() {
   need_state
+  # The gate runs here, not only when the last Story closes. Before this, the
+  # first handoff of a Milestone was gated and every later one was not: M00
+  # reached its sixth review with bin/stop-gate red, and two of that round's
+  # three findings were things the gate would have named in seconds.
+  if ! stop_gate_ok; then
+    printf 'refusing ready_for_review: bin/stop-gate %s is not ok\n  %s\n' \
+      "$MILESTONE" "$STOP_GATE_REASON" >&2
+    printf 'the state stays `fixing`. Fix what the gate names, then run fix-done again.\n' >&2
+    exit 2
+  fi
   with_lock "$LOCK" write_json "$STATE" \
     '.status = "ready_for_review" | .verdict = null
      | .criticalCount = null | .highCount = null
@@ -151,6 +195,35 @@ cmd_fix_done() {
      | .lastError = null | .blockedReason = null | .updatedAt = $now' \
     --arg now "$(touch_now)"
   printf 'ready_for_review\n'
+}
+
+# The budgets are governance, not bookkeeping: they decide when a Milestone stops
+# being the loop's problem and becomes a human's. During M00 they were raised
+# three times by hand, because the script wrote them once in `init` and offered no
+# command — which meant the number limiting the implementer was set by the
+# implementer, with the reason living only in a commit message.
+cmd_budget() {
+  need_state
+  local field="$1" value="$2" reason="$3"
+  case "$field" in
+    maxReviewAttempts|maxFixAttempts) ;;
+    *) die "budget field must be maxReviewAttempts or maxFixAttempts" ;;
+  esac
+  case "$value" in ''|*[!0-9]*) die "budget value must be a positive integer" ;; esac
+  [ "$value" -ge 1 ] || die "budget value must be at least 1"
+  [ -n "$reason" ] || die "budget requires a reason: it is recorded in the state and read by the reviewer"
+
+  local previous
+  previous="$(jq -r --arg f "$field" '.[$f]' "$STATE")"
+  with_lock "$LOCK" write_json "$STATE" \
+    '.[$f] = ($v|tonumber)
+     | .budgetChanges = ((.budgetChanges // []) + [{
+         field: $f, from: ($p|tonumber), to: ($v|tonumber),
+         reason: $r, at: $now
+       }])
+     | .updatedAt = $now' \
+    --arg f "$field" --arg v "$value" --arg p "$previous" --arg r "$reason" --arg now "$(touch_now)"
+  printf '%s: %s -> %s (%s)\n' "$field" "$previous" "$value" "$reason"
 }
 
 cmd_block() {
@@ -190,9 +263,11 @@ case "$COMMAND" in
                   cmd_verdict "$1" "$2" "$3" "$4" "$5" ;;
   fix-start)      cmd_fix_start ;;
   fix-done)       cmd_fix_done ;;
+  budget)         [ $# -ge 3 ] || die "usage: budget <maxReviewAttempts|maxFixAttempts> <value> <reason>"
+                  cmd_budget "$1" "$2" "$3" ;;
   block)          [ $# -ge 1 ] || die "usage: block <reason>"; cmd_block "$1" ;;
   error)          [ $# -ge 1 ] || die "usage: error <code>"; cmd_error "$1" ;;
   attempt-number) cmd_attempt_number ;;
   *) die "unknown command: ${COMMAND:-<none>}
-usage: review-state.sh <milestone-dir> {init|status|set|review-start|verdict|fix-start|fix-done|block|error|attempt-number}" ;;
+usage: review-state.sh <milestone-dir> {init|status|set|review-start|verdict|fix-start|fix-done|budget|block|error|attempt-number}" ;;
 esac
