@@ -6,6 +6,7 @@ require "fileutils"
 require_relative "../../lib/gates/story_boundary"
 require_relative "../../lib/gates/post_commit"
 require_relative "../../lib/gates/related_specs"
+require_relative "../support/repository_lock"
 
 # The three local gates, proved by breaking them.
 #
@@ -90,17 +91,26 @@ RSpec.describe "The local gates", :slow do
   # Genuinely staged, not `--intent-to-add`: the gate reads
   # `git diff --cached`, which does not list an intent-to-add entry, so a
   # probe added that way would never reach the check it is meant to trip.
+  #
+  # Held under RepositoryLock: this writes into the real working tree of
+  # GATE_ROOT via `git add`/`git rm --cached`, which take `.git/index.lock`
+  # and do not retry on contention — two workers racing there can make one
+  # silently no-op. And under `bin/test --parallel` a full-tree scan running
+  # in another worker (spec/security/security_scan_spec.rb) would otherwise
+  # see the probe mid-flight and report a leak nobody here planted for it.
   def with_staged(path, contents)
-    full = File.join(GATE_ROOT, path)
-    FileUtils.mkdir_p(File.dirname(full))
-    File.write(full, contents)
-    Open3.capture2e("git", "add", "--force", path, chdir: GATE_ROOT)
-    yield
-  ensure
-    Open3.capture2e("git", "rm", "--cached", "--force", "--quiet", path, chdir: GATE_ROOT)
-    FileUtils.rm_f(full)
-    directory = File.dirname(full)
-    FileUtils.rmdir(directory) if Dir.exist?(directory) && Dir.empty?(directory)
+    Opanel::Gates::RepositoryLock.exclusive do
+      full = File.join(GATE_ROOT, path)
+      FileUtils.mkdir_p(File.dirname(full))
+      File.write(full, contents)
+      Open3.capture2e("git", "add", "--force", path, chdir: GATE_ROOT)
+      yield
+    ensure
+      Open3.capture2e("git", "rm", "--cached", "--force", "--quiet", path, chdir: GATE_ROOT)
+      FileUtils.rm_f(full)
+      directory = File.dirname(full)
+      FileUtils.rmdir(directory) if Dir.exist?(directory) && Dir.empty?(directory)
+    end
   end
 
 

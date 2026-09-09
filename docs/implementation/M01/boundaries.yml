@@ -1,0 +1,40 @@
+# The declared boundary of each Story in this Milestone.
+#
+# "Changes outside the declared boundary are a review finding even when the code
+# is correct" (AGENT_RULES, "Scope Discipline"). That rule needs something to
+# compare against, so a Story declares the paths it may touch **before** editing:
+# a boundary written afterwards only describes what happened.
+#
+# `bin/gate pre-commit --story <id>` and `bin/gate post-commit --story <id>` read
+# this. A Story with no entry here fails the boundary check rather than passing
+# it — a check satisfied by never declaring anything reports green over exactly
+# the scope creep it exists to catch.
+#
+# Patterns are shell globs matched against repository-relative paths (`**`
+# crosses directories). The pack's own bookkeeping — tasks.json, reports, review,
+# evidence, this file — is always allowed and does not need declaring.
+#
+# Widening a boundary is a deliberate act: do it in the commit that needs it, and
+# say why in the Story report. Widening it silently to make a gate pass is the
+# thing this prevents.
+
+boundaries:
+  # The two Stories numbered outside the Milestone's range are the ones allowed
+  # to touch the loop and the gates, because no Story may edit the machinery that
+  # judges it from inside the work being judged. G02 authorises them explicitly
+  # and requires each to be committed on its own, before any domain Story.
+
+  M01-91:
+    # The local gate's test invocation and its secret-scan scope — the two
+    # decisions the Story changes.
+    - bin/gate
+    - bin/security
+    - bin/test
+    # The gate suites that re-entered the repository, and the budget spec that
+    # keeps the recursion from coming back.
+    - spec/gates/**
+    # The five examples that are not parallel-safe, which is what AC 5 blocks on.
+    - spec/security/production_logging_spec.rb
+    - spec/security/security_scan_spec.rb
+    - spec/spec_helper.rb
+    - spec/support/**

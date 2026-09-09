@@ -84,10 +84,36 @@ review_counts_ok() {
   [ "$critical" -eq 0 ] && [ "$high" -eq 0 ]
 }
 
+QUALIFIERS="BLOCKED_FOR_PRODUCT_DECISION BLOCKED_FOR_HUMAN_APPROVAL BLOCKED_EXTERNAL_DEPENDENCY"
+
 cmd_set() {
-  local id="$1" state="$2" reason="${3:-}"
+  local id="$1" state="$2" reason="${3:-}" diagnosis="${4:-}"
   story_exists "$id" || die "unknown story: $id"
   valid_state "$state" || die "invalid state: $state (valid: $STATES)"
+
+  # `blocked` writes the shape config/pack/tasks.schema.json requires — a
+  # qualifier saying who can unblock it, and a diagnosis long enough to act on.
+  # This wrote a flat `reason` string instead, so every block it recorded failed
+  # BLOCKED_HAS_REASON: the loop could mark a Story blocked and the pack gate
+  # would then refuse the Milestone for the way it was marked.
+  if [ "$state" = "blocked" ]; then
+    local q
+    for q in $QUALIFIERS; do [ "$q" != "$reason" ] || break; done
+    case " $QUALIFIERS " in
+      *" $reason "*) ;;
+      *) die "blocked needs a qualifier first: $QUALIFIERS
+usage: set <id> blocked <qualifier> <diagnosis>" ;;
+    esac
+    [ "${#diagnosis}" -ge 20 ] || die \
+"blocked needs a reproducible diagnosis of at least 20 characters — \"it did not
+work\" tells the next session nothing"
+    with_lock "$LOCK" write_json "$TASKS" \
+      '(.stories[] | select(.id == $id) | .status) = "blocked"
+       | (.stories[] | select(.id == $id) | .blockedReason) = {qualifier: $q, diagnosis: $d}' \
+      --arg id "$id" --arg q "$reason" --arg d "$diagnosis"
+    printf '%s -> blocked (%s)\n' "$id" "$reason"
+    return 0
+  fi
 
   if [ "$state" = "done" ]; then
     if [ ! -f "$MDIR/review/$id.md" ]; then
@@ -186,7 +212,8 @@ case "$COMMAND" in
   next)      cmd_next ;;
   get)       [ $# -ge 1 ] || die "usage: get <id>"; cmd_get "$1" ;;
   file)      [ $# -ge 1 ] || die "usage: file <id>"; cmd_file "$1" ;;
-  set)       [ $# -ge 2 ] || die "usage: set <id> <status> [reason]"; cmd_set "$1" "$2" "${3:-}" ;;
+  set)       [ $# -ge 2 ] || die "usage: set <id> <status> [reason] | set <id> blocked <qualifier> <diagnosis>"
+             cmd_set "$1" "$2" "${3:-}" "${4:-}" ;;
   attempt)   [ $# -ge 1 ] || die "usage: attempt <id>"; cmd_attempt "$1" ;;
   review)    [ $# -ge 5 ] || die "usage: review <id> <c> <h> <m> <l>"; cmd_review "$1" "$2" "$3" "$4" "$5" ;;
   commit)    [ $# -ge 2 ] || die "usage: commit <id> <hash>"; cmd_commit "$1" "$2" ;;

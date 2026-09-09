@@ -4,6 +4,7 @@ require "open3"
 require "tmpdir"
 require "yaml"
 require_relative "../../lib/gates/ci_pipeline"
+require_relative "../support/repository_lock"
 
 # The pipeline, proved rather than described.
 #
@@ -31,17 +32,26 @@ RSpec.describe "The CI pipeline", :slow do
   # They are also registered with `git add -N`, because the gates scope
   # themselves to tracked files: CI always lints a checked-out commit, so an
   # untracked probe would be quietly skipped and prove nothing.
+  # Held under RepositoryLock: this writes into the real working tree of
+  # PIPELINE_ROOT via `git add`/`git rm --cached`, which take
+  # `.git/index.lock` and do not retry on contention — two workers racing
+  # there can make one silently no-op. And under `bin/test --parallel` a
+  # full-tree scan running in another worker
+  # (spec/security/security_scan_spec.rb) would otherwise see the probe
+  # mid-flight and report a leak nobody here planted for it.
   def with_probe(path, contents)
-    full = File.join(PIPELINE_ROOT, path)
-    FileUtils.mkdir_p(File.dirname(full))
-    File.write(full, contents)
-    run("git", "add", "--intent-to-add", path)
-    yield full
-  ensure
-    run("git", "rm", "--cached", "--force", "--quiet", path)
-    FileUtils.rm_f(full)
-    directory = File.dirname(full)
-    FileUtils.rmdir(directory) if Dir.exist?(directory) && Dir.empty?(directory)
+    Opanel::Gates::RepositoryLock.exclusive do
+      full = File.join(PIPELINE_ROOT, path)
+      FileUtils.mkdir_p(File.dirname(full))
+      File.write(full, contents)
+      run("git", "add", "--intent-to-add", path)
+      yield full
+    ensure
+      run("git", "rm", "--cached", "--force", "--quiet", path)
+      FileUtils.rm_f(full)
+      directory = File.dirname(full)
+      FileUtils.rmdir(directory) if Dir.exist?(directory) && Dir.empty?(directory)
+    end
   end
 
   describe "the job list" do

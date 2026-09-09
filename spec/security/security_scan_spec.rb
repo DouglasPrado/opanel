@@ -97,23 +97,31 @@ RSpec.describe "security scanning", type: :security do
     # accident: someone pastes the output of a command that printed one. The
     # scan has to reach those directories, and tmp/ being allowlisted must not
     # quietly extend to them.
+    # Held under RepositoryLock: this plants a real, tracked-tree secret and
+    # scans the whole tree in the same breath. Under `bin/test --parallel`,
+    # another worker's "passes on this repository" full-tree scan
+    # (spec/gates/gate_scripts_spec.rb, spec/gates/ci_pipeline_spec.rb use
+    # the same lock around their own probes) would otherwise see this file
+    # mid-flight and fail on a leak it never planted.
     it "reaches the report and evidence directories" do
       planted = "docs/implementation/M00/reports/.scan-probe.md"
       full = Rails.root.join(planted)
 
-      begin
-        File.write(full, "recovered token: #{planted_github_token}\n")
-        output, status = run(
-          "gitleaks", "dir", ".",
-          "--config", Rails.root.join("config/security/gitleaks.toml").to_s,
-          "--redact", "--no-banner", "--exit-code", "1"
-        )
+      Opanel::Gates::RepositoryLock.exclusive do
+        begin
+          File.write(full, "recovered token: #{planted_github_token}\n")
+          output, status = run(
+            "gitleaks", "dir", ".",
+            "--config", Rails.root.join("config/security/gitleaks.toml").to_s,
+            "--redact", "--no-banner", "--exit-code", "1"
+          )
 
-        expect(status).not_to be_success,
-          "a credential pasted into a Story Report was not detected:\n#{output}"
-        expect(output).not_to include(planted_github_token)
-      ensure
-        FileUtils.rm_f(full)
+          expect(status).not_to be_success,
+            "a credential pasted into a Story Report was not detected:\n#{output}"
+          expect(output).not_to include(planted_github_token)
+        ensure
+          FileUtils.rm_f(full)
+        end
       end
     end
 
@@ -126,10 +134,17 @@ RSpec.describe "security scanning", type: :security do
       end
     end
 
+    # Held under RepositoryLock (see the comment on "reaches the report and
+    # evidence directories" above): a full-tree-and-history scan of the real
+    # working tree must not overlap with another worker mid-way through
+    # staging a synthetic secret of its own — the exact collision that made
+    # this example flaky under `bin/test --parallel` (M01-91).
     it "passes on this repository, tree and history" do
-      _output, status = run("bin/security", "--fast", "--history")
+      output, status = Opanel::Gates::RepositoryLock.exclusive do
+        run("bin/security", "--fast", "--history")
+      end
 
-      expect(status).to be_success
+      expect(status).to be_success, output
     end
   end
 

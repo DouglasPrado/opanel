@@ -1,6 +1,6 @@
 {
   "milestone": "M01",
-  "status": "implementing",
+  "status": "blocked",
   "reviewAttempt": 0,
   "fixAttempt": 0,
   "maxReviewAttempts": 3,
@@ -11,8 +11,8 @@
   "highCount": null,
   "mediumCount": null,
   "lowCount": null,
-  "lastError": null,
-  "blockedReason": null,
+  "lastError": "REQUIRED_STORY_BLOCKED",
+  "blockedReason": "REQUIRED_STORY_BLOCKED",
   "acceptedAt": null,
-  "updatedAt": null
+  "updatedAt": "2026-09-09T04:40:04Z"
 }

@@ -160,6 +160,24 @@
           }
         }
       }
+    },
+    "run": {
+      "description": "Per-run bookkeeping written by tools/opanel-loop: the turn counter the Stop hook increments and the baseline OPANEL_MAX_STORIES_PER_RUN counts against. Absent until a run starts; it describes the run, not the Milestone.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "startedAt": {
+          "type": "string"
+        },
+        "turns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "doneAtStart": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     }
   }
 }
