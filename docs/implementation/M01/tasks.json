@@ -24,9 +24,9 @@
     {
       "id": "M01-91",
       "file": "stories/M01-91-gate-execution-cost.md",
-      "status": "pending",
+      "status": "in_progress",
       "dependsOn": [],
-      "attempts": 0,
+      "attempts": 1,
       "required": true
     },
     {

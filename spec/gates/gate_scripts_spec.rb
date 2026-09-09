@@ -201,8 +201,11 @@ RSpec.describe "The local gates", :slow do
       # sometimes and a flaky security test is a defect.
       token = "ghp_" + ("hR3xQ9wLmT7bVzN2yKfJ4sCdA8eUpG" + "1oX5i")
 
+      # `--staged`, not `--fast`: the token is planted in the index, and that is
+      # the scope the pre-commit gate scans. Scanning the whole tree to find a
+      # staged file cost 38 seconds and proved something broader than the claim.
       with_staged("config/ci/.gate-probe.env", "GITHUB_TOKEN=#{token}\n") do
-        output, status = Open3.capture2e("bin/security", "--fast", chdir: GATE_ROOT)
+        output, status = Open3.capture2e("bin/security", "--staged", chdir: GATE_ROOT)
 
         expect(status).not_to be_success
         expect(output).not_to include(token)
@@ -225,8 +228,13 @@ RSpec.describe "The local gates", :slow do
     # A stray artifact is not a style problem: it is how a dump, a key or a
     # customer's data reaches a repository by accident.
     it "rejects a staged build artifact" do
+      # `--only`: the expectation reads one field, and running the other seven
+      # checks to reach it cost 123 seconds — a full suite and a full tree scan
+      # to assert that a staged .sqlite3 is rejected. The narrowed run proves the
+      # same thing; the report marks the rest `skip`, so it cannot be mistaken
+      # for a full pass.
       with_staged("config/gate-probe-artifact.sqlite3", "not really a database\n") do
-        report, _status = gate_json("pre-commit", "--story", "M00-12")
+        report, _status = gate_json("pre-commit", "--only", "no-stray-files", "--story", "M00-12")
         expect(check(report, "no-stray-files")["result"]).to eq("fail")
       end
     end

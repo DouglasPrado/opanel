@@ -57,6 +57,19 @@ gate_run() {
   local check="$1"; shift
   local started output status duration
 
+  # GATE_ONLY narrows a run to named checks. It exists for the specs that prove
+  # one check rejects one planted failure: proving `no-stray-files` used to cost
+  # a full pre-commit — the suite, the secret scan, everything — 123 seconds to
+  # assert one field.
+  #
+  # It narrows, it never relaxes: a check that runs still has to pass, and
+  # nothing in bin/gate's own gates passes GATE_ONLY. A run that used it says so
+  # in its report, so a green result cannot be mistaken for a full one.
+  if [ -n "${GATE_ONLY:-}" ] && ! printf '%s' ",$GATE_ONLY," | grep -q ",$check,"; then
+    gate_skip "$check" "not selected by --only"
+    return 0
+  fi
+
   started="$(gate_now_ms)"
   output="$("$@" 2>&1)"
   status=$?

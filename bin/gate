@@ -27,6 +27,8 @@ gate="${1:-}"
 [ $# -gt 0 ] && shift
 format="text"
 story="${OPANEL_STORY:-}"
+GATE_ONLY="${GATE_ONLY:-}"
+export GATE_ONLY
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,6 +37,11 @@ while [ $# -gt 0 ]; do
     --json) format="json" ;;
     --story) story="$2"; shift ;;
     --story=*) story="${1#--story=}" ;;
+    # Narrows the run to named checks, comma separated. For proving one check
+    # against one planted failure without paying for the other seven; the report
+    # marks the rest `skip`, so a narrowed run cannot pass for a full one.
+    --only) GATE_ONLY="$2"; shift ;;
+    --only=*) GATE_ONLY="${1#--only=}" ;;
     --*) echo "unknown option: $1" >&2; exit 2 ;;
     *) echo "unexpected argument: $1" >&2; exit 2 ;;
   esac
