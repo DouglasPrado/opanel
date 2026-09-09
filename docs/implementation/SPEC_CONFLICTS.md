@@ -58,7 +58,7 @@ Complementa — não substitui — [`docs/decisions/pending-documentation-update
 - **Decisão antiga:** `com.platform.managed=true`, `com.platform.team_id=…` (doc 07) e, no mesmo assunto, `platform.team_id=…` **sem prefixo de domínio** (doc 02 §11.1). Os dois trechos da especificação já divergem entre si.
 - **Decisão atual conhecida:** o produto chama-se **Opanel**; nenhuma decisão foi tomada sobre migrar o prefixo.
 - **Impacto:** **Alto e irreversível na prática.** A label de ownership é a identidade dos recursos em runtime. Trocá-la depois do primeiro deploy quebra reconciliação, drift detection e adoção de recursos existentes de tudo que já estiver rodando.
-- **Resolução:** `unresolved`. Proposta registrada em [`ADR-0001`](../decisions/ADR-0001-swarm-ownership-label-namespace.md) com status **Proposed**.
+- **Resolução:** `resolved` em 2026-09-08. [`ADR-0001`](../decisions/ADR-0001-swarm-ownership-label-namespace.md) foi **aceito** pelo dono do repositório: o namespace é `com.opanel.*`, e as node labels de placement migram para `opanel.*` mantendo as chaves. `M01-16` está desbloqueada.
 - **Bloqueio:** `M01-16-swarm-ownership-labels` não pode sair de `pending` enquanto o ADR-0001 não for aceito. Marcar `BLOCKED_FOR_PRODUCT_DECISION` se o loop autônomo alcançar a Story antes da decisão.
 
 ## SC-05 — Posição do Vault no roadmap
@@ -90,7 +90,7 @@ Complementa — não substitui — [`docs/decisions/pending-documentation-update
 - **Documentos envolvidos:** `docs/architecture/09-data-model-apis-contracts.md` §19 (“UUIDv7 ou ULID são adequados; **decisão final deve ser única para toda a plataforma**”); exemplos de ID prefixado espalhados por doc 07 §7 (`team_01…`, `svc_01…`), doc 08 §5 (`cert_01HX…`, `rtr_dom_01HX…`) e Anexo F §9.1/§13 (`op_01…`, `apr_123`, `agc_…`, `usr_…`).
 - **Situação:** a especificação exige uma decisão única e não a toma. Os exemplos sugerem ID prefixado por tipo, mas isso nunca foi formalizado.
 - **Impacto:** Chave primária de **todas** as entidades, formato da API pública, URIs de Resources do MCP, labels do Swarm e enumerabilidade. Trocar depois exige migração global.
-- **Resolução:** `unresolved`. Proposta registrada em [`ADR-0002`](../decisions/ADR-0002-identifier-strategy.md) com status **Proposed**.
+- **Resolução:** `resolved` em 2026-09-08. [`ADR-0002`](../decisions/ADR-0002-identifier-strategy.md) foi **aceito** pelo dono do repositório: ULID em `char(26)`, exposto como `<prefixo>_<ulid>`, com o registro de prefixos como constante única. `M01-01` está desbloqueada, e a convenção passa a ser irreversível na prática a partir da primeira tabela.
 - **Bloqueio:** `M01-01-user-and-authentication` é a primeira Story a criar tabela e não pode sair de `pending` sem o ADR-0002 aceito.
 
 ## SC-09 — Nome técnico do Swarm Service: slugs humanos vs IDs opacos
@@ -184,9 +184,9 @@ Registradas para evitar releitura como pendência. **Nenhuma ação necessária.
 
 | Estado | Quantidade | Itens |
 |---|---|---|
-| `resolved` | 11 | SC-01, SC-02, SC-03, SC-05, SC-06, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16 |
+| `resolved` | 13 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16 |
 | `deferred` | 2 | SC-07 (inventário de componentes, dono `M00-05`), SC-11 (backend de métricas, dono `M09-03`) |
-| `unresolved` | 2 | **SC-04** (prefixo de label — bloqueia `M01-16`), **SC-08** (estratégia de ID — bloqueia `M01-01`) |
+| `unresolved` | 0 | — |
 | informativo | 5 | SC-13.1 … SC-13.5 |
 
-**Ambos os itens `unresolved` precisam de decisão humana antes de M01 começar.** Eles estão registrados como ADRs `Proposed` em `docs/decisions/` e não podem ser resolvidos pelo loop autônomo.
+**Nenhum item `unresolved` permanece.** SC-04 e SC-08 foram decididos em 2026-09-08 pelo dono do repositório, através de `ADR-0001` e `ADR-0002`, ambos agora `accepted`. Nada no Implementation Pack aguarda decisão arquitetural.

@@ -1,8 +1,10 @@
 ---
 title: "ADR-0002 — Estratégia de identificadores"
-status: "Proposed"
+status: "accepted"
 date: "2026-09-06"
 decision-required-before: "M01-01"
+accepted-date: "2026-09-08"
+accepted-by: "repository owner"
 ---
 
 # ADR-0002 — Estratégia de identificadores
@@ -30,7 +32,7 @@ O prefixo `01HX…` é a assinatura de um ULID (timestamp Crockford Base32). Nad
 
 Esta decisão precisa ser tomada antes da primeira migration porque afeta a chave primária de **todas** as entidades, o formato da API pública (`/v1/teams/{teamId}/…`), as URIs de Resources do MCP (`paas://services/{service_id}`), o valor gravado nas labels do Swarm (ADR-0001) e a enumerabilidade dos recursos (Anexo C §7.3).
 
-## Decision (proposta)
+## Decision
 
 **ULID como identificador único de toda a plataforma, persistido como `char(26)` e exposto com prefixo de tipo.**
 
