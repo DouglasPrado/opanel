@@ -113,19 +113,36 @@ class RegisterUser
   def persist(digest, token)
     user = nil
     session = nil
+    bootstrap = nil
 
     ApplicationRecord.transaction do
       user = User.create!(email: email, display_name: display_name,
         password_digest: digest, status: "ACTIVE")
       session = build_session(user, token)
       session.save!
+      # In this transaction, not after it: AC1 of M01-03 requires User, Team,
+      # OWNER membership and INSTANCE_ADMIN to be written together, and AC8
+      # requires an interruption to leave nothing behind. The command decides for
+      # itself whether this registration is the bootstrap — see its class comment
+      # for why it does not ask first.
+      bootstrap = BootstrapInstallation.call(user: user)
     end
 
     Current.actor_id = user.external_id
     Rails.logger.info(event: "auth.register.succeeded", user_id: user.external_id,
       session_id: session.external_id)
 
-    Opanel::Result.success(user: user, session: session, session_token: token)
+    if bootstrap.success? && bootstrap.value[:bootstrapped]
+      team = bootstrap.value[:team]
+      # The Story asks for this event by name (Observability Requirements). The
+      # AuditLog record of the same fact arrives with M01-05.
+      Rails.logger.info(event: "installation.bootstrapped", user_id: user.external_id,
+        team_id: team.external_id, roles: [ "OWNER", InstanceRole::ADMIN ])
+    end
+
+    Opanel::Result.success(user: user, session: session, session_token: token,
+      bootstrapped: bootstrap.success? && bootstrap.value[:bootstrapped],
+      team: bootstrap.success? ? bootstrap.value[:team] : nil)
   end
 
   def build_session(user, token)

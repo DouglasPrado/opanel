@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_120500) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_09_120600) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -37,6 +37,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120500) do
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_infrastructure_checkpoints_on_name", unique: true
     t.check_constraint "counter >= 0", name: "infrastructure_checkpoints_counter_non_negative"
+  end
+
+  create_table "instance_roles", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "granted_by_bootstrap"
+    t.timestamptz "revoked_at"
+    t.text "role", null: false
+    t.datetime "updated_at", null: false
+    t.string "user_id", limit: 26, null: false
+    t.index ["granted_by_bootstrap"], name: "index_instance_roles_single_bootstrap", unique: true, where: "granted_by_bootstrap"
+    t.index ["role"], name: "index_instance_roles_active_by_role", where: "(revoked_at IS NULL)"
+    t.index ["user_id", "role"], name: "index_instance_roles_one_active_grant_per_user_and_role", unique: true, where: "(revoked_at IS NULL)"
+    t.check_constraint "granted_by_bootstrap IS NULL OR granted_by_bootstrap", name: "instance_roles_bootstrap_marker_is_true_or_absent"
+    t.check_constraint "granted_by_bootstrap IS NULL OR role = 'INSTANCE_ADMIN'::text", name: "instance_roles_bootstrap_is_admin"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "instance_roles_id_is_ulid"
+    t.check_constraint "role = ANY (ARRAY['INSTANCE_ADMIN'::text, 'INSTANCE_OPERATOR'::text, 'INSTANCE_AUDITOR'::text])", name: "instance_roles_role_is_known"
+    t.check_constraint "user_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "instance_roles_user_id_is_ulid"
   end
 
   create_table "sessions", id: { type: :string, limit: 26 }, force: :cascade do |t|
@@ -266,6 +283,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120500) do
     t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'SUSPENDED'::text, 'DELETED_PENDING'::text])", name: "users_status_is_known"
   end
 
+  add_foreign_key "instance_roles", "users", on_delete: :restrict
   add_foreign_key "sessions", "users", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

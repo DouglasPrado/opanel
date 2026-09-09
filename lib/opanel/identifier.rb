@@ -61,6 +61,10 @@ module Opanel
       # entity to register its prefix, and a membership is addressable — it is
       # what a suspension, a role change and an ownership transfer name.
       team_member: "tm",
+      # Same rule again (ADR-0002 §3). An instance role is addressable because a
+      # grant and its revocation name one, and the audit record of M01-05 has to
+      # say which grant was revoked.
+      instance_role: "iro",
       project: "prj",
       environment: "env",
       service: "svc",

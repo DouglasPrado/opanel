@@ -149,3 +149,35 @@ boundaries:
     - spec/security/team_ownership_escalation_spec.rb
     # Onde as divergências que a Story encontrou contra o doc 04 são registradas.
     - docs/decisions/pending-documentation-updates.md
+
+  # InstanceRole e o bootstrap da primeira instalação. Toca `RegisterUser` porque
+  # o bootstrap acontece dentro do primeiro cadastro (doc 04 §3.1) — não é uma
+  # rota nova, é uma consequência atômica da que já existe. Sem UI: a área de
+  # administração da instância é de M11-12, e nenhum AC desta Story pede tela.
+  M01-03:
+    - db/migrate/*_create_instance_roles.rb
+    - db/schema.rb
+    - lib/opanel/identifier.rb
+    - spec/unit/identifier_spec.rb
+    # Domínio.
+    - app/models/instance_role.rb
+    # Camada de aplicação. RegisterUser passa a conter o bootstrap; CreateTeam é
+    # tocado só para provar, por teste, que um Team posterior não concede nada
+    # além de TEAM_OWNER.
+    - app/commands/register_user.rb
+    - app/commands/bootstrap_installation.rb
+    - app/commands/grant_instance_role.rb
+    - app/commands/revoke_instance_role.rb
+    - app/queries/installation_bootstrap_state.rb
+    # Testes.
+    - spec/factories/instance_roles.rb
+    - spec/unit/instance_role_spec.rb
+    - spec/integration/installation_bootstrap_spec.rb
+    - spec/integration/installation_bootstrap_concurrency_spec.rb
+    - spec/integration/instance_role_revocation_spec.rb
+    # Acrescentado na rodada de correção: o AC5 concorrente não tinha exemplo,
+    # e a revisão mostrou que o lock deadlockava em vez de recusar.
+    - spec/integration/instance_role_revocation_concurrency_spec.rb
+    - spec/policies/instance_role_grant_spec.rb
+    - spec/security/instance_admin_escalation_spec.rb
+    - spec/integration/user_registration_spec.rb
