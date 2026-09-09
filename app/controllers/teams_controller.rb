@@ -35,7 +35,9 @@ class TeamsController < ApplicationController
   # same answer as one asking about a Team that does not exist: 404, not 403.
   # 403 would confirm the Team exists to somebody who has just lost access to it.
   def show
-    team = Team.accessible_to(current_user).find_by(id: team_id)
+    # Through the tenancy helper rather than by id: a Team of another Team's owner
+    # is answered as absent, not as forbidden (Annex C §7.3, AC4).
+    team = TenantScope.for(current_user, Team).find(team_id)
 
     raise ActiveRecord::RecordNotFound if team.nil?
 

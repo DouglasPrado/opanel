@@ -12,21 +12,24 @@
 # Actual State toward these; it never writes them. Platform Wins is the drift
 # policy, and adopting runtime state is an explicit admin operation.
 #
-# Empty in M00: no domain entity exists yet. M01 fills it as it creates them.
 user_intent_columns: []
 # Example, from M01:
 #   - table: services
 #     columns: [desired_replicas, image_digest, resource_limits, placement_constraints]
 
-# AF-07 — mutations that must have a server-side authorization path. A Command
-# listed here without a Policy is a finding.
+# AF-07 — mutations that must reach a server-side authorization path. The check
+# has two halves: the Policy exists with the declared action, **and** the Command
+# actually invokes it. A Policy nobody calls is a file.
 #
-# Empty in M00: no domain mutation exists yet.
-critical_mutations: []
-# Example, from M01:
-#   - command: CreateService
-#     policy: ServicePolicy
-#     action: create?
+# Empty until M01-04, because there was no Policy layer to reach. A mutation is
+# added here when it becomes tenant-scoped and role-dependent; a mutation that
+# acts only on the caller's own rows (RevokeSession) is authorized by scoping the
+# query to the owner, which is a different control and is asserted by its own
+# cross-account negative test.
+critical_mutations:
+  - command: SuspendTeamMember
+    policy: TeamPolicy
+    action: manage_members?
 
 # AF-06 — field names that carry secret material. A serializer, a log formatter or
 # an audit payload builder that emits one of these in plaintext is a finding.

@@ -22,7 +22,9 @@ class TeamsForUser
   end
 
   def call
-    rows = Team.accessible_to(user)
+    # Through the helper, so every domain Query in the product reads its tenancy
+    # boundary from the same place (AC5). It resolves to `Team.accessible_to`.
+    rows = TenantScope.for(user, Team).relation
       .order(:name, :id)
       .limit(LIMIT)
       .pluck(:id, :name, :slug, :status, "team_members.role", "team_members.joined_at")

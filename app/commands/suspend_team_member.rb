@@ -5,10 +5,12 @@
 # cookie or in the session row, so there is nothing to invalidate — the next
 # request re-reads the membership and finds it no longer ACTIVE (Annex C §7.2).
 #
-# **Who may suspend whom.** Policies arrive in M01-04; the rules here are the
-# domain invariants of doc 04 §3.2, and they are deliberately narrow:
+# **Who may suspend whom.** Since M01-04 the role question belongs to
+# `TeamPolicy#manage_members?` (doc 04 §6.2). What stays here are the invariants
+# about the *target*, from doc 04 §3.2, which no role widens:
 #
-#   * the actor must hold an ACTIVE OWNER or ADMIN membership of the same Team;
+#   * the actor must be permitted to manage members of this Team, which the
+#     Policy decides;
 #   * nobody suspends themselves — for the OWNER that would leave the Team
 #     without one, and for anybody else it is a mistake, not a feature;
 #   * **no Team member, of any role, may suspend the OWNER.** An ADMIN who could
@@ -47,7 +49,11 @@ class SuspendTeamMember
 
     return failure("NOT_FOUND", NOT_FOUND_MESSAGE) if target.nil?
 
-    refusal = refusal_for(target)
+    # Two questions, asked in this order. "May this actor manage members here?" is
+    # the Policy's, and it must be answered first: somebody outside the Team may
+    # not learn anything about the target, not even that suspending the OWNER is
+    # forbidden.
+    refusal = refusal_for(target) || target_refusal_for(target)
     return refusal if refusal
 
     # Idempotent: suspending an already suspended membership is the state the
@@ -73,12 +79,42 @@ class SuspendTeamMember
   def refusal_for(target)
     return nil if security_procedure?
 
-    # Scoped to an ACTIVE membership of *this* Team: an actor who is not on the
-    # Team is answered exactly as one asking about a member who is not on it.
-    actor_membership = team.team_members.active.find_by(user_id: actor.id)
+    # The decision belongs to `TeamPolicy#manage_members?` (doc 04 §6.2), not to a
+    # role list written here. Before M01-04 this Command carried its own copy of
+    # "OWNER or ADMIN"; a rule duplicated per Command is a rule that drifts, and
+    # the point of the Policy layer is that there is one place to read and to
+    # change it.
+    #
+    # The Policy is named and its predicate called, rather than reached through a
+    # generic helper, and that is deliberate: `grep manage_members?` is how the
+    # next person finds where this permission is decided, and AF-07 reads the
+    # Command for exactly this to prove the mutation has an authorization path.
+    policy = TeamPolicy.new(actor, team)
+    return nil if policy.manage_members?
 
-    return failure("NOT_FOUND", NOT_FOUND_MESSAGE) if actor_membership.nil?
-    return failure("FORBIDDEN", FORBIDDEN_MESSAGE) unless %w[OWNER ADMIN].include?(actor_membership.role)
+    # Only on the denied path, and only then, is the reason worth a second
+    # evaluation: it is what separates "you are not on this Team" from "you are,
+    # but not with that role".
+    decision = policy.decide(:manage_members)
+    Opanel::Authorization.record(actor, decision)
+
+    # A denial for want of a membership is answered as NOT_FOUND, the same as a
+    # member who is not on the Team: an actor outside the Team must not learn
+    # that it exists (Annex C §7.3, AC4).
+    return failure("NOT_FOUND", NOT_FOUND_MESSAGE) if decision.reason == :no_membership
+
+    failure("FORBIDDEN", FORBIDDEN_MESSAGE)
+  end
+
+  def target_refusal_for(target)
+    # The security procedure is exempt from these, and only from these: suspending
+    # the OWNER is precisely what it exists to do (doc 04 §3.2), and it has no
+    # user to be "itself".
+    return nil if security_procedure?
+
+    # Rules about *this* target rather than about the actor's role, so they stay
+    # here: the Policy answers "may this actor manage members", and these answer
+    # "is this particular change allowed at all".
     return failure("FORBIDDEN", SELF_MESSAGE) if target.user_id == actor.id
     return failure("FORBIDDEN", OWNER_MESSAGE) if target.owner?
 

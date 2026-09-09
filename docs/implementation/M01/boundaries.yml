@@ -181,3 +181,36 @@ boundaries:
     - spec/policies/instance_role_grant_spec.rb
     - spec/security/instance_admin_escalation_spec.rb
     - spec/integration/user_registration_spec.rb
+
+  # A fundação de autorização. É a Story mais estruturante do Milestone: tudo o
+  # que vier depois passa por aqui, e por isso ela toca os Commands e Queries que
+  # já existem — para provar a fundação contra código real em vez de contra um
+  # exemplo. Só as Policies das entidades que existem hoje são criadas; Project,
+  # Environment, Service e Cluster nascem com as suas próprias Stories, usando
+  # esta base.
+  M01-04:
+    # A camada.
+    - app/policies/application_policy.rb
+    - app/policies/team_policy.rb
+    - app/queries/tenant_scope.rb
+    - lib/opanel/authorization.rb
+    # AC5 tem duas metades: o helper que facilita o certo, e o lint que torna o
+    # errado visível. A segunda exigiu um cop, acrescentado na rodada de correção.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    - .rubocop.yml
+    # Os Commands e Queries que passam a atravessá-la.
+    - app/commands/create_team.rb
+    - app/commands/suspend_team_member.rb
+    - app/queries/teams_for_user.rb
+    - app/controllers/teams_controller.rb
+    # AF-07 passa a avaliar código real; a lista de mutações críticas é dado.
+    - config/architecture/fitness.yml
+    # Testes.
+    - spec/unit/application_policy_spec.rb
+    - spec/policies/role_matrix_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    - spec/integration/tenant_scope_spec.rb
+    - spec/security/authorization_disclosure_spec.rb
+    - spec/gates/authorization_coverage_spec.rb
+    - spec/gates/unscoped_tenant_query_spec.rb
+    - spec/support/authorization.rb
