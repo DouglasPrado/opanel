@@ -52,6 +52,11 @@ class AuthenticateUser
       session = build_session(user, token)
       session.save!
       AuthenticationAttempt.clear(scope: "login_email", key: email)
+
+      # Inside the transaction (AC11): a sign-in with no record of it is the one
+      # an incident review most needs and cannot get back.
+      AuditTrail.record(action: :user_signed_in, actor: user, resource: session,
+        after: session.attributes, ip: ip, user_agent: user_agent)
     end
 
     # After the transaction, never inside it: raising the cost must not lengthen
@@ -60,6 +65,7 @@ class AuthenticateUser
     upgrade_digest(user)
 
     Current.actor_id = user.external_id
+
     Rails.logger.info(event: "auth.login.succeeded", user_id: user.external_id,
       session_id: session.external_id, mfa_level: session.mfa_level)
 

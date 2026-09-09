@@ -62,6 +62,14 @@ module Opanel
     def record(actor, decision)
       return if decision.allowed?
 
+      # The detective half of the preventive control (M01-05 AC4). A refusal that
+      # only reaches the application log is a refusal nobody queries: the audit
+      # trail is where "who was turned away from what, and why" has to live.
+      #
+      # `resource` is not available here — only the decision — so the record
+      # carries the type and id the decision already resolved.
+      record_denial(actor, decision)
+
       Rails.logger.info(
         event: "authorization.denied",
         actor_id: actor.respond_to?(:external_id) ? actor.external_id : nil,
@@ -71,6 +79,49 @@ module Opanel
         team_id: decision.team_id,
         reason: decision.reason
       )
+    end
+
+    # Written outside any transaction the caller may hold: a denial performs no
+    # mutation, so there is nothing for a failed insert to roll back, and losing
+    # the request because the trail could not be written would turn an audit
+    # problem into an outage.
+    def record_denial(actor, decision)
+      AuditLog.create!(
+        team_id: team_id_of(decision),
+        actor_type: actor.is_a?(User) ? "USER" : "SYSTEM",
+        actor_id: actor.is_a?(User) ? actor.id : nil,
+        action: AuditLog::ACTIONS[:authorization_denied],
+        resource_type: decision.resource_type,
+        resource_id: internal_id(decision.resource_type, decision.resource_id),
+        request_id: Current.request_id.presence || Current.correlation_id,
+        correlation_id: Current.correlation_id,
+        before: {},
+        # Through the sanitiser like every other payload, even though the value is
+        # a fixed vocabulary today. A second path into `after` that skips the
+        # allowlist is a second path to maintain, and the guarantee "nothing
+        # reaches an audit payload unsanitised" should be mechanical rather than
+        # a promise about what this hash currently contains.
+        after: AuditSanitizer.call(AuditSanitizer::DENIAL_TYPE, { "reason" => decision.reason.to_s }),
+        result: "DENIED",
+        created_at: Time.current
+      )
+    end
+
+    def team_id_of(decision)
+      return nil if decision.team_id.blank?
+
+      Opanel::Identifier.parse(:team, decision.team_id)
+    rescue Opanel::Identifier::InvalidIdentifier
+      nil
+    end
+
+    def internal_id(resource_type, external)
+      return nil if external.blank?
+
+      type = resource_type.to_s.underscore.to_sym
+      Opanel::Identifier.parse(type, external)
+    rescue Opanel::Identifier::InvalidIdentifier, Opanel::Identifier::UnknownType
+      nil
     end
   end
 end

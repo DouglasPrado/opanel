@@ -26,6 +26,10 @@ RSpec.describe "two administrators revoking each other at once", :concurrent, ty
   after do
     ActiveRecord::Base.transaction do
       users = User.where("email LIKE ?", "#{slug}-%").select(:id)
+      # M01-05 made these flows write an audit trail, and this file does not run
+      # in a transaction: without this the records survive into the next spec file
+      # and fail it for a reason that has nothing to do with the code under test.
+      AuditLog.where(actor_id: users).delete_all
       InstanceRole.where(user_id: users).delete_all
       User.where(id: users).delete_all
     end

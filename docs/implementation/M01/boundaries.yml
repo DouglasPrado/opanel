@@ -214,3 +214,39 @@ boundaries:
     - spec/gates/authorization_coverage_spec.rb
     - spec/gates/unscoped_tenant_query_spec.rb
     - spec/support/authorization.rb
+
+  # O AuditLog. Toca os Commands que já existem porque a Story pede que as ações
+  # de identidade do M01 passem a auditar — a fundação só vale provada contra as
+  # ações reais, não contra um exemplo. Sem UI: a consulta é de M11-11.
+  M01-05:
+    - db/migrate/*_create_audit_logs.rb
+    - db/schema.rb
+    - lib/opanel/identifier.rb
+    - spec/unit/identifier_spec.rb
+    # Domínio e a instrumentação que torna auditar o caminho curto.
+    - app/models/audit_log.rb
+    - app/audit/audit_trail.rb
+    - app/audit/audit_sanitizer.rb
+    - app/queries/audit_trail_for_resource.rb
+    # Os Commands que passam a auditar, e a camada de autorização que passa a
+    # registrar DENIED — que fecha também o F-7 da M01-04.
+    - app/commands/create_team.rb
+    - app/commands/suspend_team_member.rb
+    - app/commands/revoke_session.rb
+    - app/commands/register_user.rb
+    - app/commands/authenticate_user.rb
+    - app/commands/bootstrap_installation.rb
+    - lib/opanel/authorization.rb
+    - config/architecture/fitness.yml
+    # Testes.
+    - spec/factories/audit_logs.rb
+    - spec/unit/audit_sanitizer_spec.rb
+    - spec/unit/audit_actions_spec.rb
+    - spec/integration/audit_log_append_only_spec.rb
+    - spec/integration/audit_trail_spec.rb
+    - spec/policies/audit_denied_spec.rb
+    - spec/security/audit_redaction_spec.rb
+    # Não rodam em transação, e esta Story fez os fluxos deles gravarem trilha:
+    # sem limpar `audit_logs` eles passam a contaminar os arquivos seguintes.
+    - spec/integration/installation_bootstrap_concurrency_spec.rb
+    - spec/integration/instance_role_revocation_concurrency_spec.rb

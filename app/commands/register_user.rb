@@ -126,9 +126,22 @@ class RegisterUser
       # itself whether this registration is the bootstrap — see its class comment
       # for why it does not ask first.
       bootstrap = BootstrapInstallation.call(user: user)
+
+      # Inside the transaction (M01-05 AC11). A registration that committed with
+      # no record of it, or a bootstrap that handed somebody the installation
+      # untracked, are precisely the two this Milestone cannot afford to lose.
+      AuditTrail.record(action: :user_registered, actor: user, resource: user,
+        after: user.attributes, ip: ip, user_agent: user_agent)
+
+      if bootstrap.success? && bootstrap.value[:bootstrapped]
+        AuditTrail.record(action: :installation_bootstrapped, actor: user,
+          resource: bootstrap.value[:team], team: bootstrap.value[:team],
+          after: bootstrap.value[:team].attributes, ip: ip, user_agent: user_agent)
+      end
     end
 
     Current.actor_id = user.external_id
+
     Rails.logger.info(event: "auth.register.succeeded", user_id: user.external_id,
       session_id: session.external_id)
 

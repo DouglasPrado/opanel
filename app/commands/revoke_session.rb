@@ -33,7 +33,19 @@ class RevokeSession
     # Idempotent: a second revocation is a no-op that still succeeds, so a
     # retried request and a double-clicked button behave the same.
     already_revoked = session.revoked?
-    session.revoke!
+
+    # One transaction around the revocation and its record (AC11). A session
+    # revoked with no trail is the case an operator investigating "who signed me
+    # out" cannot answer, and there is no reason to accept it: both writes are to
+    # the same database and neither calls out.
+    ApplicationRecord.transaction do
+      session.revoke!
+
+      unless already_revoked
+        AuditTrail.record(action: :session_revoked, actor: actor, resource: session,
+          before: { "revoked_at" => nil }, after: session.attributes.slice("revoked_at"))
+      end
+    end
 
     unless already_revoked
       Rails.logger.info(event: "auth.session.revoked", session_id: session.external_id,

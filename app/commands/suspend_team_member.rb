@@ -143,7 +143,16 @@ class SuspendTeamMember
           actor_id: actor_id_for_log, result: "succeeded")
       end
 
+      before = target.attributes.slice("role", "status")
       target.update!(status: "SUSPENDED")
+
+      # Inside the transaction, which is what AC11 asks for: if the trail cannot
+      # be written, the suspension is not considered to have happened. A member
+      # who lost access with no record of who removed it is the case the criterion
+      # exists to prevent.
+      AuditTrail.record(action: :team_member_suspended, actor: audit_actor,
+        resource: target, team: team, before: before,
+        after: target.attributes.slice("role", "status"))
     end
 
     Rails.logger.info(event: "team.member.suspended", team_id: team.external_id,
@@ -154,6 +163,12 @@ class SuspendTeamMember
 
   def actor_id_for_log
     security_procedure? ? SECURITY_PROCEDURE.to_s : actor.external_id
+  end
+
+  # The security procedure has no user behind it; the trail records it as SYSTEM
+  # rather than inventing an actor.
+  def audit_actor
+    security_procedure? ? AuditTrail::SYSTEM : actor
   end
 
   def failure(code, message)

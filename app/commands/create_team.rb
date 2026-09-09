@@ -62,6 +62,13 @@ class CreateTeam
       team = Team.create!(name: name, slug: slug, owner_user_id: actor.id, status: "ACTIVE")
       membership = TeamMember.create!(team: team, user: actor, role: "OWNER",
         status: "ACTIVE", joined_at: Time.current)
+
+      # Inside the transaction, which is what AC11 requires. An earlier version
+      # audited after the commit and argued the gap away; with a real commit and a
+      # failing audit that produced a Team nobody could see the creation of, which
+      # is the state the criterion exists to forbid.
+      AuditTrail.record(action: :team_created, actor: actor, resource: team,
+        after: team.attributes)
     end
 
     Rails.logger.info(event: "team.created", team_id: team.external_id,

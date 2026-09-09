@@ -10,10 +10,40 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_120600) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_09_120700) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "audit_logs", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.text "action", null: false
+    t.string "actor_id", limit: 26
+    t.text "actor_type", null: false
+    t.jsonb "after", default: {}, null: false
+    t.jsonb "before", default: {}, null: false
+    t.text "correlation_id", null: false
+    t.timestamptz "created_at", null: false
+    t.string "environment_id", limit: 26
+    t.inet "ip"
+    t.string "operation_id", limit: 26
+    t.text "request_id", null: false
+    t.string "resource_id", limit: 26
+    t.text "resource_type", null: false
+    t.text "result", null: false
+    t.integer "revision", default: 1, null: false
+    t.string "team_id", limit: 26
+    t.text "user_agent"
+    t.index ["request_id"], name: "index_audit_logs_on_request_id"
+    t.index ["resource_type", "resource_id", "created_at"], name: "index_audit_logs_on_resource_and_created_at", order: { created_at: :desc }
+    t.index ["team_id", "created_at"], name: "index_audit_logs_on_team_id_and_created_at", order: { created_at: :desc }
+    t.check_constraint "action ~ '^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$'::text", name: "audit_logs_action_is_namespaced"
+    t.check_constraint "actor_type = ANY (ARRAY['USER'::text, 'API_TOKEN'::text, 'SYSTEM'::text, 'RECOVERY'::text])", name: "audit_logs_actor_type_is_known"
+    t.check_constraint "btrim(correlation_id) <> ''::text", name: "audit_logs_correlation_id_present"
+    t.check_constraint "btrim(request_id) <> ''::text", name: "audit_logs_request_id_present"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "audit_logs_id_is_ulid"
+    t.check_constraint "result = ANY (ARRAY['SUCCESS'::text, 'DENIED'::text, 'FAILED'::text])", name: "audit_logs_result_is_known"
+    t.check_constraint "revision = 1", name: "audit_logs_are_append_only"
+  end
 
   create_table "authentication_attempts", id: { type: :string, limit: 26 }, force: :cascade do |t|
     t.integer "attempt_count", default: 0, null: false
