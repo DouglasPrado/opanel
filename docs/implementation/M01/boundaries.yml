@@ -113,3 +113,39 @@ boundaries:
     - Gemfile.lock
     # SC-17 was found by this Story and is recorded by it.
     - docs/implementation/SPEC_CONFLICTS.md
+
+  # Team e a invariante de OWNER único. O centro da Story é o banco: a Story se
+  # resolve em duas migrations, dois models, dois Commands e uma Query. A rota e
+  # a página existem porque o AC8 exige provar que o acesso some na requisição
+  # seguinte, e não pode haver rota Inertia sem página — mas a UI de produto é
+  # de M01-22, então aqui a página é mínima e composta de primitivos existentes.
+  M01-02:
+    # Schema: as duas migrations expand e o dump regenerado.
+    - db/migrate/*_create_teams.rb
+    - db/migrate/*_create_team_members.rb
+    - db/schema.rb
+    # Registro do prefixo do novo tipo (ADR-0002 §3): team_member -> "tm".
+    - lib/opanel/identifier.rb
+    - spec/unit/identifier_spec.rb
+    # Domínio.
+    - app/models/team.rb
+    - app/models/team_member.rb
+    # Camada de aplicação.
+    - app/commands/create_team.rb
+    - app/commands/suspend_team_member.rb
+    - app/queries/teams_for_user.rb
+    # Entrega mínima: uma rota e a página que provam AC1 e AC8.
+    - app/controllers/teams_controller.rb
+    - config/routes.rb
+    - app/frontend/pages/Teams/*.tsx
+    # Testes.
+    - spec/factories/teams.rb
+    - spec/factories/team_members.rb
+    - spec/unit/team_member_spec.rb
+    - spec/integration/team_ownership_constraints_spec.rb
+    - spec/integration/team_ownership_concurrency_spec.rb
+    - spec/policies/team_membership_access_spec.rb
+    - spec/requests/teams_spec.rb
+    - spec/security/team_ownership_escalation_spec.rb
+    # Onde as divergências que a Story encontrou contra o doc 04 são registradas.
+    - docs/decisions/pending-documentation-updates.md

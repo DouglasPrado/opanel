@@ -50,6 +50,10 @@ RSpec.describe Opanel::Identifier, type: :unit do
       expect(described_class::PREFIXES.fetch(:session)).to eq("ses")
     end
 
+    it "registers `tm` for TeamMember under the same extension rule" do
+      expect(described_class::PREFIXES.fetch(:team_member)).to eq("tm")
+    end
+
     it "holds no duplicate prefix" do
       expect(described_class.validate_registry!).to be(true)
     end

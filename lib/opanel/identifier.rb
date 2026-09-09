@@ -57,6 +57,10 @@ module Opanel
     PREFIXES = {
       user: "usr",
       team: "team",
+      # Registered here under the same rule as `ses`: ADR-0002 §3 requires a new
+      # entity to register its prefix, and a membership is addressable — it is
+      # what a suspension, a role change and an ownership transfer name.
+      team_member: "tm",
       project: "prj",
       environment: "env",
       service: "svc",

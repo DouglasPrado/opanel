@@ -18,6 +18,13 @@ Rails.application.routes.draw do
   # The user's own devices: list and revoke individually (doc 04 §8.2).
   resources :sessions, only: %i[index destroy], path: "settings/sessions", as: :account_sessions
 
+  # Teams (M01-02). Three actions only: the tenant is created here and read
+  # here, and everything else about it — members, invitations, ownership
+  # transfer — belongs to the Stories that own those concepts. Suspension has no
+  # route in this Story on purpose; the Command exists and nothing web-facing
+  # reaches it.
+  resources :teams, only: %i[index create show]
+
   # Visual inspection of the imported component library (M00-05). Development
   # only: it is a tool for building the product, not part of it.
   get "gallery" => "gallery#show", as: :gallery if Rails.env.development? || Rails.env.test?

@@ -91,3 +91,16 @@ Com o nome do produto fixado em Opanel, cabe decidir se esse prefixo passa a `co
 3. Conflitos de stack (seção 1) devem ser corrigidos no documento aprovado **antes** que o Implementation Pack M00 congele a estrutura do repositório — caso contrário o Anexo G continuará instruindo agentes a criar uma UI Next.js.
 4. Ao corrigir um item, remova a linha correspondente desta tabela e cite o commit/ADR.
 5. Enquanto um item continuar aberto aqui, ele prevalece sobre o texto do documento antigo para efeito de implementação.
+
+## 6. Divergências entre documentos aprovados, encontradas durante a implementação
+
+Aqui não há conflito com a stack: são dois documentos aprovados que descrevem a
+mesma entidade de formas diferentes. A precedência de `docs/AGENT_RULES.md`
+resolve cada caso — arquitetura aprovada, depois a Story — e o registro existe
+para que a divergência continue rastreável e seja corrigida no documento por uma
+Story ou ADR, não em passagem.
+
+| # | Arquivo | Trecho | Divergência | Resolvido como | Story |
+|---|---|---|---|---|---|
+| D1 | `docs/architecture/04-identity-teams-security.md` §16 | Tabela do modelo de dados: `teams` com `id, name, slug, status, createdAt`, e a tabela de membership chamada `team_memberships` | Não lista `ownerUserId`, que `docs/architecture/09-data-model-apis-contracts.md` §3.2 exige (`Team: id, name, slug, ownerUserId, status, createdAt`), e usa outro nome de tabela (`team_memberships` × `TeamMember`) | Seguido o doc 09 §3.2 e o Scope da Story: coluna `owner_user_id` em `teams`, tabela `team_members`. O §16.1 do próprio doc 04 admite explicitamente "uma restrição/índice parcial ou uma representação separada de ownership", o que a coluna + a foreign key composta satisfazem. Sem impacto em contrato externo. | `M01-02` |
+| D2 | `docs/architecture/04-identity-teams-security.md` §5.1 | Role `BILLING`, descrita como "opcional numa fase posterior" | O Scope da `M01-02` lista quatro roles (`OWNER`, `ADMIN`, `DEVELOPER`, `VIEWER`) | Implementadas as quatro. `BILLING` fica fora até a Story que a exigir; entra como migration expand no CHECK `team_members_role_is_known`, sem `ALTER TYPE`, porque a enumeração é `text` + `CHECK`. | `M01-02` |

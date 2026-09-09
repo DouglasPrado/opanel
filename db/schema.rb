@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_120300) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_09_120500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -209,6 +209,47 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120300) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
+  create_table "team_members", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.timestamptz "created_at", null: false
+    t.string "invited_by", limit: 26
+    t.timestamptz "joined_at"
+    t.text "role", null: false
+    t.text "status", null: false
+    t.string "team_id", limit: 26, null: false
+    t.timestamptz "updated_at", null: false
+    t.string "user_id", limit: 26, null: false
+    t.index ["team_id", "user_id", "role", "status"], name: "index_team_members_owner_reference", unique: true
+    t.index ["team_id", "user_id"], name: "index_team_members_on_team_id_and_user_id", unique: true
+    t.index ["team_id"], name: "index_team_members_one_active_owner_per_team", unique: true, where: "((role = 'OWNER'::text) AND (status = ANY (ARRAY['ACTIVE'::text, 'SUSPENDED'::text])))"
+    t.index ["user_id", "status"], name: "index_team_members_on_user_id_and_status"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_id_is_ulid"
+    t.check_constraint "invited_by IS NULL OR invited_by ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_invited_by_is_ulid"
+    t.check_constraint "role = ANY (ARRAY['OWNER'::text, 'ADMIN'::text, 'DEVELOPER'::text, 'VIEWER'::text])", name: "team_members_role_is_known"
+    t.check_constraint "status = 'INVITED'::text OR joined_at IS NOT NULL", name: "team_members_joined_at_present_once_accepted"
+    t.check_constraint "status = ANY (ARRAY['INVITED'::text, 'ACTIVE'::text, 'SUSPENDED'::text, 'REMOVED'::text])", name: "team_members_status_is_known"
+    t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_team_id_is_ulid"
+    t.check_constraint "user_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_user_id_is_ulid"
+  end
+
+  create_table "teams", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.timestamptz "created_at", null: false
+    t.timestamptz "deleted_at"
+    t.text "name", null: false
+    t.virtual "owner_membership_status", type: :text, as: "\nCASE\n    WHEN (status = 'OWNERSHIP_RECOVERY_REQUIRED'::text) THEN 'SUSPENDED'::text\n    ELSE 'ACTIVE'::text\nEND", stored: true
+    t.virtual "owner_role", type: :text, as: "'OWNER'::text", stored: true
+    t.string "owner_user_id", limit: 26, null: false
+    t.text "slug", null: false
+    t.text "status", default: "ACTIVE", null: false
+    t.timestamptz "updated_at", null: false
+    t.index ["owner_user_id"], name: "index_teams_on_owner_user_id"
+    t.index ["slug"], name: "index_teams_unique_slug_when_not_deleted", unique: true, where: "(deleted_at IS NULL)"
+    t.check_constraint "btrim(name) <> ''::text AND length(name) <= 120", name: "teams_name_present"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "teams_id_is_ulid"
+    t.check_constraint "owner_user_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "teams_owner_user_id_is_ulid"
+    t.check_constraint "slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug) >= 2 AND length(slug) <= 63", name: "teams_slug_format"
+    t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'OWNERSHIP_RECOVERY_REQUIRED'::text])", name: "teams_status_is_known"
+  end
+
   create_table "users", id: { type: :string, limit: 26 }, force: :cascade do |t|
     t.timestamptz "created_at", null: false
     t.text "display_name", null: false
@@ -234,4 +275,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120300) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
+  add_foreign_key "team_members", "teams", on_delete: :restrict
+  add_foreign_key "team_members", "users", column: "invited_by", on_delete: :restrict
+  add_foreign_key "team_members", "users", on_delete: :restrict
+  add_foreign_key "teams", "team_members", column: ["id", "owner_user_id", "owner_role", "owner_membership_status"], primary_key: ["team_id", "user_id", "role", "status"], name: "fk_teams_active_owner_membership", deferrable: :deferred
+  add_foreign_key "teams", "users", column: "owner_user_id", on_delete: :restrict
 end

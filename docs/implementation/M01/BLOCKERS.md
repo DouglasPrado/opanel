@@ -252,3 +252,77 @@ on its own.
   above: relax it with a reason, or accept a follow-up Story for the deeper fix
   (scan a git worktree snapshot instead of the live checkout, which removes the
   need for mutual exclusion).
+
+---
+
+## Ambiente — o Swarm lab não tem daemon descartável (não bloqueia M01-01)
+
+**Descoberto em:** fechamento de `M01-01`, 2026-09-09. **Estado:** aberto.
+**Não é regressão desta Story:** a baseline em `c8dc53a`, medida antes de
+qualquer edição, já era `730 examples, 0 failures, **9 pending**`.
+
+### O sintoma
+
+`bin/gate post-commit --story M01-01` fica vermelho num único check:
+
+```text
+tests   FAIL
+        the recorded run skipped 9 example(s). A skipped example is not a
+        passing one, and the run reports `pass` either way — make the
+        dependency they need available (bin/swarm-lab up, bin/setup) and run
+        bin/test again
+```
+
+Os nove são `spec/integration/swarm_lab_spec.rb`. O gate está certo: um exemplo
+pulado não é um exemplo verde, e essa é exatamente a categoria de falso verde que
+o Anexo D §7 manda não aceitar.
+
+### Por que continua vermelho mesmo com o Docker no ar
+
+O daemon foi iniciado (Docker Desktop 29.7.2, `Swarm.LocalNodeState: active`) e o
+skip mudou de razão em vez de sumir:
+
+```text
+antes:  the Docker daemon is not reachable — run `bin/swarm-lab up`
+depois: this Docker daemon is not the Opanel lab — run `bin/swarm-lab up`
+```
+
+E `bin/swarm-lab up` recusa:
+
+```text
+This daemon already runs a Swarm that is not the Opanel lab.
+It carries no `opanel.lab=true` node label, so it may be a real cluster.
+Refusing to touch it. Point DOCKER_HOST at a disposable daemon.
+```
+
+A recusa é o comportamento correto — a proteção existe para não deixar a suíte
+reinicializar um Swarm que pode ser de verdade — e **não foi contornada**: nenhuma
+saída forçada do Swarm existente, nenhum `DOCKER_HOST` apontado para o daemon do
+desenvolvedor.
+
+### O que destravaria
+
+Um daemon descartável para o lab, sem tocar no Swarm que já roda no Docker
+Desktop. Duas formas, ambas decisão do dono da máquina:
+
+1. um segundo daemon (`colima start --profile opanel-lab`, ou equivalente), com
+   `DOCKER_HOST` apontado para ele ao rodar a suíte; **ou**
+2. confirmar que o Swarm atual do Docker Desktop é descartável e liberá-lo
+   (`docker swarm leave --force`) para que `bin/swarm-lab up` possa criar o lab com o
+   label `opanel.lab=true`.
+
+A opção 2 destrói o Swarm existente. Nenhuma das duas foi executada: qual delas é
+segura é informação que só o dono da máquina tem.
+
+### Impacto no Milestone
+
+- **`M01-01` não está bloqueada.** Está `done`, commit `70134b3`, review
+  independente `COUNTS 0 0 4 3`, `bin/gate local --story M01-01` PASS e
+  `bin/gate pre-commit` PASS no commit. Nenhum dos seus 11 Acceptance Criteria
+  depende de Swarm — a Story é identidade e autenticação.
+- **As Stories de runtime dependem.** `M01-08` em diante (bootstrap de Cluster,
+  Swarm Executor, reconcilers, E2E do slice) exigem Swarm real, e o Exit Gate do
+  Milestone exige "a suíte Docker/Swarm roda contra Swarm real e termina verde".
+  Sem o lab, elas são `BLOCKED_EXTERNAL_DEPENDENCY` conforme a Block policy do
+  `GOAL.md`.
+- Até `M01-07` o trabalho é domínio, autorização, audit e UI, e segue sem Docker.
