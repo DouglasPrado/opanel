@@ -64,6 +64,32 @@ re-entrant suites) and `--parallel` (one database per worker). `bin/gate
 pre-commit` uses the fast path and says why in a comment. **`bin/gate local` uses
 neither** — it calls `bin/test --changed` and nothing else.
 
+## Já entregue antes desta Story começar no loop
+
+Metade do escopo foi feita interativamente em `70c7f7e`, e está medida:
+
+| | |
+|---|---|
+| `bin/gate local` | 462 s → **239 s** |
+| `spec/gates` | 303 s → **83 s** |
+| Exemplos | 261, 0 falhas, nenhum removido |
+
+Como: `bin/gate` ganhou `--only` (que o `bin/stop-gate` já tinha), e os dois
+exemplos mais caros passaram a provar seu check sem pagar pelos outros sete —
+`no-stray-files` de 123,6 s para 0,26 s, e o de secret staged usando
+`bin/security --staged`, que é o escopo que ele de fato planta.
+
+**O que falta, e por que o critério 1 ainda não é atingido.** `--parallel` leva a
+suíte de 193 s para 88 s e deixa **cinco specs vermelhos**:
+`spec/security/production_logging_spec.rb` sobe a aplicação em modo produção e
+quatro dos seus exemplos colidem entre workers; o quinto é o scan de histórico de
+`spec/security/security_scan_spec.rb`. A suíte não é segura em paralelo, e um
+gate mais rápido que reporta falha falsa é pior que um lento — ensina a ignorar
+vermelho.
+
+Tornar esses specs paralelos é o que resta. `bin/gate` registra isso em
+comentário no lugar onde a decisão foi tomada.
+
 ## Scope
 
 **1 — Prove the gates against a fixture repository, not this one.**

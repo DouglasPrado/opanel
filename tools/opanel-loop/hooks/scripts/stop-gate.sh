@@ -82,9 +82,13 @@ fi
 # budgeted for and the state is clean between Stories.
 MAX_PER_RUN="${OPANEL_MAX_STORIES_PER_RUN:-0}"
 if [ "$MAX_PER_RUN" -gt 0 ]; then
-  DONE_THIS_RUN="$(jq --arg s "$(jq -r '.run.startedAt // ""' "$MDIR/tasks.json")" \
-    '[.stories[] | select(.status == "done")] | length' "$MDIR/tasks.json" 2>/dev/null || echo 0)"
-  if [ "$DONE_THIS_RUN" -ge "$MAX_PER_RUN" ]; then
+  # Counted against the baseline `run-start` recorded, not against every Story
+  # the Milestone ever closed. The first version read `startedAt` and then
+  # counted all `done` stories anyway, so a Milestone with work already behind it
+  # stopped immediately — the flag did not do what its name says.
+  BASELINE="$(jq -r '.run.doneAtStart // 0' "$MDIR/tasks.json" 2>/dev/null || echo 0)"
+  DONE_NOW="$(jq '[.stories[] | select(.status == "done")] | length' "$MDIR/tasks.json" 2>/dev/null || echo 0)"
+  if [ "$((DONE_NOW - BASELINE))" -ge "$MAX_PER_RUN" ]; then
     stop_now
   fi
 fi

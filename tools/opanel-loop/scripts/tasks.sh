@@ -166,7 +166,9 @@ cmd_active() {
 # rather than inheriting an exhausted one.
 cmd_run_start() {
   with_lock "$LOCK" write_json "$TASKS" \
-    '.run = {startedAt: $now, turns: 0}' --arg now "$(now_utc)"
+    '.run = {startedAt: $now, turns: 0,
+             doneAtStart: ([.stories[] | select(.status == "done")] | length)}' \
+    --arg now "$(now_utc)"
   printf 'run started %s\n' "$(now_utc)"
 }
 
