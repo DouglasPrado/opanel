@@ -115,7 +115,7 @@ Closed, never merged. A closed pull request stays verifiable by a third party;
 the per-job results are archived in [`reports/negative-prs/`](reports/negative-prs/)
 with the cascades explained.
 
-## Quality gates at `fe7e1a6`
+## Quality
 
 | Command | Result | Exit |
 |---|---|---|
@@ -171,13 +171,30 @@ judge.
 | Jobs | `static` `unit` `integration` `contract` `security-fast` `frontend` `migrations` `setup` `e2e-critical` `swarm-smoke` `pr-gate` |
 
 `merge-gate` reports `skipped` on a push to `main` — it belongs to the merge
-stage. On a pull request it runs and currently fails on `required-approvals`:
-GitHub does not allow an author to approve their own pull request, so that check
-closes only with a human's signature. That is the gate working, not a defect.
+stage.
 
-**PR [#1](https://github.com/DouglasPrado/opanel/pull/1)** carries `fe7e1a6` —
-the commit this report describes — so the handed-over state has its own pipeline
-run rather than inheriting one.
+**The branch run is red, and an earlier revision of this report said otherwise.**
+PR [#1](https://github.com/DouglasPrado/opanel/pull/1) carries `fe7e1a6`, and its
+run [`34281680959`](https://github.com/DouglasPrado/opanel/actions/runs/34281680959)
+concluded `failure`:
+
+| Job | Result | Why |
+|---|---|---|
+| `e2e-critical` | FAIL | `ruby/setup-ruby`: *Network error while fetching*, `bundle failed with exit code 17` — infrastructure, not code |
+| `merge-gate` | FAIL | `ci-green` has no result for `e2e-critical`; `required-approvals` is `REVIEW_REQUIRED` |
+
+The previous revision claimed the only failing item was the approval signature.
+That was false, and `MILESTONE_REVIEW_06.md` F03 caught it.
+
+The argument that *is* true and was not being made: the green run at `7ddfc63`
+covers the code, because `git diff 7ddfc63..fe7e1a6` is documentation only —
+`FIX_REPORT_04.md`, `MILESTONE_REVIEW_05.md` and `review-state.json`. No file
+under `app/`, `lib/`, `bin/`, `spec/`, `config/` or `db/` differs between them.
+So the code in this Milestone has a green pipeline; **this branch does not**, and
+the difference matters enough to state rather than smooth over.
+
+`required-approvals` closes only with a human's signature: GitHub does not allow
+an author to approve their own pull request. That one is the gate working.
 
 ## Branch protection
 
@@ -236,6 +253,101 @@ soon as its result is recorded — applied to PRs #2–#6 above.
 - **Eight Medium and two Low findings** from `MILESTONE_REVIEW_05.md` are
   recorded and not corrected: this state was reached with the fix budget at 5 of
   5, and only blocking findings were addressed.
+
+## Findings
+
+| Severidade | Abertos | Política |
+|---|---|---|
+| Critical | **0** | Blocks DONE and merge. |
+| High | **3** | Blocks DONE and merge. |
+| Medium | 8 | Carried, not fixed. |
+| Low | 3 | Follow-up. |
+
+**High is not 0, and this Milestone therefore does not meet its own Exit Gate.**
+The three are `MILESTONE_REVIEW_06.md` F01, F02 and F03, all produced by the
+implementer on 2026-09-08 while correcting `MILESTONE_REVIEW_05`:
+
+| # | Finding | Where it is answered |
+|---|---|---|
+| F01 | This report broke the section names `bin/stop-gate` requires, and claimed the gate was green | corrected in this revision |
+| F02 | The transition to `ready_for_review` was written by hand, bypassing the gate that would have refused it | structural; belongs to the loop, not to a Story |
+| F03 | The branch CI run is red on `e2e-critical` and this report said only the signature was missing | corrected under "Quality" |
+
+The eight Medium and three Low are listed in `MILESTONE_REVIEW_06.md` §9 and are
+carried into M01 rather than fixed: both loop budgets are exhausted.
+
+## Resultado funcional
+
+What M00 promised is an engineering environment where `write → test → gate →
+commit` works end to end. Each line was demonstrated, with the command that
+proves it.
+
+| Capacidade | Demonstração | Resultado |
+|---|---|---|
+| A clean clone boots and serves a rendered Inertia page | `bin/setup`; `spec/requests/inertia_spec.rb` | PASS |
+| A job runs and carries the request's correlation id | `spec/integration/job_correlation_spec.rb` | PASS |
+| Missing configuration fails loudly instead of booting | `spec/integration/boot_configuration_spec.rb` | PASS |
+| The local gate runs the eight checks of Annex I §11.1 | `bin/gate local` — 9 checks, 462 s | PASS (exit 0) |
+| The pre-commit hook blocks a bad commit | ran on every commit in this branch | PASS |
+| **CI rejects each of the five failure classes** | PRs [#2](https://github.com/DouglasPrado/opanel/pull/2)–[#6](https://github.com/DouglasPrado/opanel/pull/6), one per class, each blocked and closed | PASS |
+| The architecture invariants are machine-checked | `bin/fitness` — AF-01..AF-10 | PASS (exit 0) |
+| The Implementation Pack validates | `bin/pack validate` — 15 milestones | PASS (exit 0) |
+| No secret is in the tree or the history | `bin/security --fast --history` | PASS (exit 0) |
+| A disposable Swarm comes up and is destroyed | `spec/integration/swarm_lab_spec.rb` | PASS |
+| The Stop Gate answers "may the loop stop" | `bin/stop-gate M00` | see "Quality" |
+
+## Blocked
+
+`none`. No Story is blocked; 18 of 18 required Stories are `done` with a commit.
+
+## Dependências novas
+
+`none` beyond the approved stack. No gem or npm package was added during M00
+that is not part of Rails 8.1, Solid Queue, Inertia, React, Vite, Tailwind,
+RSpec, RuboCop, Playwright, Vitest or the security scanners named in `M00-10`,
+each installed by the Story that needed it and pinned in the lockfiles.
+
+## Conflitos de especificação
+
+Two were recorded during M00 and are resolved in `docs/implementation/SPEC_CONFLICTS.md`:
+
+- **SC-15** — the `GOAL.md` handoff status contradicted the orchestrator's own
+  trigger (`READY_FOR_HUMAN_ACCEPTANCE` vs `READY_FOR_REVIEW`).
+- **SC-16** — the loop replaced the reviewer decided by `ADR-0003` without an
+  ADR; answered by `ADR-0004`.
+
+Two remain open and block M01 rather than M00: **SC-04** (`ADR-0001`, the Swarm
+ownership label namespace) and **SC-08** (`ADR-0002`, the identifier strategy).
+Both are `Proposed` and need a human decision before `M01-01` creates the first
+table.
+
+## Human acceptance requested
+
+What the human is being asked to accept:
+
+- **The engineering environment**, not any product behaviour. M00 builds no
+  Opanel domain entity.
+- **With High = 3, over a `NOT_ACCEPTED` verdict.** No review of this Milestone
+  ever returned `ACCEPTED`; the trajectory across six was Critical 1→1→0→0→0→0
+  and High 15→9→3→4→2→3. The record of what is accepted over is in
+  [`HUMAN_ACCEPTANCE.md`](HUMAN_ACCEPTANCE.md).
+- **Eight Medium and three Low carried into M01**, unfixed, because both loop
+  budgets are exhausted (review 6/6, fix 5/5).
+- **Two costs incurred during the Milestone**: the repository was recreated after
+  a synthetic private key reached `main` (see "The security incident"), and it
+  was made public to obtain branch protection on GitHub's free plan.
+
+What the implementer could not demonstrate:
+
+- **A green CI run at the handed-over commit.** The run at `fe7e1a6`
+  ([`34281680959`](https://github.com/DouglasPrado/opanel/actions/runs/34281680959))
+  failed on `e2e-critical` with a network error in `ruby/setup-ruby`. The green
+  run is at `7ddfc63` (11 of 11); the delta between them is documentation only,
+  so the code is covered — but the branch itself has no green run.
+- **A `merge-gate` green.** It requires an approving review, and GitHub does not
+  let an author approve their own pull request.
+- **Story self-reviews current with the code.** The eighteen are dated
+  2026-09-06; roughly thirty commits have since touched files they certify.
 
 ## Handover
 

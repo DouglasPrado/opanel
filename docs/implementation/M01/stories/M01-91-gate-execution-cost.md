@@ -1,4 +1,4 @@
-# M01-00 — Bring the local gate back inside its budget
+# M01-91 — Bring the local gate back inside its budget
 
 ## Objective
 Cut `bin/gate local` from 462 s to under 90 s without removing a single check, by
@@ -20,7 +20,7 @@ is that running them costs a minute rather than eight.
 ## Preconditions
 M00 accepted. This Story edits `bin/gate*` and `spec/gates/`, which no Story may
 touch from inside the work those gates judge — hence a Story of its own, and the
-reason it is numbered before M01-01 rather than folded into it.
+reason it is numbered outside the Milestone's own range rather than folded into it.
 
 ## The measurement this Story starts from
 
