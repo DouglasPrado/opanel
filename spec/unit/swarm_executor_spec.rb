@@ -280,6 +280,18 @@ logger: logger)
       expect(client.calls.map(&:first)).not_to include("POST")
     end
 
+    # Review L-1 (round 2): the guard in `find_by_label` was real and untested —
+    # reverting it failed nothing. A create with an id that is not a runtime
+    # identifier must be refused before the label lookup, with no call made.
+    it "refuses to look up by a resource id that is not a runtime identifier, before any call" do
+      client = ScriptedClient.new("GET /services?" => response(200, []))
+      ex = described_class.new(client: client, engine: engine, logger: logger)
+
+      expect { ex.execute(command("create_service", id: "svc/../networks?x=1", image: "img")) }
+        .to raise_error(ExecutorCommand::Invalid, /not a runtime identifier/)
+      expect(client.calls).to be_empty
+    end
+
     it "looks up by the resource label, not by name" do
       client = ScriptedClient.new("GET /services?" => response(200, []),
         "POST /services/create" => response(201, "ID" => "s1"), "GET /services/s1" => response(200, SERVICE))

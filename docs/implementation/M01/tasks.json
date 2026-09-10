@@ -207,7 +207,8 @@
       "blockedReason": {
         "qualifier": "BLOCKED_FOR_PRODUCT_DECISION",
         "diagnosis": "SC-19: o executor e modulo dentro do processo Rails que serve a API publica; o doc 07 §2.2 desenha servico separado por RPC autenticado. Sem ADR a Story nao pode vencer a arquitetura. Implementado, testado contra Engine real, gate verde, revisao rodada 2 COUNTS 1 0 0 1 (o Critical e este). Decisao do dono: ADR aceitando o modulo em M01 e nomeando quando vira servico, ou ADR exigindo o servico agora. Detalhe em BLOCKERS.md e SPEC_CONFLICTS.md SC-19."
-      }
+      },
+      "commit": "3d48345"
     },
     {
       "id": "M01-10",
