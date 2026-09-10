@@ -23,8 +23,12 @@ module Opanel
     # assert every one of them (Annex H §4.1), which is why each reads a file, a
     # commit or an exit code instead.
     module PostCommit
+      # `pre-commit-executed` was here until ADR-0008. It existed to catch a
+      # bypass of the pre-commit hook, and with the hook out of the commit path
+      # there is no bypass to catch — it would have failed every commit, which is
+      # trading one lock for another rather than removing one.
       CHECKS = %w[
-        diff-review acceptance-mapping reviewer-findings fitness tests state pre-commit-executed
+        diff-review acceptance-mapping reviewer-findings fitness tests state
       ].freeze
 
       # Named by stable path, so a red check says what to write rather than only
@@ -66,7 +70,6 @@ module Opanel
         when "fitness" then fitness(root)
         when "tests" then tests(story, root)
         when "state" then state(story, root)
-        when "pre-commit-executed" then pre_commit_executed(root)
         else failed("unknown check: #{check} (expected #{CHECKS.join(', ')})")
         end
       end

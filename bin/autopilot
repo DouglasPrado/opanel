@@ -27,6 +27,9 @@ MIN_SESSION_SECONDS=60
 MAX_SHORT_RUNS=3
 short_runs=0
 
+# Minutes without a single file written before the session counts as hung.
+HANG_MINUTES="${OPANEL_HANG_MINUTES:-20}"
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --max-sessions) MAX_SESSIONS="$2"; shift ;;
@@ -90,7 +93,40 @@ while :; do
   started_at=$(date +%s)
   claude -p "Invoke the opanel-loop autopilot skill and follow it exactly: run the Opanel Milestone chain unattended. There is nobody to answer a question, so do not ask one — arbitrate as the skill instructs." \
     --dangerously-skip-permissions \
-    >>"$RUN_LOG" 2>&1
+    >>"$RUN_LOG" 2>&1 &
+  session_pid=$!
+
+  # The watchdog. A session that stops writing has stopped working, whatever its
+  # process table says.
+  #
+  # On 2026-09-10 a Docker daemon stopped answering and `bin/gate local` sat at
+  # 0% CPU for 1 h 40 min. Nothing noticed: the suite budget is asserted after a
+  # run, the turn budget counts turns and no turn was completing, and the guard
+  # below only catches a session that ends *too fast*. A session that never ends
+  # was the one shape with no detector at all.
+  #
+  # Progress is measured as a file written under the directories the work
+  # touches. A session mid-thought writes nothing for a minute; none writes
+  # nothing for twenty.
+  while kill -0 "$session_pid" 2>/dev/null; do
+    sleep 60
+    kill -0 "$session_pid" 2>/dev/null || break
+    if [ -z "$(find app lib spec docs bin config db tmp/test-results \
+                 -type f -mmin -"$HANG_MINUTES" 2>/dev/null | head -1)" ]; then
+      say "no file written in ${HANG_MINUTES}m — the session is hung, killing it"
+      kill "$session_pid" 2>/dev/null
+      sleep 2
+      # Its children outlive it: the gate, the parallel workers, and whatever
+      # they are blocked on. Left behind, they stack up run after run and
+      # compete for the same database.
+      pkill -f "bin/gate local" 2>/dev/null
+      pkill -f "parallel_test" 2>/dev/null
+      pkill -f "vendor/bundle/ruby/.*/bin/rspec" 2>/dev/null
+      break
+    fi
+  done
+
+  wait "$session_pid" 2>/dev/null
   rc=$?
   elapsed=$(( $(date +%s) - started_at ))
 

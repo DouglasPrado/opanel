@@ -69,3 +69,40 @@ Regra a partir daqui: **nenhum gate novo sem ADR**, e nenhum sem dizer qual sai.
 Fora de um run — sem `.backlog-active` na raiz. `guard-edit.sh` libera esses
 caminhos quando o arquivo não existe, e aí é trabalho humano-dirigido comum: um
 commit por item, com o motivo.
+
+### GM-05 — a seleção de specs relacionados não estreita
+
+`RelatedSpecs::AREAS` mapeia áreas para diretórios inteiros. Medido:
+
+```
+app/models/authentication_attempt.rb  ->  1 spec nomeado          (o spec existe)
+app/models/project.rb                 ->  spec/unit + spec/integration
+app/models/cluster.rb                 ->  spec/unit + spec/integration
+bin/gate                              ->  spec/gates inteiro
+```
+
+Um model sem spec homônimo cai no fallback de área e arrasta duas suítes. Na
+`M01-11` isso deu **77 arquivos de spec** selecionados para uma story de uma
+entidade. É a causa real do custo — o [`ADR-0008`](../decisions/ADR-0008-pre-commit-out-of-the-commit-path.md)
+tirou o gate do caminho do commit, o que contorna o sintoma e não corrige isto.
+
+Duas saídas, e a segunda tem troca:
+
+1. dar spec homônimo aos models que não têm — sem perda de cobertura;
+2. estreitar o próprio fallback (por exemplo, specs que referenciam a constante).
+   Isso contraria o que o [`ADR-0006`](../decisions/ADR-0006-incremental-story-gates.md)
+   decidiu — "classe sem spec mapeado, rode a classe inteira" — e custa cobertura
+   de specs que exercitam a classe sem nomeá-la. Precisa emendar aquele ADR.
+
+### GM-06 — o Stop hook sequestra qualquer sessão do repositório
+
+`stop-gate.sh` age quando `.backlog-active` existe, sem verificar **qual** sessão
+está falando. Uma sessão interativa aberta no mesmo repositório durante um run
+recebe "Story X is still open. Close it" e é empurrada a escrever na story que a
+sessão do autopilot já está escrevendo — dois escritores no mesmo `tasks.json` e
+nos mesmos arquivos.
+
+Aconteceu em 2026-09-10. A saída foi remover o `.backlog-active` à mão.
+
+O arquivo deveria registrar o PID (ou o session id) do dono, e o hook sair
+silenciosamente quando quem para não é ele.
