@@ -240,6 +240,49 @@ Complementa — não substitui — [`docs/decisions/pending-documentation-update
   fechar o AC5 da `M01-07` — o bloqueio de arquivamento com Environment ativo,
   com o caso negativo plantado — junto com os critérios próprios dela.
 
+## SC-19 — o Swarm Executor como módulo do processo do Control Plane × serviço separado por RPC (doc 07 §2.2)
+
+- **Documentos envolvidos:** `docs/architecture/07-internal-control-plane.md`
+  §2.2 (diagrama: `API / Workers --[internal authenticated RPC]--> Swarm
+  Executor --[docker.sock]--> Docker Engine`, com `Public API ---X---> docker.sock`
+  marcado como proibido, e réplicas do executor "para disponibilidade") e §21
+  ("RPC interno autenticado e autorizado por identidade de serviço"); contra
+  `docs/implementation/M01/stories/M01-09-swarm-executor.md` §Scope ("Módulo
+  `app/executors/` como único boundary") e §Application Layer ("Ele também não
+  recebe requisição pública diretamente").
+- **Situação:** a `M01-09` entregou o executor como módulo Ruby dentro do único
+  processo Rails (`config/application.rb`), o mesmo que serve
+  `app/controllers/**`. Não há segundo processo, Procfile de executor nem RPC.
+  "Nenhuma rota alcança o executor" (AC1/AC10) é verdadeiro e provado; o que
+  **não** existe é a fronteira de processo que o diagrama desenha. A revisão
+  independente (C-1) apontou: uma RCE em qualquer outro lugar do mesmo processo
+  alcança `SwarmExecutor`/`EngineClient` sem nenhum salto de RPC a vencer.
+- **Impacto:** arquitetura e segurança, num componente Tier-0 (Anexo C §8, T01
+  CRITICAL). Não é impacto comportamental hoje — todo teste da Story passa e a
+  superfície de rota é a que a Story pede — mas é a forma que a arquitetura
+  aprovada proíbe, e o `AGENT_RULES` é explícito: a Story não pode contradizer a
+  arquitetura, e um conflito de segurança "nunca é resolvido inventando um novo
+  padrão".
+- **Como apareceu:** a `M01-09` registrou a divergência no relatório como "de
+  forma, não de invariante" e seguiu, citando o próprio §Scope da Story. A
+  revisão discordou, com razão: a precedência é arquitetura → Story, e não há ADR.
+- **Resolução aplicada:** `open`. O módulo fica como está — é o que o AF-02 varre
+  e o que as Stories seguintes (`M01-17`, `M01-18`) consomem — e a `M01-09` fica
+  `blocked` até a decisão. Não foi construído um segundo processo com RPC
+  autenticado por identidade de serviço dentro da Story: isso é topologia de
+  deployment (imagem mínima, rootfs read-only, usuário do grupo do socket, rede
+  overlay privada) que nenhuma Story do M01 declara, e fazê-lo aqui seria
+  exatamente o padrão inventado.
+- **Decisão que falta ao dono do repositório:**
+  1. **ADR** aceitando o executor como módulo in-process em M01 e nomeando a
+     Story/Milestone que o separa em serviço com RPC (a mitigação de T01 fica
+     parcial até lá: rota ausente, allowlist, sem exec — mas sem fronteira de
+     processo); ou
+  2. **ADR** exigindo o serviço separado já, com a Story que o entrega antes de
+     `M01-17`/`M01-18` consumirem o módulo.
+  Enquanto nenhuma for tomada, o executor existe, está testado contra o Engine
+  real, e é o que o AF-02 permite — e a Story não fecha.
+
 ## SC-13 — Referências informativas sem conflito
 
 Registradas para evitar releitura como pendência. **Nenhuma ação necessária.**

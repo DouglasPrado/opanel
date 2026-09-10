@@ -492,3 +492,25 @@ boundaries:
     - spec/integration/test_harness_spec.rb
     - docs/implementation/M01/stories/M01-92-*.md
 
+  # O Swarm Executor: o único boundary autorizado a falar com a Docker Engine
+  # API (AF-02), com operações tipadas e allowlistadas e nenhuma primitive
+  # genérica. Fala HTTP pelo socket unix, porque a CLI não aceita versão
+  # esperada em `service update` e sem isso não existe CONFLICT de verdade.
+  M01-09:
+    - app/executors/**
+    # Redação de logs: o executor reusa `Opanel::Redaction`, que hoje não cobre
+    # `X-Registry-Auth` nem join tokens; acrescentar padrões fortalece, não
+    # afrouxa.
+    - lib/opanel/redaction.rb
+    # Testes.
+    - spec/unit/swarm_executor_spec.rb
+    - spec/unit/engine_client_spec.rb
+    - spec/unit/redaction_spec.rb
+    - spec/contracts/executor_contract_spec.rb
+    - spec/integration/swarm_executor_lab_spec.rb
+    - spec/security/executor_isolation_spec.rb
+    # O executor como módulo in-process contradiz o diagrama do doc 07 §2.2; a
+    # revisão (C-1) chamou de conflito de arquitetura, e é. Registrado como
+    # SC-19 em vez de resolvido por um padrão inventado.
+    - docs/implementation/SPEC_CONFLICTS.md
+

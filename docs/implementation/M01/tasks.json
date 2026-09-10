@@ -45,7 +45,8 @@
       "blockedReason": {
         "qualifier": "BLOCKED_FOR_HUMAN_APPROVAL",
         "diagnosis": "ACs 2,5,6,7,9 vivem num patch para lib/gates/post_commit.rb e bin/gate, que o guard-edit nega ao implementer. Patch validado e reproduzido em reports/M01-92.md; comando em BLOCKERS.md. Metade permitida feita, revisada (rodada 2 COUNTS 1 0 0 0) e commitada."
-      }
+      },
+      "commit": "87a0cdc"
     },
     {
       "id": "M01-01",
@@ -191,12 +192,22 @@
     {
       "id": "M01-09",
       "file": "stories/M01-09-swarm-executor.md",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [
         "M01-08"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 2,
+      "required": true,
+      "review": {
+        "critical": 1,
+        "high": 0,
+        "medium": 0,
+        "low": 1
+      },
+      "blockedReason": {
+        "qualifier": "BLOCKED_FOR_PRODUCT_DECISION",
+        "diagnosis": "SC-19: o executor e modulo dentro do processo Rails que serve a API publica; o doc 07 §2.2 desenha servico separado por RPC autenticado. Sem ADR a Story nao pode vencer a arquitetura. Implementado, testado contra Engine real, gate verde, revisao rodada 2 COUNTS 1 0 0 1 (o Critical e este). Decisao do dono: ADR aceitando o modulo em M01 e nomeando quando vira servico, ou ADR exigindo o servico agora. Detalhe em BLOCKERS.md e SPEC_CONFLICTS.md SC-19."
+      }
     },
     {
       "id": "M01-10",
@@ -349,7 +360,7 @@
   ],
   "run": {
     "startedAt": "2026-09-09T08:39:59Z",
-    "turns": 12,
+    "turns": 13,
     "doneAtStart": 1
   }
 }

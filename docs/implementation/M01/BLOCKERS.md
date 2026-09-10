@@ -404,3 +404,26 @@ bin/test && git commit  ...  && bin/gate post-commit --story M01-92   # sem roda
 
 Depois disso a Story fecha com os cinco critérios provados, ou não fecha com
 evidência do porquê.
+
+
+---
+
+## M01-09 — o executor vive no processo do Control Plane, e a arquitetura desenha outro processo
+
+**Estado:** `BLOCKED_FOR_PRODUCT_DECISION`. Implementado, testado contra o Engine
+real (7 exemplos), gate local verde, revisão rodada 1 `COUNTS 1 1 1 1` com High,
+Medium e Low fechados na rodada 2. O Critical restante é **SC-19**: o doc 07
+§2.2 põe o Swarm Executor num processo separado atrás de RPC autenticado, e a
+Story pediu — e recebeu — um módulo dentro do processo Rails. Não há ADR, e a
+Story não pode vencer a arquitetura.
+
+**O que não vai ser feito sem decisão:** um segundo processo com RPC por
+identidade de serviço, imagem mínima e rede privada. É topologia que nenhuma
+Story do M01 declara; construir isso "para fechar" seria o padrão inventado que
+o `AGENT_RULES` proíbe em conflito de segurança.
+
+**Decisão que só o dono pode tomar:** ADR aceitando o módulo in-process em M01
+(nomeando quando ele vira serviço), ou ADR exigindo o serviço agora com a Story
+que o entrega. As duas opções estão em `docs/implementation/SPEC_CONFLICTS.md`
+SC-19. Até lá `M01-17`/`M01-18` podem consumir o módulo — ele é o que o AF-02
+permite — mas a M01-09 não fecha.
