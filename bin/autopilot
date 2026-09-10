@@ -21,6 +21,12 @@ MAX_SESSIONS=0          # 0 = unlimited
 DRY_RUN=0
 LOG_DIR="tmp/autopilot"
 
+# A session shorter than this did no work. Starting the CLI, loading the plugin
+# and reading the state costs a few seconds; a Story costs minutes.
+MIN_SESSION_SECONDS=60
+MAX_SHORT_RUNS=3
+short_runs=0
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --max-sessions) MAX_SESSIONS="$2"; shift ;;
@@ -66,24 +72,46 @@ while :; do
     break
   fi
 
-  # A fresh session every time. `/autopilot` rebuilds state from the repository,
+  # A fresh session every time. The skill rebuilds state from the repository,
   # which is the only thing that survives a restart honestly — never --continue,
   # because resuming a summarised context is how a loop starts believing things
   # the repository does not say.
+  #
+  # Asked in prose rather than as `/autopilot`. The skill belongs to a plugin, so
+  # its slash form is `/opanel-loop:autopilot`, and the bare name produced
+  # `Unknown command: /autopilot` — a session that exits in three seconds having
+  # done nothing. Prose degrades gracefully: if the name ever changes, the model
+  # still finds the skill instead of failing silently.
   #
   # Permissions are skipped because there is nobody to answer a prompt. The
   # guards are still in force: guard-bash.sh and guard-edit.sh are PreToolUse
   # hooks, and a hook `deny` is not a permission prompt — it refuses regardless
   # of this flag.
-  claude -p "/autopilot" \
+  started_at=$(date +%s)
+  claude -p "Invoke the opanel-loop autopilot skill and follow it exactly: run the Opanel Milestone chain unattended. There is nobody to answer a question, so do not ask one — arbitrate as the skill instructs." \
     --dangerously-skip-permissions \
     >>"$RUN_LOG" 2>&1
   rc=$?
+  elapsed=$(( $(date +%s) - started_at ))
 
-  say "session $session ended (exit $rc)"
+  say "session $session ended (exit $rc) after ${elapsed}s"
 
-  # A session that dies instantly, repeatedly, is a broken setup rather than a
-  # long run. Backing off keeps a misconfiguration from burning the night.
+  # A session that returns in seconds did no work, whatever it exited with. The
+  # first version only backed off on a non-zero exit, so a misconfiguration that
+  # exited 0 spun as fast as the CLI could start — nine sessions in twenty
+  # seconds. Exit code is not the signal; elapsed time is.
+  if [ "$elapsed" -lt "$MIN_SESSION_SECONDS" ]; then
+    short_runs=$((short_runs + 1))
+    say "session did no work (${elapsed}s < ${MIN_SESSION_SECONDS}s); $short_runs in a row"
+    if [ "$short_runs" -ge "$MAX_SHORT_RUNS" ]; then
+      say "stopping: $MAX_SHORT_RUNS sessions in a row did nothing. This is a broken setup, not a long run — read $RUN_LOG."
+      break
+    fi
+    sleep 30
+  else
+    short_runs=0
+  fi
+
   if [ "$rc" -ne 0 ]; then
     say "non-zero exit; backing off 60s before the next session"
     sleep 60
