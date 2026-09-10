@@ -449,6 +449,11 @@ boundaries:
     # estava coberta só de través, e as duas regressões achadas rodando-a de
     # verdade (relógio, volume errado) merecem teste direto.
     - spec/unit/system_probe_spec.rb
+    # Fora do trabalho desta Story, e declarado por isso mesmo: a entrada do pack
+    # para a `M01-92` foi escrita durante a M01-08 por instrução do operador e
+    # entrou neste commit. Um boundary alargado depois do fato só descreve o que
+    # aconteceu — é exatamente isso, dito em voz alta, em vez de escondido.
+    - docs/implementation/M01/stories/M01-92-*.md
     # A lista transcrita de motivos de negação, como a de ações de audit: existe
     # para que acrescentar um motivo custe uma mudança deliberada em dois
     # lugares, e esta Story acrescenta `instance_role_required`.
@@ -456,6 +461,10 @@ boundaries:
     - spec/unit/cluster_status_spec.rb
     - spec/integration/cluster_bootstrap_spec.rb
     - spec/integration/swarm_bootstrap_lab_spec.rb
+    # A verificação do init real, fora do padrão `_spec.rb` de propósito: precisa
+    # de um daemon sem Swarm, que só um operador pode produzir, e um skip não é
+    # um pass para o post-commit.
+    - spec/integration/swarm_init_verification.rb
     - spec/policies/cluster_policy_spec.rb
     - spec/policies/cross_team_mutations_spec.rb
     - spec/requests/clusters_spec.rb

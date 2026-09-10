@@ -142,107 +142,12 @@ RSpec.describe "the Swarm bootstrap, against a real Engine", :swarm, :integratio
     end
   end
 
-  # AC1 — the branch that runs `SwarmBootstrap.init` against a real Engine.
-  #
-  # ## It is not covered here, and this says so rather than pretending
-  #
-  # Initialising needs a daemon that is **not** already in a Swarm, and the only
-  # way to produce one from here is to take this daemon out of its own. That is a
-  # destructive operation on the developer's machine, and the workspace guardrail
-  # denies it — correctly, and by design: `AGENT_RULES` puts destructive Docker
-  # operations behind an explicit human gate, and an agent may not route around a
-  # hook that enforces one.
-  #
-  # An earlier version of this file tried anyway, with the teardown in an `around`
-  # hook. It did not work, and **it did not fail either**: RSpec runs `before`
-  # hooks inside an `around`, so the global `:swarm` guard saw a daemon that had
-  # just left its Swarm, could not read the lab label off a node that no longer
-  # existed, and skipped. Both examples reported as pending for a reason that had
-  # nothing to do with the opt-in they documented, and the Story report claimed
-  # the path was "proved on demand" while nothing had ever invoked it. The
-  # independent review caught that by running the opt-in and watching the skip.
-  #
-  # ## What does cover the branch, and what does not
-  #
-  # `spec/integration/cluster_bootstrap_spec.rb` exercises every decision around
-  # the call — that it is reached only on an inactive daemon, with the operator's
-  # chosen address, that the Swarm id is read back rather than parsed out of the
-  # output, and that a failure during it is classified — against a stand-in
-  # Engine. What is **not** proved is that a real `docker swarm init` accepts
-  # those arguments and answers as expected.
-  #
-  # Closing that needs one human command, and then this suite has an inactive
-  # daemon to work with:
-  #
-  #     bin/swarm-lab down && bundle exec rspec spec/integration/swarm_bootstrap_lab_spec.rb
-  #     bin/swarm-lab up
-  #
-  # The example below runs when it finds one, and is skipped — never reported as
-  # passing (Annex D §7) — when it does not.
-  # `swarm: false` un-tags this block, and that is the whole trick.
-  #
-  # The global `:swarm` guard identifies the lab by a **node label**, and a node
-  # label needs a node, and a node needs a Swarm. A daemon that has left its Swarm
-  # therefore cannot be recognised as the lab — so under that tag these two
-  # examples skip for a reason that has nothing to do with them, which is exactly
-  # what the independent review caught. Their precondition is the absence of a
-  # Swarm; they cannot live under a guard that requires one.
-  #
-  # What replaces it is the same guarantee by the other route the lab itself uses:
-  # the **endpoint** must be a local socket, which `SwarmBootstrap` now refuses
-  # anything else. A daemon that is inactive, local, and that this repository was
-  # asked to initialise is as identified as an un-swarmed daemon can be.
-  describe "initialising an inactive daemon (AC1)", swarm: false do
-    let(:label) { Opanel::Gates::SwarmLab.label(Rails.root.to_s) }
-
-    before do
-      skip "the Docker daemon is not reachable — run `bin/swarm-lab up`." unless SwarmBootstrap.reachable?
-
-      if SwarmBootstrap.info.swarm_active?
-        skip "this daemon is already in a Swarm, and taking it out is a destructive operation " \
-             "this suite may not perform. Run `bin/swarm-lab down` first to cover this branch, " \
-             "then `bin/swarm-lab up` to restore the lab."
-      end
-    end
-
-    # One initialisation, and everything a real one has to be true about.
-    #
-    # Split in two, the second example could never run: the first takes the
-    # daemon it needed. Each `bin/swarm-lab down` buys exactly one initialisation,
-    # so both assertions are made about the same one — which is also honest, since
-    # they *are* two facts about a single `docker swarm init`.
-    it "turns an inactive daemon into a Swarm, registers its id, and leaks no join token" do
-      expect(SwarmBootstrap.info).to be_swarm_inactive
-
-      output = capture_log { @result = bootstrap(advertise_address: LAB_ADVERTISE_ADDRESS) }
-
-      # Label first: an assertion failure after this point must not leave the lab
-      # unidentifiable, which `assert_claimable!` would then refuse to reclaim.
-      if @result.success?
-        node = Opanel::Gates::SwarmLab.docker!("node", "inspect", "self", "--format", "{{.ID}}")
-        Opanel::Gates::SwarmLab.docker!("node", "update", "--label-add", "#{label}=true", node)
-      end
-
-      expect(@result).to be_success
-
-      cluster = @result.value.fetch(:cluster)
-      expect(cluster.swarm_id).to match(Cluster::SWARM_ID_FORMAT)
-      expect(cluster.swarm_id).to eq(SwarmBootstrap.info.swarm_id)
-      expect(cluster.advertise_address).to eq(LAB_ADVERTISE_ADDRESS)
-      expect(cluster.observed_at).to be_present
-      expect(SwarmBootstrap.info).to be_swarm_active
-
-      # AC10 against a real initialisation, which really does print a join token
-      # in its success message.
-      expect(output).not_to include("SWMTKN")
-      expect(AuditLog.all.map { |record| record.attributes.to_s }.join).not_to include("SWMTKN")
-
-      # The control: the daemon really does hold a token, so the absence above is
-      # the redaction working rather than a Swarm that has none.
-      expect(Opanel::Gates::SwarmLab.docker!("swarm", "join-token", "-q", "worker"))
-        .to start_with("SWMTKN")
-    end
-  end
+  # AC1 — the branch that runs `SwarmBootstrap.init` against a real Engine — is
+  # not in this file. It needs a daemon that is **not** in a Swarm, and every
+  # example here needs one that is; the two cannot share an automated run, and a
+  # skip is not a pass (`bin/gate post-commit` refuses a recorded skip). It lives
+  # in `spec/integration/swarm_init_verification.rb`, run by an operator after
+  # `bin/swarm-lab down`. See that file's header.
 
   private
 
