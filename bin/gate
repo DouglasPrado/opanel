@@ -82,7 +82,16 @@ frontend_changed() {
 
 # The tests applicable to what changed, in every language the change touched.
 check_related_tests() {
-  bin/test --changed --fast || return 1
+  # `--parallel` as well as `--fast`, and the two are unrelated: `--fast` drops
+  # the `:slow` gate suites (CI keeps them), `--parallel` runs what is left on
+  # one database per worker. The selection, the specs and the assertions are
+  # identical either way — this buys wall clock and nothing else.
+  #
+  # It was serial until now, which `bin/gate local` never was. The measurement
+  # that made it worth changing: a selection of 105 spec files and 1 638 examples
+  # took 273 s serially in this gate, while M01-91 measured the whole
+  # 1 735-example suite at ~490 s serial against 318.5 s over 10 workers.
+  bin/test --changed --fast --parallel || return 1
   frontend_changed || return 0
   bin/test:js
 }
