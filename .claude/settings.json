@@ -1,3 +1,6 @@
 {
-    "hooks": {}
+  "hooks": {},
+  "enabledPlugins": {
+    "opanel-loop@opanel": true
+  }
 }
