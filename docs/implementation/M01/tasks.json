@@ -218,7 +218,7 @@
     {
       "id": "M01-11",
       "file": "stories/M01-11-environment-entity.md",
-      "status": "fix_required",
+      "status": "done",
       "dependsOn": [
         "M01-07",
         "M01-08"
@@ -230,7 +230,8 @@
         "high": 0,
         "medium": 0,
         "low": 0
-      }
+      },
+      "commit": "5351f7c"
     },
     {
       "id": "M01-12",
@@ -240,7 +241,11 @@
         "M01-11"
       ],
       "attempts": 0,
-      "required": true
+      "required": true,
+      "blockedReason": {
+        "qualifier": "BLOCKED_FOR_HUMAN_APPROVAL",
+        "diagnosis": "Automatic attempt budget exhausted (3). Preserve findings and evidence; continue independent Stories. A human must authorize a new attempt budget."
+      }
     },
     {
       "id": "M01-13",
@@ -361,8 +366,8 @@
     }
   ],
   "run": {
-    "startedAt": "2026-09-10T17:25:58Z",
-    "turns": 23,
-    "doneAtStart": 12
+    "startedAt": "2026-09-10T19:01:08Z",
+    "turns": 1,
+    "doneAtStart": 13
   }
 }

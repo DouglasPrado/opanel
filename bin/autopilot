@@ -48,6 +48,16 @@ RUN_LOG="$LOG_DIR/$(date -u '+%Y%m%dT%H%M%SZ').log"
 
 say() { printf '[autopilot %s] %s\n' "$(date -u '+%H:%M:%SZ')" "$*" | tee -a "$RUN_LOG"; }
 
+# What the working directories look like right now: newest modification time and
+# file count, over the places work actually lands. Cheap, and it changes on any
+# write, create or delete — which is all the watchdog needs to answer "did this
+# session do anything since I last looked".
+repo_fingerprint() {
+  find app lib spec docs bin config db tmp/test-results -type f -newermt '-1 year' \
+    -exec stat -f '%m' {} + 2>/dev/null | sort -rn | head -1
+  find app lib spec docs bin config db -type f 2>/dev/null | wc -l
+}
+
 say "chain starting; log: $RUN_LOG"
 
 session=0
@@ -108,12 +118,31 @@ while :; do
   # Progress is measured as a file written under the directories the work
   # touches. A session mid-thought writes nothing for a minute; none writes
   # nothing for twenty.
+  # Progress is measured against a mark taken when this session started, never
+  # as "any write in the last N minutes".
+  #
+  # The first version asked exactly that, and it killed thirteen sessions in a
+  # row at the sixty-second mark: after an idle stretch the window is already
+  # empty when a session starts, so every session was declared hung before it
+  # had written its first file. The Stories those sessions opened burned an
+  # attempt each on the way out. A watchdog that cannot tell "not yet" from
+  # "never" is worse than none.
+  last_progress=$(date +%s)
+  mark="$(repo_fingerprint)"
+
   while kill -0 "$session_pid" 2>/dev/null; do
     sleep 60
     kill -0 "$session_pid" 2>/dev/null || break
-    if [ -z "$(find app lib spec docs bin config db tmp/test-results \
-                 -type f -mmin -"$HANG_MINUTES" 2>/dev/null | head -1)" ]; then
-      say "no file written in ${HANG_MINUTES}m — the session is hung, killing it"
+
+    now="$(repo_fingerprint)"
+    if [ "$now" != "$mark" ]; then
+      mark="$now"
+      last_progress=$(date +%s)
+      continue
+    fi
+
+    if [ "$(( $(date +%s) - last_progress ))" -ge "$((HANG_MINUTES * 60))" ]; then
+      say "nothing written in ${HANG_MINUTES}m of this session — it is hung, killing it"
       kill "$session_pid" 2>/dev/null
       sleep 2
       # Its children outlive it: the gate, the parallel workers, and whatever
@@ -136,7 +165,9 @@ while :; do
   # first version only backed off on a non-zero exit, so a misconfiguration that
   # exited 0 spun as fast as the CLI could start — nine sessions in twenty
   # seconds. Exit code is not the signal; elapsed time is.
-  if [ "$elapsed" -lt "$MIN_SESSION_SECONDS" ]; then
+  # `-le`, not `-lt`: the watchdog killed sessions at exactly 60s and the guard
+  # read 60 as long enough, so thirteen of them spun past a limit set at three.
+  if [ "$elapsed" -le "$MIN_SESSION_SECONDS" ]; then
     short_runs=$((short_runs + 1))
     say "session did no work (${elapsed}s < ${MIN_SESSION_SECONDS}s); $short_runs in a row"
     if [ "$short_runs" -ge "$MAX_SHORT_RUNS" ]; then
