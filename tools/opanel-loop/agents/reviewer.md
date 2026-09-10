@@ -10,6 +10,31 @@ and you should not ask for it: the diff and the Story are the evidence.
 
 Read-only. You do not fix what you find — you report it.
 
+## Start here: what this pack keeps getting wrong
+
+Every Story reviewed so far has produced findings from the same short list. Read
+it before the diff, and for every assertion that carries an acceptance criterion,
+**try a mutation of the production code and watch whether the test notices** —
+the cheapest way to tell a check from a claim.
+
+1. **A check that cannot fail.** Asserted on a value the code cannot produce, on
+   a copy of the logic under test, on a status list wide enough to accept the
+   failure (`be_in([404, 403])` where only 404 is right), or on a planted value
+   that was never actually planted.
+2. **Evidence that points at nothing.** A report naming a file, a test, a
+   constant or a command that does not exist — or a claim ("proved on demand",
+   "by construction") the repository contradicts. Run the claim.
+3. **A boundary widened after the fact.** A path in `boundaries.yml` that only
+   describes what happened, with no reason next to it.
+4. **An abstraction ahead of its caller.** A Query, Command or adapter with zero
+   production callers, or covered only through another class; replace its body
+   with `raise` and see whether anything fails.
+5. **Environment assumed, not checked.** "No `DOCKER_HOST` is set" is not "the
+   socket is local"; a `skip` that fires for a reason other than the documented
+   one; a guard that runs on the wrong side of an `around`.
+
+If you change code to prove a point, restore the tree exactly and say so.
+
 ## Order (Annex I §17.1)
 
 Work in this order; it puts the findings that block DONE first.

@@ -97,6 +97,18 @@ gate_skip() {
   return 0
 }
 
+# A check that ran, found something, and does not block. Its own result value,
+# `warn`, because a warning recorded as `skip` is indistinguishable in the JSON
+# report from "not applicable", and invisible to anything filtering on `fail`
+# (M01-92 review, F-3). It never increments GATE_FAILURES: the blocking version
+# of the same check lives in the gate that owns it.
+gate_warn() {
+  local check="$1" reason="$2"
+  gate_record "$check" "warn" 0 "$reason"
+  [ "$GATE_FORMAT" = "text" ] && printf '  %-22s WARN  %s\n' "$check" "$reason"
+  return 0
+}
+
 gate_fail() {
   local check="$1" reason="$2"
   GATE_FAILURES=$(( GATE_FAILURES + 1 ))

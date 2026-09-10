@@ -470,3 +470,25 @@ boundaries:
     - spec/requests/clusters_spec.rb
     - spec/security/docker_api_exposure_spec.rb
     - spec/frontend/clusters-page.test.tsx
+
+  # Evidência de teste por árvore, e dois avisos que o loop dá tarde demais.
+  # Fora da faixa do Milestone pelo mesmo motivo da M01-91: toca a máquina que
+  # julga as Stories. Autorizada pelo operador a rodar dentro do M01.
+  #
+  # O guard-edit nega `bin/gate*` e `lib/gates/**` sem chave por Story. As partes
+  # que vivem ali (o post-commit aceitar evidência por árvore; o aviso de
+  # acceptance-mapping no gate local) são entregues como patch em `evidence/`
+  # para o operador aplicar — o humano é o gate, e o hook não é contornado.
+  M01-92:
+    - bin/test-metadata
+    - bin/test
+    # A biblioteca compartilhada dos gates. Não está na lista que o hook nega
+    # (`bin/gate|stop-gate|merge-gate`), e é onde um resultado `warn` distinto
+    # tem de nascer para o aviso do gate local não se disfarçar de `skip`.
+    - bin/_gate_lib.sh
+    - tools/opanel-loop/agents/reviewer.md
+    - spec/gates/test_evidence_spec.rb
+    - spec/gates/gate_scripts_spec.rb
+    - spec/integration/test_harness_spec.rb
+    - docs/implementation/M01/stories/M01-92-*.md
+

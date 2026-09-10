@@ -380,3 +380,27 @@ critério satisfeito.
 Enquanto nenhuma das duas for tomada, a `M01-07` fica `blocked` e o run segue
 pelas Stories independentes — a `M01-08` (Cluster e bootstrap do Swarm) não
 depende de Project.
+
+---
+
+## M01-92 — metade da Story vive em arquivos que o hook nega ao implementer
+
+**Estado:** `BLOCKED_FOR_HUMAN_APPROVAL`. Feito e verde tudo que
+`guard-edit.sh` permite: `bin/test-metadata` grava `tree`; `gate_warn` em
+`bin/_gate_lib.sh`; checklist no agente `reviewer`; `spec/gates` 308/0; gate local
+PASS; revisão rodada 2 `COUNTS 1 0 0 0`. O Critical restante são os ACs 2, 5, 6, 7
+e 9, que só existem como patch para `lib/gates/post_commit.rb` e `bin/gate` —
+caminhos que o hook nega incondicionalmente, e que o `AGENT_RULES` manda não
+contornar.
+
+**Ação que só o operador pode fazer** (patch validado com `git apply --check`,
+`ruby -c` e `bash -n`; reproduzido inteiro no fim de `reports/M01-92.md`):
+
+```
+git apply docs/implementation/M01/evidence/M01-92-gated-files.patch   # ou salve o bloco do relatório
+bundle exec rspec spec/gates && bin/gate local --story M01-92
+bin/test && git commit  ...  && bin/gate post-commit --story M01-92   # sem rodar a suíte de novo: é a prova do AC2/AC5
+```
+
+Depois disso a Story fecha com os cinco critérios provados, ou não fecha com
+evidência do porquê.
