@@ -2,48 +2,40 @@
  * Template de cores da marca.
  *
  * Altere somente estes tokens para personalizar as principais cores da
- * biblioteca. O index.css consome essas variáveis nos componentes e mantém
- * os demais tokens estruturais separados.
+ * biblioteca. O design-system.css consome essas variáveis nos componentes e
+ * mantém os demais tokens estruturais separados.
  *
- * Regra de contraste dos preenchimentos sólidos: fundo claro (secondary,
- * success) recebe texto tinta; fundo escuro (primary, danger) recebe texto
- * branco. Todos os pares abaixo passam em WCAG AA (>= 4.5:1).
+ * Regra de contraste dos preenchimentos sólidos: sobre um fundo neon claro
+ * (primary, secondary, success, danger) o texto é tinta escura; sobre o fundo
+ * da página o texto é o `--brand-base`. Todos os pares abaixo passam em
+ * WCAG AA (>= 4.5:1) — o menor é 5.84:1, tinta sobre a primária.
+ *
+ * O tema é *dark-first*: a paleta vive em `:root` e a classe `dark` não
+ * diverge mais dela. O app nunca aplica `dark` (não há alternância de tema);
+ * o seletor continua existindo no design-system.css apontando para estes
+ * mesmos tokens, para que ligar uma alternância no futuro não regrida a
+ * aparência.
  */
 :root {
-  --brand-ink: #1b2430;
+  /* O preto de base da marca: só sombra e tinta sobre superfície neon. */
+  --brand-ink: #05030c;
 
-  --brand-base: #3a3a3a;
-  --brand-danger: #d90429;
-  --brand-danger-foreground: #ffffff;
-  --brand-primary: #293241;
-  --brand-secondary: #ee6c4d;
-  --brand-secondary-foreground: var(--brand-ink);
-  --brand-app-shell-background: #f4f5f5;
-  --brand-app-shell-foreground: #293241;
-  --brand-subtitle: #495057;
-  --brand-success: #38b000;
-  --brand-success-foreground: var(--brand-ink);
-  --brand-title: #212529;
-}
+  /* Superfícies, do fundo da página para cima. */
+  --brand-background: #0b0716;
+  --brand-surface: #150d26;
+  --brand-border: #2c1d48;
 
-/*
- * O modo escuro não reaproveita as cores do claro: a primária clareia para
- * destacar do fundo, e a barra/sidebar escurecem para não virar uma faixa
- * clara sobre a página escura.
- */
-.dark {
-  --brand-ink: #1b2430;
-
-  --brand-base: #f8f9fa;
-  --brand-danger: #d90429;
-  --brand-danger-foreground: #ffffff;
-  --brand-primary: #98c1d9;
-  --brand-secondary: #ee6c4d;
-  --brand-secondary-foreground: var(--brand-ink);
-  --brand-app-shell-background: #1b2430;
-  --brand-app-shell-foreground: #f4f5f7;
-  --brand-subtitle: #adb5bd;
-  --brand-success: #38b000;
-  --brand-success-foreground: var(--brand-ink);
-  --brand-title: #f8f9fa;
+  --brand-base: #e6dcff;
+  --brand-danger: #ff5470;
+  --brand-danger-foreground: #1a0410;
+  --brand-primary: #ff3d81;
+  --brand-primary-foreground: #1a0410;
+  --brand-secondary: #ffb703;
+  --brand-secondary-foreground: #1a0410;
+  --brand-app-shell-background: #0f0920;
+  --brand-app-shell-foreground: #e6dcff;
+  --brand-subtitle: #9a8ac0;
+  --brand-success: #4ade80;
+  --brand-success-foreground: #06210f;
+  --brand-title: #ffffff;
 }

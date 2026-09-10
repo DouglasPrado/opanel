@@ -22,9 +22,24 @@ silence.
 
 **Origin:** `gba.dev/packages/components` — shadcn/ui base, Radix primitives,
 Tailwind v4, `class-variance-authority`. Imports were copied with their contracts
-and appearance intact; nothing was redesigned. The `@/components/...`,
+intact; no component was rebuilt and no API changed. The `@/components/...`,
 `@/lib/utils` and `@/hooks/...` import paths resolve unchanged because
 `app/frontend` is Opanel's `@/` root.
+
+**Deviation from upstream — density.** The imported library sets its UI text at
+`text-lg` (18px) and its form controls at `px-6 py-4`, which makes an input about
+62px tall. Opanel runs the body/UI text at `text-base` (16px) and the form
+controls — `input`, `textarea`, `select` trigger and the `default` `button` — at a
+40px height with `px-3` (fields) and `px-4` (buttons), so a field and the button
+beside it line up. Three things were deliberately *not* touched, because they are
+scales of their own rather than the body size: the five `font-heading` titles
+(`card`, `dialog`, `alert-dialog`, `sheet`, `empty`) stay at `text-lg`, one step
+above the body; `title.tsx` keeps its display scale; and `size-[18px]` remains the
+library's icon token everywhere, including `checkbox`, `radio` and `slider`.
+
+This is a density decision, not a new design system — the palette, the shapes, the
+component set and every contract are upstream's. A component added from upstream
+later is expected to be brought to this density, not left at 18px.
 
 **Theme:** `app/frontend/styles/design-system.css` owns the tokens
 (`background`, `foreground`, `card`, `muted`, `primary`, `secondary`,

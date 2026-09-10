@@ -99,7 +99,7 @@ function Notifications({
         )}
       >
         <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <div className="text-lg font-medium">{label}</div>
+          <div className="text-base font-medium">{label}</div>
           {totalUnread > 0 ? <Badge variant="secondary">{totalUnread} novas</Badge> : null}
         </div>
         <DropdownMenuSeparator className="m-0" />
@@ -123,7 +123,7 @@ function Notifications({
               </DropdownMenuItem>
             ))
           ) : (
-            <div className="px-4 py-8 text-center text-lg font-extralight text-muted-foreground">
+            <div className="px-4 py-8 text-center text-base font-extralight text-muted-foreground">
               {emptyLabel}
             </div>
           )}
@@ -158,7 +158,7 @@ function NotificationContent({ notification }: { notification: NotificationItem 
       </Avatar>
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-start gap-2">
-          <span className="min-w-0 flex-1 text-lg font-medium">{notification.title}</span>
+          <span className="min-w-0 flex-1 text-base font-medium">{notification.title}</span>
           {!notification.read ? (
             <span className="mt-2 size-2 shrink-0 rounded-full bg-primary" aria-label="Não lida" />
           ) : null}

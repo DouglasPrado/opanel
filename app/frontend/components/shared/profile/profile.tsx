@@ -85,7 +85,7 @@ function Profile({
         >
           {renderAvatar()}
           <div className="grid min-w-0 flex-1 leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate text-lg font-medium">{name}</span>
+            <span className="truncate text-base font-medium">{name}</span>
             <span className="truncate text-base font-normal text-inherit opacity-70">{email}</span>
           </div>
           <ChevronsUpDown
@@ -104,7 +104,7 @@ function Profile({
           <div className="flex items-center gap-3">
             {renderAvatar()}
             <div className="grid min-w-0 flex-1 leading-tight">
-              <span className="truncate text-lg font-medium">{name}</span>
+              <span className="truncate text-base font-medium">{name}</span>
               <span className="truncate text-base font-normal text-popover-foreground/70">
                 {email}
               </span>
