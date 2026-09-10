@@ -68,6 +68,14 @@ module AuthorizationHarness
       pattern: %r{\A/t/:team_slug/projects},
       kind: :tenant_scoped,
       reason: "addresses Projects of a Team the caller may not belong to"
+    },
+    {
+      # Bootstrap and refresh. Same reasoning as Projects, and one more: a
+      # Cluster carries the Swarm id of a running runtime, so a cross-team read
+      # of it discloses infrastructure as well as intent.
+      pattern: %r{\A/t/:team_slug/clusters},
+      kind: :tenant_scoped,
+      reason: "addresses Clusters of a Team the caller may not belong to"
     }
   ].freeze
 

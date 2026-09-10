@@ -41,7 +41,14 @@ class ApplicationPolicy
     no_membership: "the actor has no active membership of this team",
     insufficient_role: "the actor's role does not permit this action",
     out_of_scope: "the resource is outside the actor's scope",
-    unregistered_action: "no rule is registered for this action, so it is denied"
+    unregistered_action: "no rule is registered for this action, so it is denied",
+    # Some actions are about the *installation* as much as about the resource.
+    # Bootstrapping a Cluster is one: doc 04 §7.1 separates administering the
+    # installation from owning a tenant, and `M01-08` requires INSTANCE_ADMIN on
+    # top of the Team role. Its own reason, rather than `out_of_scope`, because a
+    # trail that says "outside your scope" about a missing instance role is a
+    # trail that sends somebody looking in the wrong table.
+    instance_role_required: "the action also requires an instance role the actor does not hold"
   }.freeze
 
   Decision = Struct.new(:allowed, :reason, :action, :resource_type, :resource_id,
@@ -85,6 +92,15 @@ class ApplicationPolicy
     return deny(:insufficient_role, action) unless role_permits?(action, membership.role)
     return deny(:out_of_scope, action) unless within_scope?(membership)
 
+    # The last gate, and the only one a subclass can add to without rewriting the
+    # sequence. It exists because `M01-08` needs a condition that is not a Team
+    # role and not a scope — and adding it here, inside `decide`, is what makes
+    # `Opanel::Authorization.authorize!` enforce it. A subclass that checked it in
+    # its own predicate instead would be bypassed by every caller that goes
+    # through `authorize`, which is all of them.
+    extra = extra_denial_reason(action, membership)
+    return deny(extra, action) if extra
+
     allow(action)
   end
 
@@ -115,6 +131,11 @@ class ApplicationPolicy
   # does not change when M11-08 makes them configurable; today nothing narrows a
   # membership beyond its role.
   def within_scope?(_membership) = true
+
+  # A further condition, per action, that is neither a Team role nor a scope.
+  # Returns a key of `REASONS` to deny, or `nil` to allow. Nothing here uses it;
+  # `ClusterPolicy` does, for the INSTANCE_ADMIN half of a bootstrap.
+  def extra_denial_reason(_action, _membership) = nil
 
   def allow(action)
     decision(true, nil, action)

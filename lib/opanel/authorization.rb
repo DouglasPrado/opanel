@@ -38,7 +38,12 @@ module Opanel
       # resource *inside* the Team, and `ApplicationPolicy` resolves the actor's
       # membership from the resource — so the answer is scoped to this Project's
       # Team rather than to whichever Team the route named.
-      "Project" => "ProjectPolicy"
+      "Project" => "ProjectPolicy",
+      # Bootstrapping addresses a Cluster that does not exist yet, so the
+      # decision is constructed with an unsaved one carrying the target Team —
+      # which is what lets the dispatcher stay a map from resource class to
+      # Policy instead of growing a special case.
+      "Cluster" => "ClusterPolicy"
     }.freeze
 
     module_function

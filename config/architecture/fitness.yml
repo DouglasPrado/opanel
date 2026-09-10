@@ -30,6 +30,14 @@ critical_mutations:
   - command: SuspendTeamMember
     policy: TeamPolicy
     action: manage_members?
+  # M01-08. Turning a machine into the first node of a cluster is the most
+  # privileged thing this Milestone can do: it needs INSTANCE_ADMIN on top of the
+  # Team role, and the Command is the only path to `docker swarm init`. Declaring
+  # it here makes AF-07 require that `BootstrapCluster` actually reaches
+  # `ClusterPolicy#bootstrap?` rather than merely mentioning it.
+  - command: BootstrapCluster
+    policy: ClusterPolicy
+    action: bootstrap?
 
 # AF-06 — field names that carry secret material. A serializer, a log formatter or
 # an audit payload builder that emits one of these in plaintext is a finding.

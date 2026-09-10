@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_120800) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -58,6 +58,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120800) do
     t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "authentication_attempts_id_is_ulid"
     t.check_constraint "key_digest ~ '^[0-9a-f]{64}$'::text", name: "authentication_attempts_key_digest_is_sha256"
     t.check_constraint "scope = ANY (ARRAY['login_email'::text, 'login_ip'::text, 'registration_ip'::text])", name: "authentication_attempts_scope_is_known"
+  end
+
+  create_table "clusters", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.text "advertise_address"
+    t.bigint "applied_revision"
+    t.timestamptz "created_at", null: false
+    t.timestamptz "deleted_at"
+    t.bigint "desired_revision", default: 1, null: false
+    t.text "name", null: false
+    t.timestamptz "observed_at"
+    t.text "slug", null: false
+    t.text "status", default: "PROVISIONING", null: false
+    t.text "swarm_id"
+    t.string "team_id", limit: 26, null: false
+    t.text "unreachable_reason"
+    t.timestamptz "updated_at", null: false
+    t.index ["swarm_id"], name: "index_clusters_unique_swarm_id_when_known", unique: true, where: "(swarm_id IS NOT NULL)"
+    t.index ["team_id", "id"], name: "index_clusters_on_team_id_and_id"
+    t.index ["team_id", "slug"], name: "index_clusters_unique_slug_per_team_when_not_deleted", unique: true, where: "(deleted_at IS NULL)"
+    t.check_constraint "applied_revision IS NULL OR applied_revision <= desired_revision", name: "clusters_applied_revision_not_ahead"
+    t.check_constraint "btrim(name) <> ''::text AND length(name) <= 120", name: "clusters_name_present"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "clusters_id_is_ulid"
+    t.check_constraint "slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug) >= 2 AND length(slug) <= 63", name: "clusters_slug_format"
+    t.check_constraint "status = 'PROVISIONING'::text OR observed_at IS NOT NULL", name: "clusters_observed_status_has_a_timestamp"
+    t.check_constraint "status = ANY (ARRAY['PROVISIONING'::text, 'READY'::text, 'DEGRADED'::text, 'MAINTENANCE'::text, 'UNREACHABLE'::text, 'DELETING'::text])", name: "clusters_status_is_known"
+    t.check_constraint "swarm_id IS NULL OR swarm_id ~ '^[a-z0-9]{20,32}$'::text", name: "clusters_swarm_id_shape"
+    t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "clusters_team_id_is_ulid"
   end
 
   create_table "infrastructure_checkpoints", force: :cascade do |t|
@@ -334,6 +361,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120800) do
     t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'SUSPENDED'::text, 'DELETED_PENDING'::text])", name: "users_status_is_known"
   end
 
+  add_foreign_key "clusters", "teams", on_delete: :restrict
   add_foreign_key "instance_roles", "users", on_delete: :restrict
   add_foreign_key "projects", "teams", on_delete: :restrict
   add_foreign_key "sessions", "users", on_delete: :cascade

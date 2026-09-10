@@ -30,7 +30,10 @@ class AuditLog < ApplicationRecord
     authorization_denied: "authorization.denied",
     project_created: "project.created",
     project_updated: "project.updated",
-    project_archived: "project.archived"
+    project_archived: "project.archived",
+    cluster_bootstrapped: "cluster.bootstrapped",
+    cluster_adopted: "cluster.adopted",
+    cluster_bootstrap_failed: "cluster.bootstrap_failed"
   }.freeze
 
   # Events about the installation itself, which legitimately have no Team. Every

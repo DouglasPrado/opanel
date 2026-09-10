@@ -398,3 +398,66 @@ boundaries:
     # não é do implementer: registrar o conflito é o que `AGENT_RULES` manda
     # fazer em vez de escolher em silêncio.
     - docs/implementation/SPEC_CONFLICTS.md
+
+  # O Cluster e o bootstrap de um Swarm de um node. A Story é de infraestrutura e
+  # segurança: uma tabela, um preflight, o caminho mínimo até o Docker, e a tela
+  # que mostra check por check o que passou e o que falhou.
+  #
+  # O Swarm Executor completo é da `M01-09` e continua fora. O que entra em
+  # `app/executors/` aqui é só o caminho de bootstrap — e vai ali porque o AF-02
+  # só permite aquele diretório falar com o Docker Engine. Acrescentar caminho ao
+  # `docker_boundaries` é mudança Tier-0 com ADR, e não é o que esta Story faz.
+  M01-08:
+    - db/migrate/*_create_clusters.rb
+    - db/schema.rb
+    # Domínio.
+    - app/models/cluster.rb
+    - app/models/team.rb
+    # O único ponto que fala com o Docker Engine, dentro do boundary do AF-02.
+    - app/executors/swarm_bootstrap.rb
+    # O preflight do doc 06 §3.2 e a sonda do sistema operacional que ele
+    # consulta. A sonda é o adaptador que isola uma API externa (o SO), e existe
+    # por pressão concreta: sem ela nenhum ramo de FALHA dos checks pode ser
+    # exercitado, e o AC4 exige exatamente esses ramos provados.
+    - app/clusters/**
+    # Commands, Queries e Policy.
+    - app/commands/bootstrap_cluster.rb
+    - app/commands/refresh_cluster_status.rb
+    - app/queries/cluster_readiness_view.rb
+    - app/policies/cluster_policy.rb
+    - app/policies/application_policy.rb
+    - app/queries/tenant_scope.rb
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    - lib/opanel/authorization.rb
+    # `BootstrapCluster` é mutação crítica; declarar isso fortalece o AF-07, que
+    # passa a exigir que ela alcance mesmo a Policy.
+    - config/architecture/fitness.yml
+    # A trilha.
+    - app/models/audit_log.rb
+    - app/audit/audit_sanitizer.rb
+    - spec/unit/audit_actions_spec.rb
+    # Rotas e tela.
+    - app/controllers/clusters_controller.rb
+    - app/controllers/panel_controller.rb
+    - config/routes.rb
+    - app/frontend/pages/Panel/Clusters.tsx
+    - spec/support/authorization.rb
+    # Testes.
+    - spec/factories/clusters.rb
+    - spec/unit/preflight_spec.rb
+    # O gate de pre-commit exige um spec nomeado por arquivo de fonte; a sonda
+    # estava coberta só de través, e as duas regressões achadas rodando-a de
+    # verdade (relógio, volume errado) merecem teste direto.
+    - spec/unit/system_probe_spec.rb
+    # A lista transcrita de motivos de negação, como a de ações de audit: existe
+    # para que acrescentar um motivo custe uma mudança deliberada em dois
+    # lugares, e esta Story acrescenta `instance_role_required`.
+    - spec/unit/application_policy_spec.rb
+    - spec/unit/cluster_status_spec.rb
+    - spec/integration/cluster_bootstrap_spec.rb
+    - spec/integration/swarm_bootstrap_lab_spec.rb
+    - spec/policies/cluster_policy_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    - spec/requests/clusters_spec.rb
+    - spec/security/docker_api_exposure_spec.rb
+    - spec/frontend/clusters-page.test.tsx

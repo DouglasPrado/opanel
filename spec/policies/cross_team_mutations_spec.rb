@@ -82,16 +82,24 @@ RSpec.describe "a user from another Team", type: :request do
   # in the product, so that example is gone and these are real.
   describe "every tenant-scoped mutation route" do
     let!(:project) { create(:project, team: team) }
+    let!(:cluster) { create(:cluster, :bootstrapped, team: team) }
 
     # The slug and the id are substituted with **real** values of the Team the
     # outsider is attacking. Filling every `:param` with the same identifier — the
     # first version of this block — produced `/t/<a-ulid>/projects`, which 404s
     # because no Team has that slug. It would have passed with the tenancy check
     # deleted.
+    #
+    # The id has to be of the *right type* for the same reason: a `team_` id on a
+    # Cluster route is refused by `Opanel::Identifier.parse` before any tenancy
+    # check runs, so the 404 would prove nothing about tenancy.
+    RESOURCE_FOR = { "/projects/" => :project, "/clusters/" => :cluster }.freeze
+
     def attack_path(route)
-      route[:path]
-        .gsub(":team_slug", team.slug)
-        .gsub(":id", route[:path].include?("/projects/") ? project.external_id : team.external_id)
+      kind = RESOURCE_FOR.find { |fragment, _| route[:path].include?(fragment) }&.last
+      resource = kind ? public_send(kind) : team
+
+      route[:path].gsub(":team_slug", team.slug).gsub(":id", resource.external_id)
     end
 
     AuthorizationHarness.routes_of_kind(:tenant_scoped).each do |route|
@@ -115,6 +123,7 @@ RSpec.describe "a user from another Team", type: :request do
         # And nothing was mutated on the way to it.
         expect(project.reload.name).not_to eq("Taken over")
         expect(team.projects.count).to eq(1)
+        expect(team.clusters.count).to eq(1)
       end
     end
   end

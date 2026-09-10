@@ -26,7 +26,10 @@ RSpec.describe "the audit action names", type: :unit do
     authorization_denied: "authorization.denied",
     project_created: "project.created",
     project_updated: "project.updated",
-    project_archived: "project.archived"
+    project_archived: "project.archived",
+    cluster_bootstrapped: "cluster.bootstrapped",
+    cluster_adopted: "cluster.adopted",
+    cluster_bootstrap_failed: "cluster.bootstrap_failed"
   }.freeze
 
   it "are exactly these, and renaming one is a change to this file too" do

@@ -1,8 +1,8 @@
 # The sections of doc 10 §3.2 that exist in M01.
 #
-# Each action renders a page inside the app shell. The remaining three are
-# deliberately placeholders — Clusters arrives with M01-08 and Audit's UI with
-# M11-11 — and they render the *empty* state rather than a blank page, because
+# Each action renders a page inside the app shell. The remaining two are
+# deliberately placeholders — Audit's UI arrives with M11-11 — and they render
+# the *empty* state rather than a blank page, because
 # doc 10 §25 treats an empty state as a required state and because a shell with
 # dead links teaches the user that the navigation lies.
 #
@@ -14,7 +14,6 @@
 class PanelController < ApplicationController
   before_action :require_team
 
-  def clusters = render_section("Panel/Clusters")
   def audit = render_section("Panel/Audit")
   def settings = render_section("Panel/Settings")
 

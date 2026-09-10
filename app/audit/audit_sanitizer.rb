@@ -45,6 +45,12 @@ class AuditSanitizer
     # about the user's own Project — the same exposure `Team.name` already carries —
     # and the `SENSITIVE` list above still applies to every key by name.
     "Project" => %w[name slug description status team_id default_environment_id deleted_at].freeze,
+    # `swarm_id` and `advertise_address` are the two facts that identify the
+    # runtime this Cluster is, and an audit trail that cannot say which Swarm
+    # was bootstrapped answers nothing. Neither is a credential — the join
+    # token is, and it is not a column here or anywhere else.
+    "Cluster" => %w[name slug status swarm_id advertise_address team_id observed_at
+      unreachable_reason deleted_at].freeze,
     "TeamMember" => %w[role status joined_at].freeze,
     "User" => %w[display_name status email_verified_at].freeze,
     "Session" => %w[expires_at revoked_at last_seen_at mfa_level].freeze,

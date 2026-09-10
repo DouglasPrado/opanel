@@ -78,7 +78,8 @@ RSpec.describe ApplicationPolicy, type: :unit do
 
     it "classifies every reason it can give" do
       expect(ApplicationPolicy::REASONS.keys)
-        .to match_array(%i[no_membership insufficient_role out_of_scope unregistered_action])
+        .to match_array(%i[no_membership insufficient_role out_of_scope unregistered_action
+          instance_role_required])
     end
   end
 

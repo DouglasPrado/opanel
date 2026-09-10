@@ -30,6 +30,14 @@
       "required": false
     },
     {
+      "id": "M01-92",
+      "file": "stories/M01-92-evidence-and-loop-feedback.md",
+      "status": "pending",
+      "dependsOn": [],
+      "attempts": 0,
+      "required": false
+    },
+    {
       "id": "M01-01",
       "file": "stories/M01-01-user-and-authentication.md",
       "status": "done",
@@ -133,7 +141,7 @@
     {
       "id": "M01-07",
       "file": "stories/M01-07-project-entity.md",
-      "status": "fix_required",
+      "status": "blocked",
       "dependsOn": [
         "M01-04",
         "M01-05"
@@ -145,18 +153,29 @@
         "high": 0,
         "medium": 1,
         "low": 1
+      },
+      "commit": "3d1ca61",
+      "blockedReason": {
+        "qualifier": "BLOCKED_FOR_PRODUCT_DECISION",
+        "diagnosis": "AC5 exige Environment, que so a M01-11 cria — e a M01-11 tem a M01-07 como precondition. Diagnostico reproduzivel em BLOCKERS.md, conflito em SPEC_CONFLICTS.md SC-18. Oito de nove ACs satisfeitos, gate verde, commit 3d1ca61. Decisao do dono: aceitar o diferimento do AC5 para a M01-11, ou mover o criterio para o arquivo daquela Story."
       }
     },
     {
       "id": "M01-08",
       "file": "stories/M01-08-cluster-and-swarm-bootstrap.md",
-      "status": "pending",
+      "status": "review",
       "dependsOn": [
         "M01-04",
         "M01-05"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 2,
+      "required": true,
+      "review": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 1
+      }
     },
     {
       "id": "M01-09",
@@ -319,7 +338,7 @@
   ],
   "run": {
     "startedAt": "2026-09-09T08:39:59Z",
-    "turns": 8,
+    "turns": 11,
     "doneAtStart": 1
   }
 }

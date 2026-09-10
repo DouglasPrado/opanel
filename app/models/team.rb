@@ -34,6 +34,12 @@ class Team < ApplicationRecord
   # desired state the runtime is still converging toward.
   has_many :projects, dependent: :restrict_with_error
 
+  # `restrict_with_error` again, and here the reason is sharper: a Cluster row is
+  # the Control Plane's only record of a Swarm that is still running. Deleting it
+  # with the Team would orphan the runtime — nothing would then reconcile it, and
+  # nothing would know it exists.
+  has_many :clusters, dependent: :restrict_with_error
+
   validates :name, presence: true, length: { maximum: NAME_MAX_LENGTH }
   validates :slug, presence: true, format: { with: SLUG_FORMAT },
     length: { in: SLUG_MIN_LENGTH..SLUG_MAX_LENGTH }
