@@ -2,7 +2,7 @@
 name: builder
 description: Implements a single Opanel Story end to end — tests first, then code, then the Story's gate and report. Use when a Story is in_progress and needs implementation. Receives the Story ID in OPANEL_STORY.
 tools: Read, Edit, Write, Grep, Glob, Bash
-model: sonnet
+model: haiku
 ---
 
 You implement **one Story**. Not the platform, not the next Story, not the

@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+@import '@fontsource-variable/space-grotesk';
 @import './theme-template.css';
 
 @custom-variant dark (&:is(.dark *));
@@ -15,8 +17,9 @@
 }
 
 @theme inline {
-  --font-heading: var(--font-sans);
+  --font-heading: 'Space Grotesk Variable', 'Geist Variable', sans-serif;
   --font-sans: 'Geist Variable', sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
   --color-app-shell-accent-foreground: var(--app-shell-accent-foreground);
   --color-app-shell-accent: var(--app-shell-accent);
   --color-app-shell-foreground: var(--app-shell-foreground);
@@ -67,20 +70,20 @@
 }
 
 :root {
-  color-scheme: light;
-  --background: oklch(1 0 0);
+  color-scheme: dark;
+  --background: var(--brand-background);
   --foreground: var(--brand-base);
-  --card: oklch(1 0 0);
+  --card: var(--brand-surface);
   --card-foreground: var(--brand-base);
-  --popover: oklch(1 0 0);
+  --popover: var(--brand-surface);
   --popover-foreground: var(--brand-base);
   --primary: var(--brand-primary);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary-foreground: var(--brand-primary-foreground);
   --secondary: var(--brand-secondary);
   --secondary-foreground: var(--brand-secondary-foreground);
-  --muted: color-mix(in srgb, var(--brand-base) 6%, transparent);
-  --muted-foreground: color-mix(in srgb, var(--brand-base), transparent 30%);
-  --accent: color-mix(in srgb, var(--brand-base) 10%, transparent);
+  --muted: color-mix(in srgb, var(--brand-base) 12%, transparent);
+  --muted-foreground: var(--brand-subtitle);
+  --accent: color-mix(in srgb, var(--brand-base) 16%, transparent);
   --accent-foreground: var(--brand-base);
   --danger: var(--brand-danger);
   --danger-foreground: var(--brand-danger-foreground);
@@ -88,8 +91,8 @@
   --disabled: color-mix(in srgb, var(--brand-base), transparent 35%);
   --success: var(--brand-success);
   --success-foreground: var(--brand-success-foreground);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: var(--brand-border);
+  --input: var(--brand-border);
   --ring: var(--primary);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -100,7 +103,7 @@
   --app-shell: var(--brand-app-shell-background);
   --app-shell-foreground: var(--brand-app-shell-foreground);
   --app-shell-accent: color-mix(in srgb, var(--app-shell), white 10%);
-  --shadow-surface: color-mix(in srgb, var(--brand-ink) 22%, transparent);
+  --shadow-surface: color-mix(in srgb, var(--brand-ink) 70%, transparent);
   --scrollbar-track: color-mix(in srgb, var(--foreground) 8%, transparent);
   --app-shell-accent-foreground: var(--brand-app-shell-foreground);
   --sidebar: var(--app-shell);
@@ -109,24 +112,24 @@
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--app-shell-accent);
   --sidebar-accent-foreground: var(--app-shell-accent-foreground);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-border: var(--brand-border);
+  --sidebar-ring: var(--brand-primary);
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.145 0 0);
+  --background: var(--brand-background);
   --foreground: var(--brand-base);
-  --card: oklch(0.205 0 0);
+  --card: var(--brand-surface);
   --card-foreground: var(--brand-base);
-  --popover: oklch(0.205 0 0);
+  --popover: var(--brand-surface);
   --popover-foreground: var(--brand-base);
   --primary: var(--brand-primary);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary-foreground: var(--brand-primary-foreground);
   --secondary: var(--brand-secondary);
   --secondary-foreground: var(--brand-secondary-foreground);
   --muted: color-mix(in srgb, var(--brand-base) 12%, transparent);
-  --muted-foreground: color-mix(in srgb, var(--brand-base), transparent 30%);
+  --muted-foreground: var(--brand-subtitle);
   --accent: color-mix(in srgb, var(--brand-base) 16%, transparent);
   --accent-foreground: var(--brand-base);
   --danger: var(--brand-danger);
@@ -135,8 +138,8 @@
   --disabled: color-mix(in srgb, var(--brand-base), transparent 35%);
   --success: var(--brand-success);
   --success-foreground: var(--brand-success-foreground);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --border: var(--brand-border);
+  --input: var(--brand-border);
   --ring: var(--primary);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -147,7 +150,7 @@
   --app-shell-foreground: var(--brand-app-shell-foreground);
   --app-shell-accent: color-mix(in srgb, var(--app-shell), white 10%);
   --app-shell-accent-foreground: var(--brand-app-shell-foreground);
-  --shadow-surface: color-mix(in srgb, black 55%, transparent);
+  --shadow-surface: color-mix(in srgb, var(--brand-ink) 70%, transparent);
   --scrollbar-track: color-mix(in srgb, var(--foreground) 8%, transparent);
   --sidebar: var(--app-shell);
   --sidebar-foreground: var(--app-shell-foreground);
@@ -155,8 +158,8 @@
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--app-shell-accent);
   --sidebar-accent-foreground: var(--app-shell-accent-foreground);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-border: var(--brand-border);
+  --sidebar-ring: var(--brand-primary);
 }
 
 /* Paleta padrão de cinzas dos componentes gba.dev */
@@ -237,6 +240,27 @@
   }
   :where(:disabled, [data-disabled], [aria-disabled='true']) {
     color: var(--disabled) !important;
+  }
+
+  /*
+   * A metade estrutural do tema, e o motivo de morar aqui em vez de dentro dos
+   * componentes: `card` e `button` vieram da biblioteca importada com o
+   * contrato e a anatomia deles, e o brilho e o glow são decisão de *tema*.
+   * Escritos como regra de tema, trocar a paleta de novo não obriga a reabrir
+   * `card.tsx` nem `button.tsx`.
+   *
+   * `background-image` e `box-shadow` são escolhidos de propósito: nenhuma
+   * utilitária que esses componentes já aplicam (`bg-card`, e o botão não
+   * declara sombra) escreve essas duas propriedades, então a camada de
+   * utilities não briga com a base aqui.
+   */
+  [data-slot='card'] {
+    background-image: linear-gradient(180deg, rgb(255 255 255 / 4.5%), rgb(255 255 255 / 0%));
+  }
+
+  /* Só o botão primário: o glow marca a ação, não decora a tela inteira. */
+  [data-slot='button'][data-variant='default'] {
+    box-shadow: 0 6px 22px -8px var(--primary);
   }
 }
 

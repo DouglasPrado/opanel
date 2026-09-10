@@ -250,7 +250,7 @@ export default function Clusters({
               <Card>
                 <CardHeader>
                   <CardTitle data-testid={`cluster-${cluster.slug}`}>{cluster.name}</CardTitle>
-                  <CardDescription>
+                  <CardDescription className="font-mono">
                     {cluster.swarmId ? `Swarm ${cluster.swarmId}` : 'no Swarm yet'}
                   </CardDescription>
                   <div className="flex flex-wrap gap-2">

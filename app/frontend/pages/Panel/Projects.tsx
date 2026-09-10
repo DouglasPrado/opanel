@@ -155,7 +155,7 @@ export default function Projects({
                       {project.name}
                     </Link>
                   </CardTitle>
-                  <CardDescription>/{project.slug}</CardDescription>
+                  <CardDescription className="font-mono">/{project.slug}</CardDescription>
                   {/* The status is a word, never only a colour (doc 10 §25, AC7 of M01-06). */}
                   <Badge variant={project.status === 'ACTIVE' ? 'secondary' : 'outline'}>
                     {project.status}

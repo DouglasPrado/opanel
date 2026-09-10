@@ -52,6 +52,13 @@ Rails.application.configure do
       policy.style_src(*policy.style_src, :unsafe_inline, "http://#{vite_origin}")
       policy.connect_src(*policy.connect_src, "http://#{vite_origin}", "ws://#{vite_origin}")
       policy.img_src(*policy.img_src, "http://#{vite_origin}")
+
+      # Webfonts too. `@fontsource-*` ships `.woff2` files that Vite serves from
+      # its own origin in development, and without this `font-src 'self'` blocks
+      # every one of them: the panel silently falls back to the system sans and
+      # no font the design system declares is ever seen locally. A built asset is
+      # served by Rails, from the same origin, so this stays scoped here.
+      policy.font_src(*policy.font_src, "http://#{vite_origin}")
     end
   end
 end
