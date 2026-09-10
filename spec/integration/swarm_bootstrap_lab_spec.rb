@@ -104,7 +104,13 @@ RSpec.describe "the Swarm bootstrap, against a real Engine", :swarm, :integratio
 
       RefreshClusterStatus.call(actor: administrator, cluster: cluster)
 
-      expect(cluster.reload.status).to eq(Cluster::READY)
+      # The reason travels with the assertion: under `bin/test --parallel` this
+      # once read DEGRADED and the failure said nothing about why (M01-91). A
+      # status alone is a symptom; the classified cause is the diagnosis.
+      cluster.reload
+      expect(cluster.status).to eq(Cluster::READY),
+        "status #{cluster.status}, reason #{cluster.unreachable_reason.inspect}, " \
+        "engine swarm #{SwarmBootstrap.info.swarm_id} vs cluster #{cluster.swarm_id}"
       expect(cluster.unreachable_reason).to be_nil
       expect(cluster.observed_at).to be_within(30.seconds).of(Time.current)
       expect(cluster).not_to be_observation_stale

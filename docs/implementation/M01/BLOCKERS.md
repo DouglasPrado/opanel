@@ -383,6 +383,39 @@ depende de Project.
 
 ---
 
+## M01-91 — as duas linhas que fecham a Story vivem no `bin/gate`, que o hook nega
+
+**Estado:** `BLOCKED_FOR_HUMAN_APPROVAL`. Feito e verde tudo que
+`guard-edit.sh` permite: `SwarmDaemonLock` torna os `:swarm` paralelo-seguros;
+`bin/security --diff` com negativo próprio; `spec/gates/gate_budget_spec.rb`
+(orçamento por check, suíte julgada pela evidência, guarda de reentrada). O que
+resta são dois argumentos de `gate_run` em `bin/gate` — `--parallel` nos tests e
+`--diff` no security — e o comentário que os explica, entregues como patch.
+
+**O AC1 (menos de 90 s) não fecha com o patch, e não fecha sem tirar check.** A
+suíte cresceu um terço desde que o alvo foi escrito; o número real está no
+relatório, com o teto que a medição sustenta no spec.
+
+**Ação que só o operador pode fazer** (patch validado com `git apply --check` e
+`bash -n`; reproduzido inteiro no fim de `reports/M01-91.md`):
+
+```
+git apply docs/implementation/M01/evidence/M01-91-gate-parallel-diff.patch   # ou salve o bloco do relatório
+bin/gate local --story M01-91     # um rspec, --parallel, scan do diff — e o tempo real na tabela do relatório
+```
+
+Depois disso o AC5 fica provado pelo próprio gate; o AC1 fica como está —
+registrado, não atingido — a menos que o dono decida rebaixar o alvo por ADR.
+
+**Achado colateral, para decidir junto:** o check `contracts` do `bin/gate` roda
+`bin/test --type contract` depois de `tests` e sobrescreve
+`tmp/test-results/rspec-metadata.json` com um registro parcial — toda execução
+do gate local apaga a evidência `complete` que acabou de gerar, e o post-commit
+(e o exemplo de orçamento) pedem a suíte de novo. Correção em `bin/gate` ou
+`bin/test-metadata`; nenhum dos dois está na boundary da M01-91.
+
+---
+
 ## M01-92 — metade da Story vive em arquivos que o hook nega ao implementer
 
 **Estado:** `BLOCKED_FOR_HUMAN_APPROVAL`. Feito e verde tudo que

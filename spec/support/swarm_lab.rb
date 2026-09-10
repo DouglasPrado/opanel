@@ -131,8 +131,44 @@ module SwarmLabHelpers
   end
 end
 
+# One daemon, many workers.
+#
+# Every `:swarm` example talks to the same Docker Engine, and under
+# `bin/test --parallel` ten of them can be doing so at once: one worker's
+# executor spec is creating and removing services while another reads
+# `docker info` for a status refresh. The first parallel run of the full suite
+# (M01-91) failed exactly one example that way. The examples are correct alone
+# and wrong together, which is the definition of a shared-resource race — and
+# the answer the repository already has for it is a file lock
+# (`Opanel::Gates::RepositoryLock`, around the full-tree scans).
+#
+# A **separate** lock file, on purpose: the daemon is not the working tree.
+# Serialising `:swarm` examples against each other costs nothing (they take a
+# minute in total); serialising them against every gate spec's tree scan would
+# cost the parallel run the time it exists to save.
+module SwarmDaemonLock
+  LOCK_PATH = File.expand_path("../../tmp/gate/swarm-daemon.lock", __dir__)
+
+  def self.exclusive
+    FileUtils.mkdir_p(File.dirname(LOCK_PATH))
+    File.open(LOCK_PATH, File::CREAT | File::RDWR) do |file|
+      file.flock(File::LOCK_EX)
+      begin
+        yield
+      ensure
+        file.flock(File::LOCK_UN)
+      end
+    end
+  end
+end
+
 RSpec.configure do |config|
   config.include SwarmLabHelpers, :swarm
+
+  # Outermost, so the guard `before` hooks and the cleanup `after` run inside
+  # the lock too: a worker must not be probing the daemon while another is
+  # mid-cleanup.
+  config.around(:each, :swarm) { |example| SwarmDaemonLock.exclusive { example.run } }
 
   config.before(:each, :swarm) do
     unless Opanel::Gates::SwarmLab.available?

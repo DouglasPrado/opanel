@@ -4,6 +4,7 @@
 #   bin/security                 # everything
 #   bin/security --fast          # secret scan only — what the pre-commit gate runs
 #   bin/security --staged        # scan the staged diff — what the pre-commit gate runs
+#   bin/security --diff          # scan the files changed since the merge base — for the local gate
 #   bin/security --history       # also scan the branch history
 #   bin/security --waivers       # list waivers and what is about to expire
 #   bin/security --format json
@@ -33,6 +34,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --fast) mode="fast" ;;
     --staged) scope="staged" ;;
+    --diff) scope="diff" ;;
     --history) history="yes" ;;
     --waivers) mode="waivers" ;;
     --out) out="$2"; shift ;;
@@ -100,7 +102,45 @@ else
   # enough to be annoying gets bypassed, and a bypassed gate protects nothing
   # (Annex I §12.1). **CI always scans the whole tree and the history**: the scope
   # moves, the check does not.
-  if [ "$scope" = "staged" ]; then
+  # `--diff`: the files that differ from the merge base, working tree included
+  # (M01-91 §3). This is the question the *local* gate asks — "is there a secret
+  # in what I changed?" — and it costs seconds instead of the 80 s a scan of
+  # 170 MB costs on every run. The full tree and the history still run in CI and
+  # in post-commit: the scope moves, the check does not (Annex I §21.2). Each
+  # file is scanned on its own because `gitleaks dir` takes one path; a
+  # deleted file is skipped because there is nothing left to scan.
+  if [ "$scope" = "diff" ]; then
+    # `gate_files changed` is the tracked diff plus the index; a **new** file is
+    # neither until it is added, and a new file is exactly where a pasted
+    # credential lands. The first version of this scope missed it — the
+    # negative in spec/security/security_scan_spec.rb planted a secret in an
+    # untracked file and the scan passed — so untracked files are in the set.
+    diff_files="$({ gate_files changed '.'; git ls-files --others --exclude-standard; } | sort -u \
+      | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done)"
+    if [ -z "$diff_files" ]; then
+      gate_skip "secret-scan-diff" "nothing changed since the merge base"
+    else
+      scan_diff() {
+        local failed=0 n=0 f
+        # One report per file, in a directory wiped per run: a single path
+        # would keep only the last file's findings, and on a Milestone branch
+        # "changed since the merge base" is most of the tree (1 048 files when
+        # this was measured) — still 18 s against 80 s, but not a thousand
+        # stale reports next to the scanner's own.
+        rm -rf "$SCANNER_DIR/diff"
+        mkdir -p "$SCANNER_DIR/diff"
+        while IFS= read -r f; do
+          n=$((n + 1))
+          gitleaks dir "$f" --config config/security/gitleaks.toml --redact --no-banner \
+            --report-format json --report-path "$SCANNER_DIR/diff/$n.json" --exit-code 1 || failed=1
+        done <<EOF
+$diff_files
+EOF
+        return "$failed"
+      }
+      gate_run "secret-scan-diff" scan_diff
+    fi
+  elif [ "$scope" = "staged" ]; then
     gate_run "secret-scan-staged" gitleaks git --staged . \
       --config config/security/gitleaks.toml \
       --redact \

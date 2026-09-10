@@ -117,11 +117,25 @@ else
   run=(bundle exec rspec --format progress $seed_args $paths)
 fi
 
+# rspec-metadata.json describes the *last* run, whatever it was, and every
+# partial run overwrites it — `bin/gate local` itself runs `--type contract`
+# right after the suite, so the gate erased the complete record it had just
+# produced. The complete record is kept beside it, for the check that asks
+# "how long does the whole suite take" rather than "what ran last"
+# (spec/gates/gate_budget_spec.rb). post-commit keeps reading the last run.
+keep_complete_record() {
+  if ruby -rjson -e 'exit JSON.parse(File.read(ARGV[0]))["complete"] ? 0 : 1' \
+      tmp/test-results/rspec-metadata.json 2>/dev/null; then
+    cp tmp/test-results/rspec-metadata.json tmp/test-results/rspec-metadata-complete.json
+  fi
+}
+
 if [ "$format" = "text" ]; then
   "${run[@]}"
   status=$?
   bin/test-metadata "$status" "$(( $(gate_now_ms) - started ))" "$type" "$parallel" \
     "$scope" "$fast" "$paths"
+  keep_complete_record
   exit $status
 fi
 
@@ -129,4 +143,5 @@ gate_begin "test" "$format"
 gate_run "rspec" "${run[@]}"
 bin/test-metadata "$GATE_FAILURES" "$(( $(gate_now_ms) - started ))" "$type" "$parallel" \
   "$scope" "$fast" "$paths" >/dev/null
+keep_complete_record
 gate_finish

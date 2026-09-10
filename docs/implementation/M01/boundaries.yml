@@ -25,27 +25,27 @@ boundaries:
   # and requires each to be committed on its own, before any domain Story.
 
   M01-91:
-    # The local gate's test invocation and its secret-scan scope — the two
-    # decisions the Story changes.
+    # A metade feita em 70c7f7e (bin/gate --only, os dois exemplos caros) e a
+    # metade que resta, medida nesta sessão: `bin/test --parallel` roda 1 733
+    # exemplos em 297 s contra ~490 s serial e cai num único spec `:swarm` —
+    # dez workers contra um daemon. O que torna os `:swarm` paralelo-seguros é
+    # um lock por daemon, no mesmo padrão do RepositoryLock que os scans já usam.
     - bin/gate
     - bin/security
     - bin/test
-    # The gate suites that re-entered the repository, and the budget spec that
-    # keeps the recursion from coming back.
     - spec/gates/**
-    # The five examples that are not parallel-safe, which is what AC 5 blocks on.
     - spec/security/production_logging_spec.rb
     - spec/security/security_scan_spec.rb
     - spec/spec_helper.rb
     - spec/support/**
+    # O spec que caiu em paralelo: a asserção passa a nomear a causa
+    # (`unreachable_reason`) em vez de só o status, para que a próxima falha
+    # diga o quê, não só que.
+    - spec/integration/swarm_bootstrap_lab_spec.rb
+    # `bin/gate` é negado pelo hook ao implementer; o flip para `--parallel` e
+    # para `bin/security --diff` vai como patch reproduzido no relatório, como
+    # na M01-92. Fica declarado porque a Story o toca — pelas mãos do operador.
 
-  # The first domain Story: it creates the identity tables, the platform-wide
-  # identifier layer and the authentication surface. Wider than a later Story
-  # will be, for one structural reason — it switches the application to
-  # deny-by-default, so every controller that already existed must declare its
-  # access and every request spec that exercised an open route needs a signed-in
-  # user. Those files are listed individually rather than as `app/controllers/**`
-  # so the boundary still says no to a controller this Story has no business in.
   M01-01:
     # Schema: the first three domain migrations and the regenerated dump.
     - db/migrate/*.rb

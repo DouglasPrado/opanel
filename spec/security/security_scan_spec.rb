@@ -125,6 +125,30 @@ RSpec.describe "security scanning", type: :security do
       end
     end
 
+    # M01-91 §3: the local gate scans the diff, not the tree. The scope has to
+    # be provable in both directions — a secret in a changed file is found, and
+    # the narrowing is exactly the changed set and nothing looser. Under the
+    # same lock as the other planted scans: a parallel worker's full-tree scan
+    # must not see this file mid-flight.
+    it "finds a secret in a file changed since the merge base under --diff" do
+      planted = "docs/implementation/M00/reports/.diff-probe.md"
+      full = Rails.root.join(planted)
+
+      Opanel::Gates::RepositoryLock.exclusive do
+        begin
+          File.write(full, "recovered token: #{planted_github_token}\n")
+          output, status = run("bin/security", "--fast", "--diff")
+
+          expect(status).not_to be_success,
+            "a credential in a changed file was not detected by --diff:\n#{output}"
+          expect(output).not_to include(planted_github_token)
+          expect(output).to include("secret-scan-diff")
+        ensure
+          FileUtils.rm_f(full)
+        end
+      end
+    end
+
     it "is not allowlisted away from the pack" do
       allowlist = Rails.root.join("config/security/gitleaks.toml").read
 

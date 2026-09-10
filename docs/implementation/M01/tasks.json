@@ -24,10 +24,16 @@
     {
       "id": "M01-91",
       "file": "stories/M01-91-gate-execution-cost.md",
-      "status": "pending",
+      "status": "review",
       "dependsOn": [],
-      "attempts": 2,
-      "required": false
+      "attempts": 6,
+      "required": false,
+      "review": {
+        "critical": 0,
+        "high": 0,
+        "medium": 1,
+        "low": 0
+      }
     },
     {
       "id": "M01-92",
@@ -208,7 +214,7 @@
         "qualifier": "BLOCKED_FOR_PRODUCT_DECISION",
         "diagnosis": "SC-19: o executor e modulo dentro do processo Rails que serve a API publica; o doc 07 §2.2 desenha servico separado por RPC autenticado. Sem ADR a Story nao pode vencer a arquitetura. Implementado, testado contra Engine real, gate verde, revisao rodada 2 COUNTS 1 0 0 1 (o Critical e este). Decisao do dono: ADR aceitando o modulo em M01 e nomeando quando vira servico, ou ADR exigindo o servico agora. Detalhe em BLOCKERS.md e SPEC_CONFLICTS.md SC-19."
       },
-      "commit": "3d48345"
+      "commit": "3234dea"
     },
     {
       "id": "M01-10",
@@ -361,7 +367,7 @@
   ],
   "run": {
     "startedAt": "2026-09-09T08:39:59Z",
-    "turns": 13,
+    "turns": 17,
     "doneAtStart": 1
   }
 }
