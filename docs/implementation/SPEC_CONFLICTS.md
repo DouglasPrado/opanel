@@ -333,11 +333,19 @@ Registradas para evitar releitura como pendência. **Nenhuma ação necessária.
 - **Encaminhamento para M01-18:** O reconciliador lê `image_digest` (se presente) ou resolve `image_ref` buscando o digest, o armazena e o usa para deploy imutável.
 - **Como AC7 é contabilizado:** No relatório de `M01-12` a caixa de AC7 fica **desmarcada** e a evidência nomeia este conflito (SC-21) e a Story de adiamento (M01-18 AC2). Não é satisfação automática — é deferral explícita com Story herdeira.
 
+## SC-22 — Field naming: resourceType/resourceId vs scopeType/scopeId
+
+- **Documentos envolvidos:** `docs/architecture/07-internal-control-plane.md` §5.1 (linhas 262-263, `scopeType/scopeId`); `docs/architecture/09-data-model-apis-contracts.md` §9.1 (linhas 306, `resourceType/resourceId`) e §21 (`CommandEnvelope`, `resourceType`/`resourceId`); `docs/implementation/M01/stories/M01-13-operation-and-outbox-transaction.md` §Scope (linha 19, `resourceType`/`resourceId`).
+- **Decisão antiga:** doc 07 §5.1 usa `scopeType/scopeId` como nomes de coluna da Operation.
+- **Decisão atual:** `resource_type`/`resource_id` em `operations` table e `Operation` model, seguindo doc 09 §21 (`CommandEnvelope`) que é o contrato que o Operation payload viaja.
+- **Impacto:** nomes de coluna, nomes de campo do modelo, nomes de atributos expostos, and queries.
+- **Resolução aplicada:** `resolved`. Doc 07 §5.1 é a primeira mente desta decisão; doc 09 §9.1 e §21 (CommandEnvelope) a refinam. O `CommandEnvelope` do doc 09 §21 é o contrato **viajante** que formata o payload da Operation para o executor (M01-15+), então a coerência com ele é mais crítica que a coerência com doc 07 §5.1 — que é um diagrama conceitual em prosa. `M01-13` implementa `resource_type`/`resource_id` no banco e no modelo; doc 07 §5.1 continua válida conceitualmente e não é editada (a próxima reescrita do Anexo A fará a atualização prosaica).
+
 ## Resumo
 
 | Estado | Quantidade | Itens |
 |---|---|---|
-| `resolved` | 16 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16, **SC-18**, **SC-19**, **SC-20** |
+| `resolved` | 17 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16, **SC-18**, **SC-19**, **SC-20**, **SC-22** |
 | `deferred` | 3 | SC-07 (inventário de componentes, dono `M00-05`), SC-11 (backend de métricas, dono `M09-03`), **SC-21** (resolução de tag de imagem, dono `M01-18`) |
 | `unresolved` | 0 | — |
 | informativo | 5 | SC-13.1 … SC-13.5 |

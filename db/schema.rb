@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_000600) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -186,6 +186,77 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000000) do
     t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "nodes_id_is_ulid"
     t.check_constraint "role = ANY (ARRAY['MANAGER'::text, 'WORKER'::text])", name: "nodes_role_is_known"
     t.check_constraint "status = ANY (ARRAY['JOINING'::text, 'READY'::text, 'DEGRADED'::text, 'DOWN'::text, 'REMOVING'::text])", name: "nodes_status_is_known"
+  end
+
+  create_table "operation_attempts", id: :string, force: :cascade do |t|
+    t.integer "attempt_number", null: false
+    t.datetime "created_at", null: false
+    t.string "error_code"
+    t.text "error_message"
+    t.string "executor_id"
+    t.datetime "finished_at"
+    t.jsonb "metadata", default: {}
+    t.string "operation_id", null: false
+    t.string "outcome"
+    t.datetime "started_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["operation_id", "attempt_number"], name: "index_operation_attempts_on_operation_id_and_attempt_number", unique: true
+    t.index ["operation_id"], name: "index_operation_attempts_on_operation_id"
+    t.check_constraint "attempt_number >= 1", name: "attempt_number_positive"
+  end
+
+  create_table "operations", id: :string, force: :cascade do |t|
+    t.integer "attempt_count", default: 0, null: false
+    t.string "correlation_id"
+    t.datetime "created_at", null: false
+    t.bigint "desired_revision", null: false
+    t.string "error_code"
+    t.bigint "fencing_token"
+    t.datetime "finished_at"
+    t.string "idempotency_key"
+    t.string "lease_owner"
+    t.datetime "lease_until"
+    t.datetime "next_attempt_at"
+    t.jsonb "payload", default: {}, null: false
+    t.string "request_id"
+    t.string "requested_by"
+    t.string "resource_id", null: false
+    t.string "resource_type", null: false
+    t.datetime "started_at"
+    t.string "status", null: false
+    t.string "team_id", null: false
+    t.string "type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["resource_id"], name: "index_operations_on_resource_id"
+    t.index ["resource_type", "status", "created_at"], name: "index_operations_by_resource_status"
+    t.index ["resource_type", "status", "next_attempt_at"], name: "index_operations_for_retry_dispatch"
+    t.index ["resource_type"], name: "index_operations_on_resource_type"
+    t.index ["status"], name: "index_operations_on_status"
+    t.index ["team_id", "resource_type", "resource_id", "type", "idempotency_key"], name: "index_operations_idempotency_doc_07_6_1", unique: true, where: "(idempotency_key IS NOT NULL)"
+    t.index ["team_id"], name: "index_operations_on_team_id"
+    t.index ["type"], name: "index_operations_on_type"
+    t.check_constraint "attempt_count >= 0", name: "attempt_count_non_negative"
+    t.check_constraint "lease_owner IS NULL AND lease_until IS NULL OR lease_owner IS NOT NULL AND lease_until IS NOT NULL", name: "lease_pair_coherent"
+    t.check_constraint "payload ? 'schemaVersion'::text", name: "payload_has_schema_version"
+    t.check_constraint "status::text = ANY (ARRAY['PENDING'::character varying, 'QUEUED'::character varying, 'RUNNING'::character varying, 'WAITING_RUNTIME'::character varying, 'VERIFYING'::character varying, 'SUCCEEDED'::character varying, 'RETRYABLE'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying, 'SUPERSEDED'::character varying, 'TIMED_OUT'::character varying]::text[])", name: "status_in_valid_set"
+  end
+
+  create_table "outbox_events", id: :string, force: :cascade do |t|
+    t.string "aggregate_id", null: false
+    t.string "aggregate_type", null: false
+    t.datetime "created_at", null: false
+    t.string "event_type", null: false
+    t.datetime "occurred_at", null: false
+    t.string "partition_key"
+    t.jsonb "payload", default: {}, null: false
+    t.datetime "published_at"
+    t.integer "schema_version", default: 1, null: false
+    t.datetime "updated_at", null: false
+    t.index ["aggregate_id"], name: "index_outbox_events_on_aggregate_id"
+    t.index ["aggregate_type"], name: "index_outbox_events_on_aggregate_type"
+    t.index ["published_at", "occurred_at"], name: "index_outbox_events_for_publisher"
+    t.index ["published_at"], name: "index_outbox_events_unpublished", where: "(published_at IS NULL)"
+    t.check_constraint "schema_version > 0", name: "schema_version_positive"
   end
 
   create_table "projects", id: { type: :string, limit: 26 }, force: :cascade do |t|
@@ -486,6 +557,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000000) do
   add_foreign_key "instance_roles", "users", on_delete: :restrict
   add_foreign_key "node_observations", "nodes", on_delete: :cascade
   add_foreign_key "nodes", "clusters", on_delete: :restrict
+  add_foreign_key "operation_attempts", "operations"
+  add_foreign_key "operations", "teams", on_delete: :restrict
   add_foreign_key "projects", "teams", on_delete: :restrict
   add_foreign_key "services", "environments", on_delete: :restrict
   add_foreign_key "services", "teams", on_delete: :restrict

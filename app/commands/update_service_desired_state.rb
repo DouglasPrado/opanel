@@ -23,17 +23,18 @@ class UpdateServiceDesiredState
 
   def self.call(actor:, service:, service_id: nil, expected_revision: nil, replicas: nil,
     image_ref: nil, ports: nil, health_check: nil, cpu_reservation: nil, cpu_limit: nil,
-    memory_reservation: nil, memory_limit: nil, constraints: nil)
+    memory_reservation: nil, memory_limit: nil, constraints: nil, idempotency_key: nil)
     service = TenantScope.for(actor, Service).find_by_external_id(:service, service_id) if service_id && !service
     new(actor: actor, service: service, expected_revision: expected_revision, replicas: replicas,
       image_ref: image_ref, ports: ports, health_check: health_check,
       cpu_reservation: cpu_reservation, cpu_limit: cpu_limit,
       memory_reservation: memory_reservation, memory_limit: memory_limit,
-      constraints: constraints).call
+      constraints: constraints, idempotency_key: idempotency_key).call
   end
 
   def initialize(actor:, service:, expected_revision:, replicas:, image_ref:, ports:,
-    health_check:, cpu_reservation:, cpu_limit:, memory_reservation:, memory_limit:, constraints:)
+    health_check:, cpu_reservation:, cpu_limit:, memory_reservation:, memory_limit:, constraints:,
+    idempotency_key: nil)
     @actor = actor
     @service = service
     @expected_revision = expected_revision
@@ -46,6 +47,7 @@ class UpdateServiceDesiredState
     @memory_reservation = memory_reservation
     @memory_limit = memory_limit
     @constraints = constraints
+    @idempotency_key = idempotency_key
   end
 
   def call
@@ -54,6 +56,26 @@ class UpdateServiceDesiredState
     # Authorization (AF-07).
     policy = ServicePolicy.new(actor, service)
     return failure("FORBIDDEN", ApplicationPolicy::REASONS[:insufficient_role], field: "status") unless policy.update?
+
+    # AC5: Idempotency check. If an idempotency_key is provided and an operation
+    # already exists with the same key in this scope, return that operation instead
+    # of creating a duplicate.
+    if idempotency_key.present?
+      existing_op = Operation.find_by(
+        team_id: service.team.id,
+        resource_type: "Service",
+        resource_id: service.id,
+        type: "UPDATE_SERVICE",
+        idempotency_key: idempotency_key
+      )
+      if existing_op.present?
+        Rails.logger.info(event: "service.updated", team_id: service.team.external_id,
+          project_id: service.environment.project.external_id,
+          environment_id: service.environment.external_id, service_id: service.external_id,
+          actor_id: actor.external_id, result: "idempotent_reuse", operation_id: existing_op.external_id)
+        return Opanel::Result.success(service: service, operation_id: existing_op.external_id)
+      end
+    end
 
     # AC4: Optimistic concurrency check. If the caller has an expected_revision
     # and it does not match, return REVISION_CONFLICT without mutating.
@@ -136,7 +158,7 @@ class UpdateServiceDesiredState
   private
 
   attr_reader :actor, :service, :expected_revision, :replicas, :image_ref, :ports, :health_check, :cpu_reservation,
-:cpu_limit, :memory_reservation, :memory_limit, :constraints
+:cpu_limit, :memory_reservation, :memory_limit, :constraints, :idempotency_key
 
   def persist(replicas_count, reconciler_affected)
     before = service.attributes.dup
@@ -160,6 +182,12 @@ class UpdateServiceDesiredState
 
       AuditTrail.record(action: :service_updated, actor: actor, resource: service,
         before: before, after: service.attributes)
+
+      # AC1: Create an Operation and OutboxEvent in the same transaction (doc 07 §10, doc 09 §24).
+      # This happens whenever desired state changes in a way the reconciler observes.
+      if reconciler_affected
+        create_operation_and_event
+      end
     end
 
     Rails.logger.info(event: "service.updated", team_id: service.team.external_id,
@@ -168,7 +196,79 @@ class UpdateServiceDesiredState
       actor_id: actor.external_id, result: "succeeded",
       desired_revision: service.desired_revision)
 
-    Opanel::Result.success(service: service)
+    # AC3: Return operationId if Operation was created (when reconciler_affected).
+    operation_id = nil
+    if reconciler_affected
+      operation = Operation.where(resource_id: service.id, resource_type: "Service").order(:created_at).last
+      operation_id = operation&.external_id
+    end
+
+    Opanel::Result.success(service: service, operation_id: operation_id)
+  end
+
+  def create_operation_and_event
+    # Build the Operation payload. Must be sanitized with no plaintext secrets (AC9, doc 07 §21).
+    # Secrets are referenced by SecretVersion ID, never stored plaintext (M01-16+).
+    operation_payload = {
+      schemaVersion: 1,
+      service_id: service.external_id,
+      desired_revision: service.desired_revision,
+      replicas: service.replicas,
+      image_ref: service.image_ref,
+      image_digest: service.image_digest,
+      ports: service.ports,
+      health_check: service.health_check,
+      cpu_reservation: service.cpu_reservation,
+      cpu_limit: service.cpu_limit,
+      memory_reservation: service.memory_reservation,
+      memory_limit: service.memory_limit,
+      constraints: service.constraints,
+      correlation_id: request_id || SecureRandom.uuid,
+      request_id: request_id || SecureRandom.uuid,
+      actor_id: actor.external_id
+    }
+
+    # Validate payload schema (AC8, doc 09 §9).
+    Opanel::OperationPayload.validate!("UPDATE_SERVICE", operation_payload)
+
+    # Create the Operation (PENDING status, awaiting dispatch to queue in M01-14).
+    operation = Operation.create!(
+      team_id: service.team.id,
+      resource_type: "Service",
+      resource_id: service.id,
+      type: "UPDATE_SERVICE",
+      status: Operation::PENDING,
+      desired_revision: service.desired_revision,
+      payload: operation_payload,
+      request_id: operation_payload[:request_id],
+      correlation_id: operation_payload[:correlation_id],
+      requested_by: actor.external_id,
+      attempt_count: 0,
+      error_code: nil,
+      idempotency_key: idempotency_key
+    )
+
+    # Create the OutboxEvent (publishedAt is null until dispatcher publishes in M01-14).
+    # The event records the intent; occurrence time is now (commit time).
+    OutboxEvent.create!(
+      aggregate_type: "Service",
+      aggregate_id: service.id,
+      event_type: "service.desired_state.changed.v1",
+      schema_version: 1,
+      payload: {
+        service_id: service.external_id,
+        desired_revision: service.desired_revision,
+        operation_id: operation.external_id
+      },
+      partition_key: service.id,
+      occurred_at: Time.current.utc,
+      published_at: nil
+    )
+  end
+
+  def request_id
+    # TODO: pass request_id from the controller (M01-13 AC2 implementation detail).
+    nil
   end
 
   def failure(code, message, **details)

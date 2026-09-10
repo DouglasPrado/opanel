@@ -1,5 +1,7 @@
 # CRUD for Services (doc 09 §5.3, doc 10 UC-013).
 class ServicesController < ApplicationController
+  include ErrorEnvelope
+
   before_action :set_environment, only: [ :index, :create ]
   before_action :set_service, only: [ :show, :update ]
 
@@ -108,7 +110,17 @@ slug: @service.environment.slug },
     )
 
     if result.success?
-      redirect_to_service_overview(result.value[:service])
+      service = result.value[:service]
+      operation_id = result.value[:operation_id]
+
+      # AC3: Return operationId for async tracking if an Operation was created.
+      redirect_to panel_project_environment_service_path(
+        team_slug: service.environment.project.team.slug,
+        project_id: service.environment.project.external_id,
+        environment_id: service.environment.external_id,
+        id: service.external_id,
+        operation_id: operation_id
+      )
     else
       render_error_response(result)
     end
@@ -161,14 +173,8 @@ slug: @service.environment.slug },
   end
 
   def render_error_response(result)
-    status_map = {
-      "FORBIDDEN" => :forbidden,
-      "NOT_FOUND" => :not_found,
-      "REVISION_CONFLICT" => :conflict,
-      "VALIDATION_ERROR" => :unprocessable_entity
-    }
-    status = status_map[result.code] || :unprocessable_entity
-    render json: { error: result.message, code: result.code, details: result.details }, status: status
+    status = error_status(result)
+    render json: error_envelope(result), status: status
   end
 
   def render_authorization_error(error)

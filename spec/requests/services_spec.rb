@@ -135,20 +135,25 @@ RSpec.describe "Services", type: :request do
     let(:service) { create(:service, environment: environment, replicas: 1) }
 
     it "updates service desired state" do
-      patch panel_project_environment_service_path(
-        team_slug: team.slug, project_id: project.external_id,
-        environment_id: environment.external_id, id: service.external_id
-      ),
-        params: {
-          service: {
-            replicas: 3,
-            expected_revision: service.desired_revision
+      expect {
+        patch panel_project_environment_service_path(
+          team_slug: team.slug, project_id: project.external_id,
+          environment_id: environment.external_id, id: service.external_id
+        ),
+          params: {
+            service: {
+              replicas: 3,
+              expected_revision: service.desired_revision
+            }
           }
-        }
+      }.to change(Operation, :count).by(1)
 
+      # AC3: Response returns operationId in the redirect and does not wait for runtime.
+      operation = Operation.last
       expect(response).to redirect_to(panel_project_environment_service_path(
         team_slug: team.slug, project_id: project.external_id,
-        environment_id: environment.external_id, id: service.external_id
+        environment_id: environment.external_id, id: service.external_id,
+        operation_id: operation.external_id
       ))
 
       expect(service.reload.replicas).to eq(3)

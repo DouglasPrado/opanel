@@ -201,7 +201,7 @@
     {
       "id": "M01-10",
       "file": "stories/M01-10-node-registration-and-observation.md",
-      "status": "review",
+      "status": "done",
       "dependsOn": [
         "M01-09"
       ],
@@ -213,7 +213,7 @@
         "medium": 0,
         "low": 0
       },
-      "commit": "41e9bf7"
+      "commit": "466cf7a"
     },
     {
       "id": "M01-11",
@@ -257,12 +257,20 @@
     {
       "id": "M01-13",
       "file": "stories/M01-13-operation-and-outbox-transaction.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "M01-12"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 4,
+      "required": true,
+      "reason": "Fourth and last attempt, granted by the arbiter in a fresh context under ADR-0007 (decision of 2026-09-10 in docs/implementation/M01/DECISIONS.md, verdict FIX). tasks.sh caps automatic attempts at three and has no command for an arbitrated raise, so the counter is written here to stay truthful rather than reset. No further raise: if this round leaves bin/test red over the thirteen declared spec files, M01-13 returns as a BLOCK candidate.",
+      "review": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "commit": "b5e4e30"
     },
     {
       "id": "M01-14",

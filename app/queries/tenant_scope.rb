@@ -55,6 +55,9 @@ class TenantScope
       # excludes rows of a soft-deleted Team — a tenant that is gone does not keep
       # answering for its own.
       @model.accessible_to(actor)
+    when "Operation"
+      # Operations have a direct team_id column. Simply scope by active Teams.
+      @model.where(team_id: active_team_ids)
     else
       raise UnscopedRelation,
         "#{@model.name} has no tenancy boundary registered in TenantScope. " \

@@ -64,6 +64,10 @@ class Service < ApplicationRecord
   belongs_to :team
   has_one :project, through: :environment
 
+  # Operations for this Service. The association is loose (no foreign key) because
+  # Operations reference any resource by type + id, not just Services.
+  has_many :operations, -> { where(resource_type: "Service") }, foreign_key: :resource_id, dependent: :destroy
+
   validates :name, presence: true, length: { maximum: NAME_MAX_LENGTH }
   validates :slug, presence: true, format: { with: SLUG_FORMAT },
     length: { in: SLUG_MIN_LENGTH..SLUG_MAX_LENGTH }

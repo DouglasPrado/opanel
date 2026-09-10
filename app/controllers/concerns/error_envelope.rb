@@ -28,7 +28,9 @@ module ErrorEnvelope
     # is in a state that does not accept it — archiving a Project that is already
     # archived. 409 rather than 422: nothing about the request needs correcting,
     # so a client that retries after the state changes is right to.
-    "CONFLICT" => :conflict
+    "CONFLICT" => :conflict,
+    # Optimistic concurrency: the resource was modified since the caller last read it (doc 09 §5.3, M01-13).
+    "REVISION_CONFLICT" => :conflict
   }.freeze
 
   private

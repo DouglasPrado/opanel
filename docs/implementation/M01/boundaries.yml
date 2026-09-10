@@ -770,3 +770,81 @@ boundaries:
     # existir. Declarado aqui, na Story cuja arbitragem o escreveu, em vez de
     # mexer no gate que julga esta execução.
     - docs/implementation/M01/DECISIONS.md
+
+  # M01-13 — Operation, OperationAttempt and the transactional Outbox.
+  #
+  # A Story that widens on purpose in two places, and it is worth saying why up
+  # front. `app/commands/update_service_desired_state.rb` and
+  # `app/commands/create_service.rb` belong to `M01-12`; this Story's whole point
+  # is that a mutation of Desired State stops being a bare `UPDATE` and starts
+  # committing an `Operation` and an `OutboxEvent` in the same transaction, so
+  # the Commands that write that state are exactly where the boundary lives.
+  # There is no way to prove AC1 without touching them.
+  #
+  # `app/controllers/concerns/error_envelope.rb` is the second. The arbitration
+  # of `DECISIONS.md` (the fourth-attempt block on `M01-12`) left it here by name:
+  # `REVISION_CONFLICT` was hand-mapped in the Services controller because
+  # `M01-12` was not allowed to edit the shared concern, and `M01-13` is "the next
+  # Story to produce that code and owns the shared concern's next legitimate
+  # edit". Lifting the code→status map back into one place is that edit.
+  #
+  # `lib/gates/**`, `bin/gate*` and `spec/gates/**` are NOT here and must not be.
+  # AF-06 is configured through `config/architecture/fitness.yml`; the checker
+  # itself belongs to `M01-91`/`M01-93` and is denied to the run it judges.
+  M01-13:
+    # Schema: three tables and the regenerated dump. Expand-only.
+    - db/migrate/*_create_operations.rb
+    - db/migrate/*_create_operation_attempts.rb
+    - db/migrate/*_create_outbox_events.rb
+    - db/schema.rb
+    # Domain.
+    - app/models/operation.rb
+    - app/models/operation_attempt.rb
+    - app/models/outbox_event.rb
+    - app/models/service.rb
+    # Payload validation by `schemaVersion`, with an allowlist per operation
+    # type. Never a generic deserializer (Anexo C §16).
+    - lib/opanel/operation_payload.rb
+    # The transaction boundary itself: the two Commands that write Desired State.
+    - app/commands/create_service.rb
+    - app/commands/update_service_desired_state.rb
+    # Reads.
+    - app/queries/operation_by_id.rb
+    - app/queries/operations_for_resource.rb
+    # Authorization, tenancy and the cop that polices it — the same maintenance
+    # `M01-04`, `M01-07`, `M01-08` and `M01-10` each performed for their model.
+    - app/policies/operation_policy.rb
+    - lib/opanel/authorization.rb
+    - app/queries/tenant_scope.rb
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # Audit: the new actions and the allowlist of what may be recorded.
+    - app/models/audit_log.rb
+    - app/audit/audit_sanitizer.rb
+    - spec/unit/audit_actions_spec.rb
+    # The response carries `operationId` (AC3) and the stable code map (AC11).
+    - app/controllers/services_controller.rb
+    - app/controllers/concerns/error_envelope.rb
+    - config/routes.rb
+    # AF-06 over Operation and OutboxEvent payloads — configuration only.
+    - config/architecture/fitness.yml
+    # Tests.
+    - spec/unit/operation_state_machine_spec.rb
+    - spec/unit/operation_payload_spec.rb
+    - spec/unit/operation_supersession_spec.rb
+    - spec/integration/operation_transaction_atomicity_spec.rb
+    - spec/integration/operation_transaction_boundary_spec.rb
+    - spec/integration/operation_outbox_crash_spec.rb
+    - spec/integration/operation_idempotency_key_spec.rb
+    - spec/integration/operation_idempotency_concurrent_spec.rb
+    - spec/integration/operation_attempt_immutability_spec.rb
+    - spec/integration/operation_indexes_spec.rb
+    - spec/contracts/operation_response_contract_spec.rb
+    - spec/security/operation_payload_redaction_spec.rb
+    - spec/policies/operation_policy_spec.rb
+    - spec/requests/services_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-13.md
+    - docs/implementation/M01/DECISIONS.md

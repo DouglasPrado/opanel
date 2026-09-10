@@ -60,6 +60,11 @@ class AuditSanitizer
       cpu_reservation cpu_limit memory_reservation memory_limit constraints
       status environment_id team_id desired_revision applied_revision
       technical_name deleted_at archived_at].freeze,
+    # Operation: records durable infrastructure work (M01-13). The payload carries
+    # schemaVersion and operation-specific fields, sanitized separately; the record
+    # itself captures the intent and outcome without exposing secrets.
+    "Operation" => %w[team_id resource_type resource_id type status
+      desired_revision attempt_count error_code].freeze,
     "TeamMember" => %w[role status joined_at].freeze,
     "User" => %w[display_name status email_verified_at].freeze,
     "Session" => %w[expires_at revoked_at last_seen_at mfa_level].freeze,
