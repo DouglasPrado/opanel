@@ -33,7 +33,12 @@ module Opanel
     # from `TeamMember` would silently deny by raising `NameError` instead.
     POLICIES = {
       "Team" => "TeamPolicy",
-      "TeamMember" => "TeamPolicy"
+      "TeamMember" => "TeamPolicy",
+      # A Project has a Policy of its own because the decision is about a
+      # resource *inside* the Team, and `ApplicationPolicy` resolves the actor's
+      # membership from the resource — so the answer is scoped to this Project's
+      # Team rather than to whichever Team the route named.
+      "Project" => "ProjectPolicy"
     }.freeze
 
     module_function

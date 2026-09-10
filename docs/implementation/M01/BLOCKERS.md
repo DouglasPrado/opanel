@@ -326,3 +326,57 @@ segura é informação que só o dono da máquina tem.
   Sem o lab, elas são `BLOCKED_EXTERNAL_DEPENDENCY` conforme a Block policy do
   `GOAL.md`.
 - Até `M01-07` o trabalho é domínio, autorização, audit e UI, e segue sem Docker.
+
+---
+
+## M01-07 — o AC5 exige `Environment`, e a `M01-11` exige a `M01-07` fechada
+
+**Estado:** `BLOCKED_FOR_PRODUCT_DECISION`. Oito dos nove Acceptance Criteria
+satisfeitos; o gate local passa; a revisão independente devolveu `COUNTS 1 1 0 0`
+e o High já foi fechado. O que resta é o Critical, e ele não está no alcance do
+implementer.
+
+**Diagnóstico reproduzível:**
+
+```
+$ git grep -l "class Environment\|create_table :environments" -- app lib db
+(nenhum resultado)
+
+$ grep -A2 '## Preconditions' docs/implementation/M01/stories/M01-07-project-entity.md
+`M01-04` e `M01-05` done.
+
+$ grep -A2 '## Preconditions' docs/implementation/M01/stories/M01-11-environment-entity.md
+`M01-07` e `M01-08` done.
+```
+
+O AC5 da `M01-07` pede que arquivar um Project com Environments ativos seja
+bloqueado. `Environment` só nasce na `M01-11`, cujo precondition é a `M01-07`
+`done`. As duas Stories são precondition uma da outra para este critério. Está
+registrado como **SC-18** em `docs/implementation/SPEC_CONFLICTS.md`.
+
+Hoje a regra é vacuamente verdadeira — sem Environments, nenhum Project pode ter
+um ativo — mas não é **provável**, e um critério que não pode falhar não é um
+critério satisfeito.
+
+**O que o implementer não vai fazer**, e por quê:
+
+- criar a tabela `environments` aqui: está em Out of Scope da própria `M01-07` e
+  colidiria com o boundary da `M01-11`;
+- introduzir um registry de bloqueadores com uma implementação vazia: abstração
+  especulativa, proibida pelo `AGENT_RULES`, e um guarda que nada dispara nunca se
+  vê falhando;
+- marcar `done` com `Critical = 1`.
+
+**Decisão que falta ao dono do repositório.** Duas saídas, ambas legítimas:
+
+1. **Aceitar o diferimento**: `M01-07` fecha com oito de nove, e o AC5 vira
+   obrigação nomeada da `M01-11` — que já a carrega em `SC-18` e no relatório.
+   Isso exige uma decisão explícita contra a Definition of Done desta Story, que
+   pede os nove.
+2. **Reordenar o pack**: mover o AC5 para a `M01-11` no arquivo da Story,
+   deixando a `M01-07` com oito critérios próprios. Editar uma Story do pack é
+   mudança de plano, não de implementação, e não é do implementer.
+
+Enquanto nenhuma das duas for tomada, a `M01-07` fica `blocked` e o run segue
+pelas Stories independentes — a `M01-08` (Cluster e bootstrap do Swarm) não
+depende de Project.

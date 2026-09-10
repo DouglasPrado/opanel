@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_120700) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_09_120800) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -84,6 +84,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120700) do
     t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "instance_roles_id_is_ulid"
     t.check_constraint "role = ANY (ARRAY['INSTANCE_ADMIN'::text, 'INSTANCE_OPERATOR'::text, 'INSTANCE_AUDITOR'::text])", name: "instance_roles_role_is_known"
     t.check_constraint "user_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "instance_roles_user_id_is_ulid"
+  end
+
+  create_table "projects", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.timestamptz "created_at", null: false
+    t.string "default_environment_id", limit: 26
+    t.timestamptz "deleted_at"
+    t.text "description"
+    t.text "name", null: false
+    t.text "slug", null: false
+    t.text "status", default: "ACTIVE", null: false
+    t.string "team_id", limit: 26, null: false
+    t.timestamptz "updated_at", null: false
+    t.index ["team_id", "id"], name: "index_projects_on_team_id_and_id"
+    t.index ["team_id", "slug"], name: "index_projects_unique_slug_per_team_when_not_deleted", unique: true, where: "(deleted_at IS NULL)"
+    t.check_constraint "btrim(name) <> ''::text AND length(name) <= 120", name: "projects_name_present"
+    t.check_constraint "default_environment_id IS NULL OR default_environment_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_default_environment_id_is_ulid"
+    t.check_constraint "description IS NULL OR length(description) <= 2000", name: "projects_description_length"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_id_is_ulid"
+    t.check_constraint "slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug) >= 2 AND length(slug) <= 63", name: "projects_slug_format"
+    t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'ARCHIVED'::text, 'DELETING'::text])", name: "projects_status_is_known"
+    t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_team_id_is_ulid"
   end
 
   create_table "sessions", id: { type: :string, limit: 26 }, force: :cascade do |t|
@@ -314,6 +335,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120700) do
   end
 
   add_foreign_key "instance_roles", "users", on_delete: :restrict
+  add_foreign_key "projects", "teams", on_delete: :restrict
   add_foreign_key "sessions", "users", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

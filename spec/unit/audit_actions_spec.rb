@@ -23,7 +23,10 @@ RSpec.describe "the audit action names", type: :unit do
     session_revoked: "session.revoked",
     instance_role_granted: "instance_role.granted",
     instance_role_revoked: "instance_role.revoked",
-    authorization_denied: "authorization.denied"
+    authorization_denied: "authorization.denied",
+    project_created: "project.created",
+    project_updated: "project.updated",
+    project_archived: "project.archived"
   }.freeze
 
   it "are exactly these, and renaming one is a change to this file too" do

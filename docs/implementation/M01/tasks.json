@@ -116,7 +116,7 @@
     {
       "id": "M01-06",
       "file": "stories/M01-06-app-shell-and-auth-ui.md",
-      "status": "review",
+      "status": "done",
       "dependsOn": [
         "M01-04"
       ],
@@ -127,18 +127,25 @@
         "high": 0,
         "medium": 9,
         "low": 3
-      }
+      },
+      "commit": "7871d66"
     },
     {
       "id": "M01-07",
       "file": "stories/M01-07-project-entity.md",
-      "status": "pending",
+      "status": "fix_required",
       "dependsOn": [
         "M01-04",
         "M01-05"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 2,
+      "required": true,
+      "review": {
+        "critical": 1,
+        "high": 0,
+        "medium": 1,
+        "low": 1
+      }
     },
     {
       "id": "M01-08",
@@ -312,7 +319,7 @@
   ],
   "run": {
     "startedAt": "2026-09-09T08:39:59Z",
-    "turns": 6,
+    "turns": 8,
     "doneAtStart": 1
   }
 }

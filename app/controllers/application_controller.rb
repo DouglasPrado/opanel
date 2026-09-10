@@ -14,6 +14,24 @@ class ApplicationController < ActionController::Base
   # `allow_unauthenticated_access`.
   include Authentication
 
+  # A Policy refusing an action is an answer, not a crash.
+  #
+  # `M01-07` is the first Story whose Commands authorize, and until it there was
+  # nothing to raise this — a role refusal came back as a 500, which tells the
+  # user nothing and tells a log reader that the server is broken when it is
+  # working exactly as designed.
+  #
+  # **403, and only for an actor who may already see the resource.** A caller
+  # from another Team never reaches here: the tenancy boundary answers 404 first,
+  # and it has to, because a 403 across Teams confirms the resource exists
+  # (Annex C §7.3). What this renders is the other case — a member of the right
+  # Team whose role does not carry the action.
+  #
+  # The body carries no exception class, no backtrace and no path. The classified
+  # reason stays in the audit record and the application log, where
+  # `Opanel::Authorization` already wrote it.
+  rescue_from Opanel::Authorization::Denied, with: :render_forbidden
+
   # Props shared with every page.
   #
   # Nothing sensitive goes here. Shared props are serialized into the HTML of
@@ -60,6 +78,24 @@ class ApplicationController < ActionController::Base
   # three files at once.
   def shared_team_prop(entry)
     { id: entry.id, name: entry.name, slug: entry.slug, role: entry.role }
+  end
+
+  # The same page, the same three props and the same fixed sentence
+  # `ErrorsController` renders for a 403. Reused rather than given a shape of its
+  # own: a second contract for the same status is a second thing to keep true,
+  # and the request id the operator needs is already a shared prop.
+  #
+  # `decision.reason` is deliberately not shown. It distinguishes "your role does
+  # not permit this" from "you have no membership", and telling an actor which
+  # one it is turns a refusal into an oracle about the Team.
+  def render_forbidden(_error)
+    render inertia: "Error",
+      props: {
+        status: 403,
+        title: Rack::Utils::HTTP_STATUS_CODES.fetch(403),
+        message: ErrorsController::STATUS_MESSAGES.fetch(403)
+      },
+      status: :forbidden
   end
 
   # The Team the URL names, when it names one. Falls back to the first the actor

@@ -205,6 +205,41 @@ Complementa — não substitui — [`docs/decisions/pending-documentation-update
   `varchar(26)`, a migration diz `char(26)`, e a `CHECK` garante que isso não
   muda o comportamento de nenhum valor válido.
 
+## SC-18 — `M01-07` AC5 exige `Environment`, que só a `M01-11` cria
+
+- **Documentos envolvidos:**
+  `docs/implementation/M01/stories/M01-07-project-entity.md` — AC5 (“Arquivar um
+  Project com Environments ativos é bloqueado com erro explicativo”), §Failure
+  Scenarios (mesma regra) e §Out of Scope (“Environment (`M01-11`)”); contra
+  `docs/implementation/M01/stories/M01-11-environment-entity.md` §Preconditions
+  (“`M01-07` e `M01-08` done”).
+- **Situação:** a dependência é circular e está escrita nos dois arquivos. A
+  `M01-07` precisa de Environments ativos para provar o AC5 e declara Environment
+  fora de escopo; a `M01-11`, que cria a entidade, exige a `M01-07` fechada antes
+  de começar. Verificado no repositório em `M01-07`: `git grep -l "class
+  Environment\|create_table :environments" -- app lib db` não retorna nada. Não
+  existe tabela, modelo nem associação sobre a qual o guarda possa consultar.
+- **Impacto:** um único critério de aceite, e nenhum comportamento. Com zero
+  Environments no sistema, nenhum Project pode ter Environment ativo, então a
+  regra é **vacuamente verdadeira** e nenhum arquivamento indevido é possível
+  hoje. O que não existe é a **prova**: não há como escrever um exemplo que
+  planta a condição e vê o Command recusar. Um critério que não pode falhar não é
+  um critério satisfeito — é a mesma armadilha dos quatro checks que a revisão da
+  `M01-05` e da `M01-06` derrubou.
+- **Como apareceu:** planejamento da `M01-07`, ao mapear os nove critérios contra
+  o que existe no repositório.
+- **Resolução aplicada:** `open`. A `M01-07` implementa os outros oito critérios
+  por inteiro e **não** cria a tabela `environments` — fazê-lo seria exatamente o
+  scope creep que `AGENT_RULES` §Scope Discipline proíbe, e colidiria com o
+  boundary da `M01-11`. O AC5 fica declarado como diferido para a `M01-11` no
+  relatório da Story, com esta entrada como referência.
+  `ArchiveProject` nasce com os guardas que **podem** ser provados agora —
+  arquivar um Project já arquivado, e arquivar fora do Team — e o lugar do guarda
+  de Environment fica nomeado no código, referenciando `M01-11`.
+- **Obrigação que a `M01-11` herda**, e que precisa aparecer no relatório dela:
+  fechar o AC5 da `M01-07` — o bloqueio de arquivamento com Environment ativo,
+  com o caso negativo plantado — junto com os critérios próprios dela.
+
 ## SC-13 — Referências informativas sem conflito
 
 Registradas para evitar releitura como pendência. **Nenhuma ação necessária.**

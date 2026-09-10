@@ -27,7 +27,10 @@ class AuditLog < ApplicationRecord
     session_revoked: "session.revoked",
     instance_role_granted: "instance_role.granted",
     instance_role_revoked: "instance_role.revoked",
-    authorization_denied: "authorization.denied"
+    authorization_denied: "authorization.denied",
+    project_created: "project.created",
+    project_updated: "project.updated",
+    project_archived: "project.archived"
   }.freeze
 
   # Events about the installation itself, which legitimately have no Team. Every

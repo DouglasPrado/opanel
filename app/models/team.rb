@@ -28,6 +28,12 @@ class Team < ApplicationRecord
   has_many :team_members, dependent: :restrict_with_error
   has_many :members, through: :team_members, source: :user
 
+  # `restrict_with_error` for the reason above and one more: doc 09 §25 makes a
+  # Project's removal a lifecycle (`DELETING` → reconcile → tombstone), not a
+  # cascade. A Team that deleted its Projects on the way out would destroy
+  # desired state the runtime is still converging toward.
+  has_many :projects, dependent: :restrict_with_error
+
   validates :name, presence: true, length: { maximum: NAME_MAX_LENGTH }
   validates :slug, presence: true, format: { with: SLUG_FORMAT },
     length: { in: SLUG_MIN_LENGTH..SLUG_MAX_LENGTH }

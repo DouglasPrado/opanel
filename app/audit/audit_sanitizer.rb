@@ -39,6 +39,12 @@ class AuditSanitizer
     # the allowlist, so there is one path into `after` rather than two.
     "AuthorizationDenial" => %w[reason].freeze,
     "Team" => %w[name slug status owner_user_id deleted_at].freeze,
+    # `description` is here because a rename or an edit of it is exactly what the
+    # trail of `M01-07` has to answer for, and a `before`/`after` without the field
+    # that changed records that something happened and not what. It is user prose
+    # about the user's own Project — the same exposure `Team.name` already carries —
+    # and the `SENSITIVE` list above still applies to every key by name.
+    "Project" => %w[name slug description status team_id default_environment_id deleted_at].freeze,
     "TeamMember" => %w[role status joined_at].freeze,
     "User" => %w[display_name status email_verified_at].freeze,
     "Session" => %w[expires_at revoked_at last_seen_at mfa_level].freeze,

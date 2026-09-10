@@ -23,7 +23,20 @@ Rails.application.routes.draw do
   # request rather than trusted from the path — a slug in the URL is an argument,
   # not an authorization.
   scope "t/:team_slug", as: :panel do
-    get "projects", to: "panel#projects", as: :projects
+    # Projects (M01-07). `index` keeps the path the shell's navigation already
+    # points at; the mutations are `POST`/`PATCH` on the same collection, so the
+    # short flow of doc 10 §7.2 needs no second screen.
+    get "projects", to: "projects#index", as: :projects
+    post "projects", to: "projects#create"
+    # UC-009 passo 6: depois de criar, a UI abre o Project Overview. The read is a
+    # `GET` on the same member path the rename writes to.
+    get "projects/:id", to: "projects#show", as: :project
+    # No named helper: the scope's own `as: :panel` would become the whole name,
+    # and `panel_path` for a Project rename is a name that means nothing. The GET
+    # above owns `panel_project_path`, and nothing generates this one — the form
+    # posts the path it is already on.
+    patch "projects/:id", to: "projects#update", as: nil
+    post "projects/:id/archive", to: "projects#archive", as: :archive_project
     get "clusters", to: "panel#clusters", as: :clusters
     get "audit", to: "panel#audit", as: :audit
     get "settings", to: "panel#settings", as: :settings

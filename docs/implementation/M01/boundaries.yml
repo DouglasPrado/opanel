@@ -305,3 +305,96 @@ boundaries:
     # própria do Opanel; o shell desta Story tornou isso falso, e o registro tem
     # de dizer o que é verdade.
     - config/quality/waivers.yml
+
+  # O Project — o produto lógico do Team. A Story é de domínio: uma tabela nova
+  # com as constraints do doc 09 §18, três Commands, duas Queries, uma Policy, e
+  # duas telas — a lista com o fluxo curto do doc 10 §7.2, e a versão mínima do
+  # `ProjectOverview` do doc 09 §23 que o UC-009 passo 6 abre depois de criar.
+  #
+  # A UI rica de Projects continua sendo da `M01-22`: production status, contagem
+  # de Environments, último deploy, "attention", releases e comparação entre
+  # Environments precisam de `M01-11`, `M01-12`..`M01-18` e `M01-19` antes.
+  #
+  # A frase original desta abertura dizia "listar e criar, e nada além disso", e
+  # deixou de ser verdade quando a rodada 2 da revisão trouxe a segunda tela. Um
+  # resumo de boundary desatualizado engana quem lê o topo e não as trinta linhas
+  # abaixo — foi o finding M-1.
+  M01-07:
+    - db/migrate/*_create_projects.rb
+    - db/schema.rb
+    # Domínio.
+    - app/models/project.rb
+    # A associação inversa: `Team has_many :projects`. Sem ela a checagem de slug
+    # por Team não tem por onde partir, e a única alternativa seria consultar
+    # `Project` sem escopo — que é exatamente o que o cop proíbe.
+    - app/models/team.rb
+    # Os três Commands e as duas Queries do escopo.
+    - app/commands/create_project.rb
+    - app/commands/update_project.rb
+    - app/commands/archive_project.rb
+    - app/queries/projects_for_team.rb
+    - app/queries/project_overview.rb
+    # A Policy do recurso, e o `when "Project"` que o TenantScope ainda não tem —
+    # sem ele toda leitura de Project levanta `UnscopedRelation`.
+    - app/policies/project_policy.rb
+    - app/queries/tenant_scope.rb
+    # `Authorization::POLICIES` despacha por classe do recurso; sem a linha de
+    # `Project` toda autorização de Project levanta `ArgumentError`. O comentário
+    # do próprio arquivo já previa esta Story ("later a Project").
+    - lib/opanel/authorization.rb
+    # O cop que proíbe consulta sem escopo precisa saber que Project é
+    # tenant-scoped; caso contrário ele reporta verde sobre exatamente o que
+    # existe para pegar.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # A trilha: três ações novas e a allowlist do recurso. Sem a linha "Project"
+    # no sanitizer o `after` inteiro sai como OMITTED.
+    - app/models/audit_log.rb
+    - app/audit/audit_sanitizer.rb
+    # Rotas e a tela.
+    - app/controllers/projects_controller.rb
+    - app/controllers/panel_controller.rb
+    # Alargamento deliberado, encontrado pelo request spec: esta é a primeira
+    # Story cujos Commands autorizam, e `Authorization::Denied` não tinha
+    # tratamento — uma recusa de papel virava 500. O rescue vai no
+    # `ApplicationController` e não aqui: qualquer controller que chame um
+    # Command pode levantá-la, e a próxima Story repetiria o mesmo bloco.
+    # `CONFLICT` é código novo que esta Story produz; a lista do doc 09 §28 é
+    # explicitamente de exemplos, então especializá-la é permitido.
+    - app/controllers/application_controller.rb
+    - app/controllers/concerns/error_envelope.rb
+    - spec/requests/error_envelope_spec.rb
+    - config/routes.rb
+    - app/frontend/pages/Panel/Projects.tsx
+    # A tela do Project, e o teste dela. Acrescentadas na rodada 2 da revisão:
+    # `ProjectOverview` — Query que a Story exige em Application Layer — tinha
+    # zero callers e zero testes, e o F-2 provou isso trocando o corpo por
+    # `raise` sem nenhuma falha. O caller certo não é inventado: o UC-009 passo 6
+    # diz "UI abre Project Overview", e a versão anterior redirecionava para a
+    # lista — divergência do próprio caso de uso que a Story referencia.
+    - app/frontend/pages/Panel/Project.tsx
+    - spec/frontend/project-page.test.tsx
+    - spec/unit/project_overview_spec.rb
+    # Testes.
+    - spec/factories/projects.rb
+    - spec/unit/project_slug_spec.rb
+    # A lista transcrita de nomes de ação. Ela existe para que acrescentar uma
+    # ação custe uma mudança deliberada em dois lugares; esta Story acrescenta
+    # três, então tocá-la é a manutenção que o check pede.
+    - spec/unit/audit_actions_spec.rb
+    - spec/unit/project_lifecycle_spec.rb
+    - spec/integration/project_constraints_spec.rb
+    - spec/integration/projects_cursor_pagination_spec.rb
+    - spec/policies/project_policy_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    # O classificador de rotas do harness cross-team. O comentário dele já previa
+    # esta Story — "a route added in M01-07 shows up here without anybody deciding
+    # to add it" — e foi o que aconteceu: as três rotas novas caíram como
+    # unclassified e o gate de cobertura falhou até serem declaradas.
+    - spec/support/authorization.rb
+    - spec/requests/projects_spec.rb
+    - spec/frontend/projects-page.test.tsx
+    # O AC5 depende de `Environment`, que nasce na `M01-11` — cujo próprio
+    # precondition é `M01-07` done. A dependência é circular no pack e a decisão
+    # não é do implementer: registrar o conflito é o que `AGENT_RULES` manda
+    # fazer em vez de escolher em silêncio.
+    - docs/implementation/SPEC_CONFLICTS.md

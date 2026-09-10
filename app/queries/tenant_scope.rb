@@ -49,6 +49,12 @@ class TenantScope
       @model.accessible_to(actor)
     when "TeamMember"
       @model.where(team_id: active_team_ids)
+    when "Project"
+      # Same delegation as `Team`, and for the same reason: the scope lives on
+      # the model, where the join through the membership is written once. It also
+      # excludes Projects of a soft-deleted Team — a tenant that is gone does not
+      # keep answering for its rows.
+      @model.accessible_to(actor)
     else
       raise UnscopedRelation,
         "#{@model.name} has no tenancy boundary registered in TenantScope. " \

@@ -59,6 +59,15 @@ module AuthorizationHarness
       pattern: %r{\A/teams/:id},
       kind: :tenant_scoped,
       reason: "addresses a Team the caller may not belong to"
+    },
+    {
+      # Create, rename and archive, all under the Team slug. The collection route
+      # is tenant-scoped too, unlike `POST /teams`: creating a Project happens
+      # *inside* somebody's Team, so an outsider reaching it is exactly the leak
+      # this bucket exists for.
+      pattern: %r{\A/t/:team_slug/projects},
+      kind: :tenant_scoped,
+      reason: "addresses Projects of a Team the caller may not belong to"
     }
   ].freeze
 

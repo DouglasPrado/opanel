@@ -76,42 +76,45 @@ RSpec.describe "a user from another Team", type: :request do
   # as somebody from another Team and asserts they are refused without learning
   # that the resource exists.
   #
-  # **Today it generates nothing, and that is the honest state.** An earlier
-  # version of this file claimed "exactly one such route"; it was zero, and the
-  # guard written to catch precisely that asserted on `mutating_routes` (all five)
-  # instead of on `routes` (none) — green while its own name was false.
-  #
-  # There is no tenant-scoped *mutation* route yet: `POST /teams` creates a
-  # resource of the caller's own, and `/teams/:id` exists only as a GET. So AC3 is
-  # carried today by the Command-level and per-action examples in this file, and
-  # the generated block is the mechanism waiting for M01-07's project routes.
-  #
-  # The emptiness is asserted rather than left implicit, so the day it stops being
-  # true somebody has to come here and delete this example — at which point the
-  # generated ones exist and do the work.
+  # Until `M01-07` this generated nothing, and the file said so with an example
+  # asserting the emptiness — because a generated suite that is silently empty is
+  # worse than no suite. The Project routes are the first tenant-scoped mutations
+  # in the product, so that example is gone and these are real.
   describe "every tenant-scoped mutation route" do
-    routes = AuthorizationHarness.routes_of_kind(:tenant_scoped)
+    let!(:project) { create(:project, team: team) }
 
-    it "has none yet, and says so out loud" do
-      expect(routes).to be_empty, <<~MESSAGE
-        A tenant-scoped mutation route now exists:
-
-          #{routes.map { |r| "#{r[:verb]} #{r[:path]}" }.join("\n  ")}
-
-        The generated examples below now cover it. Delete this example — it exists
-        only to keep "the generated suite is empty" from being silent.
-      MESSAGE
+    # The slug and the id are substituted with **real** values of the Team the
+    # outsider is attacking. Filling every `:param` with the same identifier — the
+    # first version of this block — produced `/t/<a-ulid>/projects`, which 404s
+    # because no Team has that slug. It would have passed with the tenancy check
+    # deleted.
+    def attack_path(route)
+      route[:path]
+        .gsub(":team_slug", team.slug)
+        .gsub(":id", route[:path].include?("/projects/") ? project.external_id : team.external_id)
     end
 
-    routes.each do |route|
+    AuthorizationHarness.routes_of_kind(:tenant_scoped).each do |route|
       it "refuses #{route[:verb]} #{route[:path]} to a member of another Team" do
-        path = route[:path].gsub(/:\w+/) { team.external_id }
+        path = attack_path(route)
 
-        process(route[:verb].downcase.to_sym, path)
+        process(route[:verb].downcase.to_sym, path, params: { name: "Taken over" })
 
-        expect(response.status).to be_in([ 404, 403, 302 ]),
-          "#{route[:verb]} #{path} answered #{response.status} to an outsider"
+        # 404, and not merely "refused". Annex C §7.3 requires a cross-team
+        # request to be indistinguishable from one about a resource that does not
+        # exist; 403 confirms it exists. The permissive `[404, 403, 302]` this
+        # assertion used to carry passed with the tenancy scope deleted — proved
+        # by deleting it — because the Policy still answered 403. It caught a
+        # mutation and not a disclosure, which is half of what it claims.
+        expect(response.status).to eq(404),
+          "#{route[:verb]} #{path} answered #{response.status} to an outsider; a cross-team " \
+          "request must be indistinguishable from one about a resource that does not exist"
+        # Nothing about the Team leaks through the refusal.
         expect(response.body).not_to include(team.name)
+        expect(response.body).not_to include(project.name)
+        # And nothing was mutated on the way to it.
+        expect(project.reload.name).not_to eq("Taken over")
+        expect(team.projects.count).to eq(1)
       end
     end
   end

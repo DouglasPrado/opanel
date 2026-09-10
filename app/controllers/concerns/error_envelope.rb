@@ -23,7 +23,12 @@ module ErrorEnvelope
     "EMAIL_UNAVAILABLE" => :unprocessable_content,
     "RATE_LIMITED" => :too_many_requests,
     "NOT_FOUND" => :not_found,
-    "FORBIDDEN" => :forbidden
+    "FORBIDDEN" => :forbidden,
+    # A request that is well formed and permitted, refused because the resource
+    # is in a state that does not accept it — archiving a Project that is already
+    # archived. 409 rather than 422: nothing about the request needs correcting,
+    # so a client that retries after the state changes is right to.
+    "CONFLICT" => :conflict
   }.freeze
 
   private
