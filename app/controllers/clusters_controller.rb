@@ -85,6 +85,36 @@ class ClustersController < PanelController
     }
   end
 
+  # Builds cluster-level props with nodes data (AC10 — for a cluster detail page,
+  # if implemented later; the list page includes nodes per cluster too).
+  def cluster_with_nodes(cluster)
+    {
+      cluster: readiness_prop(cluster),
+      nodes: nodes_prop(cluster)
+    }
+  end
+
+  # Maps nodes to frontend props. Private addresses are not exposed to non-members.
+  def nodes_prop(cluster)
+    policy = ClusterPolicy.new(current_user, cluster)
+    return [] unless policy.nodes?
+
+    nodes_data = NodesForCluster.call(cluster: cluster)
+    nodes_data.map do |node|
+      {
+        id: node.id,
+        swarmNodeId: node.swarm_node_id,
+        hostname: node.hostname,
+        role: node.role,
+        availability: node.availability,
+        status: node.status,
+        advertiseAddress: node.advertise_address,
+        lastSeenAt: node.last_seen_at&.iso8601,
+        stale: node.stale?
+      }
+    end
+  end
+
   PAGE_SIZE = 25
 
   def run_preflight
@@ -107,6 +137,7 @@ class ClustersController < PanelController
   # column nor a prop anywhere (AC10).
   def readiness_prop(cluster)
     view = ClusterReadinessView.call(actor: current_user, cluster: cluster)
+    policy = ClusterPolicy.new(current_user, cluster)
 
     {
       id: view.id,
@@ -121,6 +152,7 @@ class ClustersController < PanelController
       operational: view.operational?,
       highlyAvailable: view.highly_available?,
       checks: view.checks.map { |check| { name: check.name, status: check.status, detail: check.detail } },
+      nodes: policy.nodes? ? nodes_prop(cluster) : [],
       permissions: { refresh: view.permissions.refresh }
     }
   end

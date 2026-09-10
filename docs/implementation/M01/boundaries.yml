@@ -564,3 +564,61 @@ boundaries:
     # SC-19 em vez de resolvido por um padrão inventado.
     - docs/implementation/SPEC_CONFLICTS.md
 
+
+  # M01-10 — Node registration and observation.
+  #
+  # A `Node` is desired state and a `NodeObservation` is actual state, and doc 09
+  # §10 requires them not to share columns; that is why two tables and two models
+  # appear here instead of a status column bolted onto `clusters`.
+  #
+  # AC11 asks for a fitness function that expires ADR-0005 on the second node.
+  # The only home for a new checker is `lib/gates/fitness_functions.rb`, which
+  # `guard-edit.sh` denies to a running backlog run — deliberately, and the
+  # refusal is correct. That path is therefore **not** declared here: the conflict
+  # is recorded rather than resolved by widening a boundary until the guard
+  # stops mattering.
+  M01-10:
+    - db/migrate/*_create_nodes.rb
+    - db/migrate/*_create_node_observations.rb
+    - db/schema.rb
+    # Domínio: desired state e actual state, separados.
+    - app/models/node.rb
+    - app/models/node_observation.rb
+    - app/models/cluster.rb
+    # Application Layer.
+    - app/commands/observe_cluster_nodes.rb
+    - app/queries/nodes_for_cluster.rb
+    - app/policies/cluster_policy.rb
+    # O job periódico que chama o executor. Não guarda estado em memória.
+    - app/jobs/observe_cluster_nodes_job.rb
+    - config/recurring.yml
+    # Entrega: a lista de nodes vive dentro da área de Cluster que já existe.
+    - app/controllers/clusters_controller.rb
+    - config/routes.rb
+    - app/frontend/pages/Panel/Clusters.tsx
+    - app/frontend/components/**
+    # Testes.
+    - spec/unit/node_status_spec.rb
+    - spec/unit/observe_cluster_nodes_spec.rb
+    - spec/integration/node_observation_spec.rb
+    - spec/integration/swarm_nodes_lab_spec.rb
+    - spec/policies/cluster_policy_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    # Alargamento deliberado: o negativo cross-team do AC9 ficou num spec
+    # próprio em vez de dentro do de Cluster, porque o sujeito é `Node` e não
+    # `Cluster`. Dito aqui em voz alta em vez de ficar como diff fora do
+    # boundary — e declarado nesta Story, não na M01-08, onde a primeira versão
+    # deste alargamento foi parar por engano.
+    - spec/policies/node_cross_team_spec.rb
+    - spec/requests/clusters_spec.rb
+    - spec/security/node_observation_redaction_spec.rb
+    - spec/frontend/clusters-page.test.tsx
+    - spec/factories/**
+    # O conflito do AC11, registrado onde os conflitos de especificação vivem.
+    - docs/implementation/SPEC_CONFLICTS.md
+    # Alargamento deliberado: o AC11 foi para arbitragem, e o `ADR-0007` manda a
+    # decisão ser anexada verbatim a este ledger. Ele é bookkeeping do Milestone,
+    # como tasks.json e reports/, mas é novo — o allowlist do gate foi escrito
+    # antes de ele existir e ainda não o conhece. Declarado aqui, na Story cuja
+    # arbitragem o criou, em vez de mexer no gate que julga esta execução.
+    - docs/implementation/M01/DECISIONS.md

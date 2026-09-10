@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_09_121100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -40,7 +40,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
     t.check_constraint "actor_type = ANY (ARRAY['USER'::text, 'API_TOKEN'::text, 'SYSTEM'::text, 'RECOVERY'::text])", name: "audit_logs_actor_type_is_known"
     t.check_constraint "btrim(correlation_id) <> ''::text", name: "audit_logs_correlation_id_present"
     t.check_constraint "btrim(request_id) <> ''::text", name: "audit_logs_request_id_present"
-    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "audit_logs_id_is_ulid"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "audit_logs_id_is_ulid"
     t.check_constraint "result = ANY (ARRAY['SUCCESS'::text, 'DENIED'::text, 'FAILED'::text])", name: "audit_logs_result_is_known"
     t.check_constraint "revision = 1", name: "audit_logs_are_append_only"
   end
@@ -55,8 +55,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
     t.index ["scope", "key_digest"], name: "index_authentication_attempts_on_scope_and_key_digest", unique: true
     t.index ["window_started_at"], name: "index_authentication_attempts_on_window_started_at"
     t.check_constraint "attempt_count >= 0", name: "authentication_attempts_count_non_negative"
-    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "authentication_attempts_id_is_ulid"
-    t.check_constraint "key_digest ~ '^[0-9a-f]{64}$'::text", name: "authentication_attempts_key_digest_is_sha256"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "authentication_attempts_id_is_ulid"
+    t.check_constraint "key_digest::text ~ '^[0-9a-f]{64}$'::text", name: "authentication_attempts_key_digest_is_sha256"
     t.check_constraint "scope = ANY (ARRAY['login_email'::text, 'login_ip'::text, 'registration_ip'::text])", name: "authentication_attempts_scope_is_known"
   end
 
@@ -79,12 +79,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
     t.index ["team_id", "slug"], name: "index_clusters_unique_slug_per_team_when_not_deleted", unique: true, where: "(deleted_at IS NULL)"
     t.check_constraint "applied_revision IS NULL OR applied_revision <= desired_revision", name: "clusters_applied_revision_not_ahead"
     t.check_constraint "btrim(name) <> ''::text AND length(name) <= 120", name: "clusters_name_present"
-    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "clusters_id_is_ulid"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "clusters_id_is_ulid"
     t.check_constraint "slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug) >= 2 AND length(slug) <= 63", name: "clusters_slug_format"
     t.check_constraint "status = 'PROVISIONING'::text OR observed_at IS NOT NULL", name: "clusters_observed_status_has_a_timestamp"
     t.check_constraint "status = ANY (ARRAY['PROVISIONING'::text, 'READY'::text, 'DEGRADED'::text, 'MAINTENANCE'::text, 'UNREACHABLE'::text, 'DELETING'::text])", name: "clusters_status_is_known"
     t.check_constraint "swarm_id IS NULL OR swarm_id ~ '^[a-z0-9]{20,32}$'::text", name: "clusters_swarm_id_shape"
-    t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "clusters_team_id_is_ulid"
+    t.check_constraint "team_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "clusters_team_id_is_ulid"
   end
 
   create_table "infrastructure_checkpoints", force: :cascade do |t|
@@ -108,9 +108,52 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
     t.index ["user_id", "role"], name: "index_instance_roles_one_active_grant_per_user_and_role", unique: true, where: "(revoked_at IS NULL)"
     t.check_constraint "granted_by_bootstrap IS NULL OR granted_by_bootstrap", name: "instance_roles_bootstrap_marker_is_true_or_absent"
     t.check_constraint "granted_by_bootstrap IS NULL OR role = 'INSTANCE_ADMIN'::text", name: "instance_roles_bootstrap_is_admin"
-    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "instance_roles_id_is_ulid"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "instance_roles_id_is_ulid"
     t.check_constraint "role = ANY (ARRAY['INSTANCE_ADMIN'::text, 'INSTANCE_OPERATOR'::text, 'INSTANCE_AUDITOR'::text])", name: "instance_roles_role_is_known"
-    t.check_constraint "user_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "instance_roles_user_id_is_ulid"
+    t.check_constraint "user_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "instance_roles_user_id_is_ulid"
+  end
+
+  create_table "node_observations", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.text "availability"
+    t.timestamptz "created_at", null: false
+    t.text "engine_version"
+    t.string "node_id", limit: 26, null: false
+    t.timestamptz "observed_at", null: false
+    t.jsonb "resources"
+    t.text "status", null: false
+    t.index ["node_id", "observed_at"], name: "index_node_observations_latest_per_node", order: { observed_at: :desc }
+    t.check_constraint "availability IS NULL OR (availability = ANY (ARRAY['ACTIVE'::text, 'PAUSE'::text, 'DRAIN'::text]))", name: "node_observations_availability_is_valid"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "node_observations_id_is_ulid"
+    t.check_constraint "node_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "node_observations_node_id_is_ulid"
+    t.check_constraint "status = ANY (ARRAY['JOINING'::text, 'READY'::text, 'DEGRADED'::text, 'DOWN'::text, 'REMOVING'::text])", name: "node_observations_status_is_known"
+  end
+
+  create_table "nodes", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.text "advertise_address"
+    t.text "availability", default: "ACTIVE", null: false
+    t.jsonb "capabilities", default: {}, null: false
+    t.string "cluster_id", limit: 26, null: false
+    t.timestamptz "created_at", null: false
+    t.timestamptz "deleted_at"
+    t.text "hostname", null: false
+    t.jsonb "labels", default: {}, null: false
+    t.timestamptz "last_seen_at"
+    t.text "private_address"
+    t.text "public_address"
+    t.text "role", null: false
+    t.text "status", default: "JOINING", null: false
+    t.text "swarm_node_id", null: false
+    t.timestamptz "updated_at", null: false
+    t.index ["cluster_id", "id"], name: "index_nodes_on_cluster_id_and_id"
+    t.index ["cluster_id", "status"], name: "index_nodes_on_cluster_id_and_status"
+    t.index ["cluster_id", "swarm_node_id"], name: "index_nodes_unique_swarm_node_id_per_cluster", unique: true
+    t.check_constraint "availability = ANY (ARRAY['ACTIVE'::text, 'PAUSE'::text, 'DRAIN'::text])", name: "nodes_availability_is_known"
+    t.check_constraint "btrim(hostname) <> ''::text", name: "nodes_hostname_present"
+    t.check_constraint "btrim(swarm_node_id) <> ''::text", name: "nodes_swarm_node_id_present"
+    t.check_constraint "cluster_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "nodes_cluster_id_is_ulid"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "nodes_id_is_ulid"
+    t.check_constraint "role = ANY (ARRAY['MANAGER'::text, 'WORKER'::text])", name: "nodes_role_is_known"
+    t.check_constraint "status = ANY (ARRAY['JOINING'::text, 'READY'::text, 'DEGRADED'::text, 'DOWN'::text, 'REMOVING'::text])", name: "nodes_status_is_known"
   end
 
   create_table "projects", id: { type: :string, limit: 26 }, force: :cascade do |t|
@@ -126,12 +169,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
     t.index ["team_id", "id"], name: "index_projects_on_team_id_and_id"
     t.index ["team_id", "slug"], name: "index_projects_unique_slug_per_team_when_not_deleted", unique: true, where: "(deleted_at IS NULL)"
     t.check_constraint "btrim(name) <> ''::text AND length(name) <= 120", name: "projects_name_present"
-    t.check_constraint "default_environment_id IS NULL OR default_environment_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_default_environment_id_is_ulid"
+    t.check_constraint "default_environment_id IS NULL OR default_environment_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_default_environment_id_is_ulid"
     t.check_constraint "description IS NULL OR length(description) <= 2000", name: "projects_description_length"
-    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_id_is_ulid"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_id_is_ulid"
     t.check_constraint "slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug) >= 2 AND length(slug) <= 63", name: "projects_slug_format"
     t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'ARCHIVED'::text, 'DELETING'::text])", name: "projects_status_is_known"
-    t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_team_id_is_ulid"
+    t.check_constraint "team_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_team_id_is_ulid"
   end
 
   create_table "sessions", id: { type: :string, limit: 26 }, force: :cascade do |t|
@@ -147,11 +190,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
     t.string "user_id", limit: 26, null: false
     t.index ["token_digest"], name: "index_sessions_on_token_digest", unique: true
     t.index ["user_id", "created_at"], name: "index_sessions_on_user_id_and_created_at", order: { created_at: :desc }
-    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "sessions_id_is_ulid"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "sessions_id_is_ulid"
     t.check_constraint "mfa_level = 'password'::text", name: "sessions_mfa_level_is_known"
-    t.check_constraint "token_digest ~ '^[0-9a-f]{64}$'::text", name: "sessions_token_digest_is_sha256"
+    t.check_constraint "token_digest::text ~ '^[0-9a-f]{64}$'::text", name: "sessions_token_digest_is_sha256"
     t.check_constraint "user_agent IS NULL OR length(user_agent) <= 512", name: "sessions_user_agent_length"
-    t.check_constraint "user_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "sessions_user_id_is_ulid"
+    t.check_constraint "user_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "sessions_user_id_is_ulid"
   end
 
   create_table "solid_queue_batch_executions", force: :cascade do |t|
@@ -317,13 +360,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
     t.index ["team_id", "user_id"], name: "index_team_members_on_team_id_and_user_id", unique: true
     t.index ["team_id"], name: "index_team_members_one_active_owner_per_team", unique: true, where: "((role = 'OWNER'::text) AND (status = ANY (ARRAY['ACTIVE'::text, 'SUSPENDED'::text])))"
     t.index ["user_id", "status"], name: "index_team_members_on_user_id_and_status"
-    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_id_is_ulid"
-    t.check_constraint "invited_by IS NULL OR invited_by ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_invited_by_is_ulid"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_id_is_ulid"
+    t.check_constraint "invited_by IS NULL OR invited_by::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_invited_by_is_ulid"
     t.check_constraint "role = ANY (ARRAY['OWNER'::text, 'ADMIN'::text, 'DEVELOPER'::text, 'VIEWER'::text])", name: "team_members_role_is_known"
     t.check_constraint "status = 'INVITED'::text OR joined_at IS NOT NULL", name: "team_members_joined_at_present_once_accepted"
     t.check_constraint "status = ANY (ARRAY['INVITED'::text, 'ACTIVE'::text, 'SUSPENDED'::text, 'REMOVED'::text])", name: "team_members_status_is_known"
-    t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_team_id_is_ulid"
-    t.check_constraint "user_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_user_id_is_ulid"
+    t.check_constraint "team_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_team_id_is_ulid"
+    t.check_constraint "user_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "team_members_user_id_is_ulid"
   end
 
   create_table "teams", id: { type: :string, limit: 26 }, force: :cascade do |t|
@@ -339,8 +382,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
     t.index ["owner_user_id"], name: "index_teams_on_owner_user_id"
     t.index ["slug"], name: "index_teams_unique_slug_when_not_deleted", unique: true, where: "(deleted_at IS NULL)"
     t.check_constraint "btrim(name) <> ''::text AND length(name) <= 120", name: "teams_name_present"
-    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "teams_id_is_ulid"
-    t.check_constraint "owner_user_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "teams_owner_user_id_is_ulid"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "teams_id_is_ulid"
+    t.check_constraint "owner_user_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "teams_owner_user_id_is_ulid"
     t.check_constraint "slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug) >= 2 AND length(slug) <= 63", name: "teams_slug_format"
     t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'OWNERSHIP_RECOVERY_REQUIRED'::text])", name: "teams_status_is_known"
   end
@@ -355,7 +398,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
     t.timestamptz "updated_at", null: false
     t.index ["email"], name: "index_users_on_email", unique: true
     t.check_constraint "btrim(display_name) <> ''::text AND length(display_name) <= 120", name: "users_display_name_present"
-    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "users_id_is_ulid"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "users_id_is_ulid"
     t.check_constraint "length(email::text) >= 3 AND length(email::text) <= 254", name: "users_email_length"
     t.check_constraint "password_digest ~~ '$argon2id$%'::text", name: "users_password_digest_is_argon2id"
     t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'SUSPENDED'::text, 'DELETED_PENDING'::text])", name: "users_status_is_known"
@@ -363,6 +406,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_120900) do
 
   add_foreign_key "clusters", "teams", on_delete: :restrict
   add_foreign_key "instance_roles", "users", on_delete: :restrict
+  add_foreign_key "node_observations", "nodes", on_delete: :cascade
+  add_foreign_key "nodes", "clusters", on_delete: :restrict
   add_foreign_key "projects", "teams", on_delete: :restrict
   add_foreign_key "sessions", "users", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade

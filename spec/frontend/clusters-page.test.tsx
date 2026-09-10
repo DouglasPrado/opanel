@@ -51,6 +51,7 @@ const CLUSTER = {
     { name: 'swarm', status: 'HEALTHY' as const, detail: 'abcdefghij0123456789k' },
     { name: 'manager', status: 'HEALTHY' as const, detail: '1 manager, no quorum yet' },
   ],
+  nodes: [],
   permissions: { refresh: true },
 };
 
@@ -221,6 +222,90 @@ describe('the clusters page', () => {
       renderPage({ clusters: [{ ...CLUSTER, permissions: { refresh: false } }] });
 
       expect(screen.queryByTestId('refresh-production')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('nodes and staleness (AC4, AC5)', () => {
+    it('displays nodes with role, availability, status, and lastSeenAt', () => {
+      const clusterWithNodes = {
+        ...CLUSTER,
+        nodes: [
+          {
+            id: 'node_01',
+            swarmNodeId: 'node1abc',
+            hostname: 'manager-1',
+            role: 'MANAGER',
+            availability: 'ACTIVE',
+            status: 'READY',
+            advertiseAddress: '10.0.0.1',
+            lastSeenAt: '2026-09-09T12:00:00Z',
+            stale: false,
+          },
+        ],
+      };
+
+      renderPage({ clusters: [clusterWithNodes] });
+
+      expect(screen.getByTestId('node-node1abc')).toBeInTheDocument();
+      expect(screen.getByText('manager-1')).toBeInTheDocument();
+      expect(screen.getByText('MANAGER')).toBeInTheDocument();
+      expect(screen.getByText('ACTIVE')).toBeInTheDocument();
+    });
+
+    // doc 10 §25: a node without a recent observation must NOT render as healthy.
+    // The UI shows it is stale and the row dims.
+    it('marks a stale node with a stale badge and dims the row', () => {
+      const clusterWithStaleNode = {
+        ...CLUSTER,
+        nodes: [
+          {
+            id: 'node_01',
+            swarmNodeId: 'node1abc',
+            hostname: 'manager-1',
+            role: 'MANAGER',
+            availability: 'ACTIVE',
+            status: 'READY',
+            advertiseAddress: '10.0.0.1',
+            lastSeenAt: '2026-09-08T12:00:00Z',
+            stale: true,
+          },
+        ],
+      };
+
+      renderPage({ clusters: [clusterWithStaleNode] });
+
+      const nodeRow = screen.getByTestId('node-node1abc');
+      expect(nodeRow).toHaveClass('opacity-60');
+      // The stale badge should appear separately next to the status badge
+      expect(nodeRow.querySelector('[data-testid="node-status-node1abc"]')).toHaveTextContent('READY');
+      expect(nodeRow).toHaveTextContent('stale');
+      expect(nodeRow).toHaveTextContent('Last seen');
+    });
+
+    it('shows fresh nodes without stale marking', () => {
+      const clusterWithFreshNode = {
+        ...CLUSTER,
+        nodes: [
+          {
+            id: 'node_01',
+            swarmNodeId: 'node1abc',
+            hostname: 'manager-1',
+            role: 'MANAGER',
+            availability: 'ACTIVE',
+            status: 'READY',
+            advertiseAddress: '10.0.0.1',
+            lastSeenAt: '2026-09-09T12:00:00Z',
+            stale: false,
+          },
+        ],
+      };
+
+      renderPage({ clusters: [clusterWithFreshNode] });
+
+      const nodeRow = screen.getByTestId('node-node1abc');
+      expect(nodeRow).not.toHaveClass('opacity-60');
+      expect(screen.queryByTestId('node-status-node1abc')).not.toHaveTextContent('stale');
+      expect(nodeRow).toHaveTextContent('Seen 2026-09-09T12:00:00Z');
     });
   });
 

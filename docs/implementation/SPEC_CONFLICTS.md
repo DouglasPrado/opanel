@@ -314,13 +314,24 @@ Registradas para evitar releitura como pendência. **Nenhuma ação necessária.
 
 ---
 
+## SC-20 — AC11 da M01-10: AF que vence ADR-0005 vive em um arquivo que o guard-edit nega editar
+
+- **Documentos envolvidos:** `docs/implementation/M01/stories/M01-10-node-registration-and-observation.md` AC11 ("Uma fitness function falha quando há mais de um `Node` registrado e `app/executors/` continua carregado no processo do Control Plane, e é vista falhando contra um segundo nó plantado (`ADR-0005`, gatilho 1)"); `lib/gates/fitness_functions.rb` (único home para AF novo); `tools/opanel-loop/hooks/guard-edit.sh` (nega edições a `lib/gates/**` durante execução do loop).
+- **Situação:** AC11 é norma. O único lugar onde uma AF nova vive é `lib/gates/fitness_functions.rb`. O hook `guard-edit.sh` nega edições a `lib/gates/**` a qualquer Story em execução — deliberadamente, para proteger o loop contra modificações que mudem o critério que o próprio loop usa para julgar a Story. A `M01-10` é a Story que torna o segundo node observável e deve disparar o gatilho; ela não pode editar o arquivo do qual o gatilho é feito.
+- **Impacto:** AC11 fica não satisfeito. AC1–AC10 satisfeitos por completo. A fitness function que vença ADR-0005 precisa de uma Story de manutenção do loop (`M01-91`, `M01-93` ou equivalente) ou de uma decisão do dono que autorize o `guard-edit` a fazer exceção para esta Story especificamente.
+- **Como apareceu:** planejamento de `M01-10`, reconhecendo que AC11 é a primeira Story a mencionar a condição que faz disparar o gatilho e conversando com a regra em `guard-edit.sh`.
+- **Resolução:** `resolved` em 2026-09-10, por arbitragem registrada em `docs/implementation/M01/DECISIONS.md` (`ADR-0007`), com veredito **DEBT**. AC11 fica deliberadamente não satisfeito e é *contabilizado* por decisão, não por implementação. A Story implementa AC1–AC10 por completo.
+- **Por que os três caminhos propostos caíram:** o caminho 2 (whitelist de `M01-10` em `guard-edit.sh`) foi **recusado**: relaxar o guard para a Story que ele julga é exatamente o que `ADR-0007` §"What does not change" fecha, e um gate nunca é editável pela execução que ele avalia. Os caminhos 1 e 3 estão indisponíveis porque as Stories de manutenção de gates saíram de `tasks.json` — pelo mesmo `ADR-0007`, manutenção de gate não é Story de Milestone. A AF é manutenção do loop dirigida por humano, feita fora de uma execução autônoma.
+- **Dívida, com herdeiro nomeado:** M02, junto de `M02-EXEC-SPLIT`. A AF precisa existir antes que qualquer Milestone torne um segundo `Node` registrável (`M08-01`..`M08-03`). O que se perde até lá é o prazo mecânico: o gatilho 1 do `ADR-0005` volta a ser prosa, que é o modo de falha que o próprio ADR queria evitar. Os controles compensatórios do `ADR-0005` (AF-01, AF-02, o allowlist de operações, a ausência de primitive `exec`, a redação) continuam implementados, testados e intocados por este adiamento.
+- **Como AC11 é contabilizado:** no relatório de `M01-10` a caixa continua **desmarcada**, e a evidência nomeia `ADR-0005` e `ADR-0007` — o caminho de deferral que `lib/gates/acceptance_mapping.rb` já aceita. Não é uma alegação de satisfação.
+
 ## Resumo
 
 | Estado | Quantidade | Itens |
 |---|---|---|
-| `resolved` | 15 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16, **SC-18**, **SC-19** |
+| `resolved` | 16 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16, **SC-18**, **SC-19**, **SC-20** |
 | `deferred` | 2 | SC-07 (inventário de componentes, dono `M00-05`), SC-11 (backend de métricas, dono `M09-03`) |
 | `unresolved` | 0 | — |
 | informativo | 5 | SC-13.1 … SC-13.5 |
 
-**Nenhum item `unresolved` permanece.** SC-04 e SC-08 foram decididos em 2026-09-08 pelo dono do repositório, através de `ADR-0001` e `ADR-0002`, ambos agora `accepted`. SC-18 e SC-19 foram decididos em 2026-09-10, o primeiro movendo o critério para a Story onde ele pode ser provado e o segundo através de `ADR-0005`. Nada no Implementation Pack aguarda decisão arquitetural.
+**Nenhum item `unresolved` que bloqueie implementação permanece.**  SC-04 e SC-08 foram decididos em 2026-09-08 pelo dono do repositório, através de `ADR-0001` e `ADR-0002`, ambos agora `accepted`. SC-18 e SC-19 foram decididos em 2026-09-10, o primeiro movendo o critério para a Story onde ele pode ser provado e o segundo através de `ADR-0005`. SC-20 foi decidido em 2026-09-10 por arbitragem (`ADR-0007`, veredito DEBT, registrada em `docs/implementation/M01/DECISIONS.md`): AC1–AC10 de `M01-10` estão satisfeitos, e AC11 fica deliberadamente não satisfeito, contabilizado por deferral a `ADR-0005` e `ADR-0007`, com a dívida herdada por M02 junto de `M02-EXEC-SPLIT`.

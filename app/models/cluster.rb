@@ -61,6 +61,7 @@ class Cluster < ApplicationRecord
   FRESH_OBSERVATION_SECONDS = 60
 
   belongs_to :team
+  has_many :nodes, dependent: :restrict_with_exception
 
   validates :name, presence: true, length: { maximum: NAME_MAX_LENGTH }
   validates :slug, presence: true, format: { with: SLUG_FORMAT },

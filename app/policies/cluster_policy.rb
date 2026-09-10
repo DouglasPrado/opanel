@@ -39,7 +39,10 @@ class ClusterPolicy < ApplicationPolicy
     # the read roles rather than the management ones. A VIEWER looking at a stale
     # reading should be able to ask for a current one; that is the whole point of
     # a derived status.
-    refresh: TeamPolicy::PERMISSIONS.fetch(:view)
+    refresh: TeamPolicy::PERMISSIONS.fetch(:view),
+
+    # Reading nodes is observation data (actual state), not a write. Uses view roles.
+    nodes: TeamPolicy::PERMISSIONS.fetch(:view)
   }.freeze
 
   # Actions that additionally require an instance role, and which one.
@@ -53,6 +56,7 @@ class ClusterPolicy < ApplicationPolicy
   def bootstrap? = decide(:bootstrap).allowed?
   def view? = decide(:view).allowed?
   def refresh? = decide(:refresh).allowed?
+  def nodes? = decide(:nodes).allowed?
 
   private
 

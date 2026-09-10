@@ -7,6 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Title } from '@/components/ui/title';
 import { PanelLayout } from '@/components/layouts/panel-layout';
 
@@ -22,6 +30,18 @@ interface CheckProp {
   detail: string;
 }
 
+interface NodeProp {
+  id: string;
+  swarmNodeId: string;
+  hostname: string;
+  role: string;
+  availability: string;
+  status: string;
+  advertiseAddress: string | null;
+  lastSeenAt: string | null;
+  stale: boolean;
+}
+
 interface ClusterProp {
   id: string;
   name: string;
@@ -35,6 +55,7 @@ interface ClusterProp {
   operational: boolean;
   highlyAvailable: boolean;
   checks: CheckProp[];
+  nodes: NodeProp[];
   permissions: { refresh: boolean };
 }
 
@@ -310,6 +331,60 @@ export default function Clusters({
                     >
                       Take a fresh reading
                     </Button>
+                  ) : null}
+
+                  {cluster.nodes.length > 0 ? (
+                    <div className="mt-4">
+                      <h3 className="font-medium text-sm mb-2">Nodes</h3>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Hostname</TableHead>
+                            <TableHead>Role</TableHead>
+                            <TableHead>Availability</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Last Seen</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {cluster.nodes.map((node) => (
+                            <TableRow
+                              key={node.id}
+                              data-testid={`node-${node.swarmNodeId}`}
+                              className={node.stale ? 'opacity-60' : ''}
+                            >
+                              <TableCell className="text-sm">{node.hostname}</TableCell>
+                              <TableCell className="text-sm">{node.role}</TableCell>
+                              <TableCell className="text-sm">{node.availability}</TableCell>
+                              <TableCell className="text-sm">
+                                <Badge
+                                  variant={
+                                    node.stale
+                                      ? 'outline'
+                                      : node.status === 'READY'
+                                        ? 'secondary'
+                                        : 'destructive'
+                                  }
+                                  data-testid={`node-status-${node.swarmNodeId}`}
+                                >
+                                  {node.status}
+                                </Badge>
+                                {node.stale ? (
+                                  <Badge variant="outline" className="ml-2">
+                                    stale
+                                  </Badge>
+                                ) : null}
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {node.lastSeenAt
+                                  ? `${node.stale ? 'Last seen' : 'Seen'} ${node.lastSeenAt}`
+                                  : 'Never'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   ) : null}
                 </CardContent>
               </Card>
