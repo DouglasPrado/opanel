@@ -121,23 +121,4 @@ RSpec.describe "Node observation, against a real Swarm Engine", :swarm, :integra
       end
     end
   end
-
-  describe "limitations of the single-node lab" do
-    # AC7 requires testing that a node that disappears from the Swarm
-    # (removed via `docker node rm`, for example) is marked as DOWN.
-    # This can only be tested with a multi-node cluster, which the
-    # disposable lab does not support on demand. The logic is covered
-    # in unit and integration tests with mocked Docker responses.
-    it "skips AC7 (node removal → DOWN): not feasible on a single-node lab" do
-      # AC7 would require:
-      # 1. A cluster with multiple nodes
-      # 2. Removing one node via Docker API or CLI
-      # 3. Verifying the removed node is marked DOWN
-      #
-      # The single-node lab cannot produce this scenario without
-      # breaking itself. Multi-node tests are deferred to when the
-      # platform gains the ability to add nodes programmatically.
-      skip "AC7 requires multi-node Swarm, not available in disposable lab"
-    end
-  end
 end
