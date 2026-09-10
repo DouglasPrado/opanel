@@ -44,7 +44,7 @@ module RuboCop
 
         # Grows with the domain. M01-07 adds Project, M01-11 Environment,
         # M01-12 Service.
-        TENANT_SCOPED = %i[Team TeamMember Project Cluster].freeze
+        TENANT_SCOPED = %i[Team TeamMember Project Cluster Environment Service].freeze
 
         # Lookups that are by primary key whatever their arguments.
         BY_KEY = %i[find find_by_id find_by_id!].freeze

@@ -13,8 +13,8 @@
 #
 # If observation of one cluster fails, the job continues with the next one.
 # A failure of a cluster observation does not cause the whole job to fail.
-class ObserveClusterNodesJob
-  include Solid::Queue::Job
+class ObserveClusterNodesJob < ApplicationJob
+  queue_as Opanel::Queues::SYSTEM
 
   def perform
     Cluster.kept.find_each do |cluster|

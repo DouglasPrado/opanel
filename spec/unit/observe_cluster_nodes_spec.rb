@@ -2,6 +2,28 @@
 
 require "rails_helper"
 
+RSpec.describe ObserveClusterNodesJob, type: :integration do
+  include ActiveJob::TestHelper
+
+  describe "job class" do
+    it "descends from ApplicationJob" do
+      expect(ObserveClusterNodesJob).to be < ApplicationJob
+    end
+
+    it "can be loaded and enqueued" do
+      previous = ActiveJob::Base.queue_adapter
+      ActiveJob::Base.queue_adapter = :test
+      begin
+        expect {
+          ObserveClusterNodesJob.perform_later
+        }.to have_enqueued_job(ObserveClusterNodesJob)
+      ensure
+        ActiveJob::Base.queue_adapter = previous
+      end
+    end
+  end
+end
+
 RSpec.describe ObserveClusterNodes, type: :model do
   let(:cluster) { create(:cluster, :bootstrapped) }
   let(:executor) { instance_double(SwarmExecutor) }

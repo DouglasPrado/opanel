@@ -614,6 +614,11 @@ boundaries:
     - spec/security/node_observation_redaction_spec.rb
     - spec/frontend/clusters-page.test.tsx
     - spec/factories/**
+    # Tightening the cop to cover Environment and Service (added in M01-11 and M01-12).
+    # The cop and its spec are declared here because M01-10 modifies the cop's
+    # TENANT_SCOPED list; the spec file itself is not edited.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    - spec/gates/unscoped_tenant_query_spec.rb
     # O conflito do AC11, registrado onde os conflitos de especificação vivem.
     - docs/implementation/SPEC_CONFLICTS.md
     # Alargamento deliberado: o AC11 foi para arbitragem, e o `ADR-0007` manda a
