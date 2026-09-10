@@ -37,25 +37,6 @@
       "commit": "314a472"
     },
     {
-      "id": "M01-92",
-      "file": "stories/M01-92-evidence-and-loop-feedback.md",
-      "status": "blocked",
-      "dependsOn": [],
-      "attempts": 2,
-      "required": false,
-      "review": {
-        "critical": 1,
-        "high": 0,
-        "medium": 0,
-        "low": 0
-      },
-      "blockedReason": {
-        "qualifier": "BLOCKED_FOR_HUMAN_APPROVAL",
-        "diagnosis": "ACs 2,5,6,7,9 vivem num patch para lib/gates/post_commit.rb e bin/gate, que o guard-edit nega ao implementer. Patch validado e reproduzido em reports/M01-92.md; comando em BLOCKERS.md. Metade permitida feita, revisada (rodada 2 COUNTS 1 0 0 0) e commitada."
-      },
-      "commit": "87a0cdc"
-    },
-    {
       "id": "M01-01",
       "file": "stories/M01-01-user-and-authentication.md",
       "status": "done",

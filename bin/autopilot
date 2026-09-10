@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# The unattended runner (ADR-0007).
+#
+#   bin/autopilot                  # run the chain until it finishes
+#   bin/autopilot --max-sessions 5 # stop after five sessions
+#   bin/autopilot --dry-run        # print what it would do
+#
+# A Claude Code session ends for ordinary reasons — the turn budget trips, the
+# context fills, the process dies. None of those mean the chain is finished, and
+# a run that has to be restarted by hand is not unattended. So this loop starts a
+# fresh session, lets it rebuild state from the repository, and starts another
+# when it exits.
+#
+# It stops for exactly three things: the chain is complete, the arbiter blocked a
+# Milestone, or the session budget ran out. Everything else is a restart.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+
+MAX_SESSIONS=0          # 0 = unlimited
+DRY_RUN=0
+LOG_DIR="tmp/autopilot"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --max-sessions) MAX_SESSIONS="$2"; shift ;;
+    --max-sessions=*) MAX_SESSIONS="${1#--max-sessions=}" ;;
+    --dry-run) DRY_RUN=1 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+command -v claude >/dev/null 2>&1 || { echo "the claude CLI is required" >&2; exit 2; }
+
+mkdir -p "$LOG_DIR"
+RUN_LOG="$LOG_DIR/$(date -u '+%Y%m%dT%H%M%SZ').log"
+
+say() { printf '[autopilot %s] %s\n' "$(date -u '+%H:%M:%SZ')" "$*" | tee -a "$RUN_LOG"; }
+
+say "chain starting; log: $RUN_LOG"
+
+session=0
+while :; do
+  # The chain's own stop conditions, checked before spending a session on them.
+  NEXT="$(bin/next-milestone 2>>"$RUN_LOG")"
+  rc=$?
+  case "$rc" in
+    0) : ;;
+    1) say "every Milestone is accepted — chain complete"; break ;;
+    3) say "chain stopped: a Milestone is blocked by the arbiter"; break ;;
+    *) say "bin/next-milestone failed (exit $rc) — stopping rather than guessing"; break ;;
+  esac
+
+  session=$((session + 1))
+  if [ "$MAX_SESSIONS" -gt 0 ] && [ "$session" -gt "$MAX_SESSIONS" ]; then
+    say "session budget spent ($MAX_SESSIONS)"
+    break
+  fi
+
+  say "session $session — next Milestone: $NEXT"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    say "dry run: would start a session on $NEXT"
+    break
+  fi
+
+  # A fresh session every time. `/autopilot` rebuilds state from the repository,
+  # which is the only thing that survives a restart honestly — never --continue,
+  # because resuming a summarised context is how a loop starts believing things
+  # the repository does not say.
+  #
+  # Permissions are skipped because there is nobody to answer a prompt. The
+  # guards are still in force: guard-bash.sh and guard-edit.sh are PreToolUse
+  # hooks, and a hook `deny` is not a permission prompt — it refuses regardless
+  # of this flag.
+  claude -p "/autopilot" \
+    --dangerously-skip-permissions \
+    >>"$RUN_LOG" 2>&1
+  rc=$?
+
+  say "session $session ended (exit $rc)"
+
+  # A session that dies instantly, repeatedly, is a broken setup rather than a
+  # long run. Backing off keeps a misconfiguration from burning the night.
+  if [ "$rc" -ne 0 ]; then
+    say "non-zero exit; backing off 60s before the next session"
+    sleep 60
+  fi
+done
+
+say "autopilot finished after $session session(s)"
+say "open Pull Requests:"
+gh pr list --state open 2>>"$RUN_LOG" | tee -a "$RUN_LOG" || true

@@ -249,6 +249,54 @@ cmd_error() {
   printf 'error: %s (executionFailures=%s)\n' "$code" "$(jq -r '.executionFailures' "$STATE")"
 }
 
+# ADR-0007 — the arbitration that replaces the human release.
+#
+# `verdict ACCEPTED` still lands on `human_acceptance`: that state is the point
+# where the Milestone is finished and something must decide to release the next
+# one. What changed is who decides. This command is the only way out of it, and
+# it refuses to run without an arbiter decision recorded in DECISIONS.md — so a
+# lead cannot release a Milestone by asserting that it is released.
+cmd_arbitrate() {
+  need_state
+  local decision_file status verdict
+  status="$(current)"
+  case "$status" in
+    human_acceptance|blocked) ;;
+    *) die "arbitrate applies to human_acceptance or blocked, not '$status'" ;;
+  esac
+
+  decision_file="$MDIR/DECISIONS.md"
+  [ -f "$decision_file" ] || die \
+"refusing to arbitrate: $decision_file does not exist.
+Dispatch the arbiter agent and append its decision before calling this."
+
+  # The ledger must name this milestone and carry a verdict line. Grepping for
+  # the milestone alone would accept a decision written about another one.
+  grep -q "^Verdict:" "$decision_file" || die \
+"refusing to arbitrate: $decision_file has no 'Verdict:' line.
+The arbiter's output is recorded verbatim, not summarised."
+  verdict="$(grep '^Verdict:' "$decision_file" | tail -n1 | awk '{print $2}')"
+
+  case "$verdict" in
+    DEBT|FIX)
+      with_lock "$LOCK" write_json "$STATE" \
+        '.status = "accepted" | .lastReviewer = "arbiter"
+         | .blockedReason = null | .lastError = null | .updatedAt = $now' \
+        --arg now "$(touch_now)"
+      printf 'accepted (arbiter: %s)\n' "$verdict"
+      ;;
+    BLOCK)
+      with_lock "$LOCK" write_json "$STATE" \
+        '.status = "blocked" | .blockedReason = "ARBITER_BLOCK"
+         | .lastReviewer = "arbiter" | .updatedAt = $now' \
+        --arg now "$(touch_now)"
+      printf 'blocked (arbiter: BLOCK)\n' >&2
+      exit 2
+      ;;
+    *) die "unrecognised arbiter verdict in $decision_file: '$verdict'" ;;
+  esac
+}
+
 cmd_attempt_number() {
   need_state
   printf '%02d\n' "$(jq -r '.reviewAttempt' "$STATE")"
@@ -267,7 +315,8 @@ case "$COMMAND" in
                   cmd_budget "$1" "$2" "$3" ;;
   block)          [ $# -ge 1 ] || die "usage: block <reason>"; cmd_block "$1" ;;
   error)          [ $# -ge 1 ] || die "usage: error <code>"; cmd_error "$1" ;;
+  arbitrate)      cmd_arbitrate ;;
   attempt-number) cmd_attempt_number ;;
   *) die "unknown command: ${COMMAND:-<none>}
-usage: review-state.sh <milestone-dir> {init|status|set|review-start|verdict|fix-start|fix-done|budget|block|error|attempt-number}" ;;
+usage: review-state.sh <milestone-dir> {init|status|set|review-start|verdict|fix-start|fix-done|budget|block|error|arbitrate|attempt-number}" ;;
 esac

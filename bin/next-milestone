@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Prints the Milestone the autopilot should run next, or nothing when the chain
+# is finished (ADR-0007 §3).
+#
+#   bin/next-milestone          # -> M02
+#
+# Order is numeric, and that is not a simplification of the DAG in
+# docs/implementation/DEPENDENCIES.md — it is forced by the stack. `milestone/m03`
+# branches from `milestone/m02`, so two Milestones cannot be in flight on the same
+# stack regardless of what the DAG would allow to run in parallel. Parallel
+# execution needs separate worktrees and separate stacks; it is deliberately not
+# what this script does.
+#
+# A Milestone counts as finished when its review-state is `accepted` or
+# `human_acceptance` — the second because M00 was released by a human before
+# ADR-0007 existed, and rerunning it would be wrong.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+
+for dir in docs/implementation/M[0-9][0-9]; do
+  [ -d "$dir" ] || continue
+  milestone="$(basename "$dir")"
+  state="$dir/review-state.json"
+
+  status="implementing"
+  if [ -f "$state" ]; then
+    status="$(jq -r '.status // "implementing"' "$state" 2>/dev/null || echo implementing)"
+  fi
+
+  case "$status" in
+    accepted|human_acceptance)
+      continue
+      ;;
+    blocked)
+      # An arbiter BLOCK ends the chain: the next Milestone stacks on this one,
+      # so there is nothing to move on to. Any other block is still arbitrable
+      # and belongs to whoever is running the loop, not to this script.
+      reason="$(jq -r '.blockedReason // ""' "$state" 2>/dev/null || true)"
+      if [ "$reason" = "ARBITER_BLOCK" ]; then
+        echo "chain stopped: $milestone is blocked by the arbiter" >&2
+        exit 3
+      fi
+      printf '%s\n' "$milestone"
+      exit 0
+      ;;
+    *)
+      printf '%s\n' "$milestone"
+      exit 0
+      ;;
+  esac
+done
+
+echo "every Milestone is accepted" >&2
+exit 1
