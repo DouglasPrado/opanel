@@ -33,6 +33,8 @@ class AuditLog < ApplicationRecord
     project_archived: "project.archived",
     environment_created: "environment.created",
     environment_updated: "environment.updated",
+    service_created: "service.created",
+    service_updated: "service.updated",
     cluster_bootstrapped: "cluster.bootstrapped",
     cluster_adopted: "cluster.adopted",
     cluster_bootstrap_failed: "cluster.bootstrap_failed"

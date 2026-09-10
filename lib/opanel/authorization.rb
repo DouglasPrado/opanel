@@ -46,7 +46,10 @@ module Opanel
       "Cluster" => "ClusterPolicy",
       # An Environment belongs to a Project which belongs to a Team; the Policy
       # resolves the actor's membership from the Environment's Team.
-      "Environment" => "EnvironmentPolicy"
+      "Environment" => "EnvironmentPolicy",
+      # A Service belongs to an Environment which belongs to a Project which belongs
+      # to a Team; the Policy resolves the actor's membership from the Service's Team.
+      "Service" => "ServicePolicy"
     }.freeze
 
     module_function

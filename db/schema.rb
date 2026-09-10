@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_121200) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -207,6 +207,49 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_121200) do
     t.check_constraint "slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug) >= 2 AND length(slug) <= 63", name: "projects_slug_format"
     t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'ARCHIVED'::text, 'DELETING'::text])", name: "projects_status_is_known"
     t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_team_id_is_ulid"
+  end
+
+  create_table "services", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.bigint "applied_revision"
+    t.timestamptz "archived_at"
+    t.text "args"
+    t.text "command"
+    t.jsonb "constraints"
+    t.bigint "cpu_limit"
+    t.bigint "cpu_reservation"
+    t.timestamptz "created_at", null: false
+    t.timestamptz "deleted_at"
+    t.bigint "desired_revision", default: 1, null: false
+    t.string "environment_id", limit: 26, null: false
+    t.jsonb "health_check"
+    t.text "image_digest"
+    t.text "image_ref", null: false
+    t.bigint "memory_limit"
+    t.bigint "memory_reservation"
+    t.text "name", null: false
+    t.jsonb "ports", default: {}, null: false
+    t.bigint "replicas", default: 1, null: false
+    t.text "service_type", default: "WEB", null: false
+    t.text "slug", null: false
+    t.text "status", default: "DRAFT", null: false
+    t.string "team_id", limit: 26, null: false
+    t.text "technical_name", null: false
+    t.timestamptz "updated_at", null: false
+    t.index ["environment_id", "id"], name: "index_services_on_environment_id_and_id"
+    t.index ["environment_id", "slug"], name: "index_services_unique_slug_per_environment_when_not_deleted", unique: true, where: "(deleted_at IS NULL)"
+    t.index ["team_id"], name: "index_services_on_team_id"
+    t.check_constraint "applied_revision IS NULL OR applied_revision <= desired_revision", name: "services_applied_revision_not_ahead"
+    t.check_constraint "btrim(image_ref) <> ''::text", name: "services_image_ref_present"
+    t.check_constraint "btrim(name) <> ''::text AND length(name) <= 120", name: "services_name_present"
+    t.check_constraint "cpu_limit IS NULL OR cpu_reservation IS NULL OR cpu_limit >= cpu_reservation", name: "services_cpu_limit_gte_reservation"
+    t.check_constraint "environment_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "services_environment_id_is_ulid"
+    t.check_constraint "id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "services_id_is_ulid"
+    t.check_constraint "memory_limit IS NULL OR memory_reservation IS NULL OR memory_limit >= memory_reservation", name: "services_memory_limit_gte_reservation"
+    t.check_constraint "replicas > 0", name: "services_replicas_positive"
+    t.check_constraint "service_type = ANY (ARRAY['WEB'::text, 'WORKER'::text, 'CRON'::text, 'TASK'::text, 'DATABASE'::text, 'CACHE'::text])", name: "services_type_is_known"
+    t.check_constraint "slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug) >= 2 AND length(slug) <= 63", name: "services_slug_format"
+    t.check_constraint "status = ANY (ARRAY['DRAFT'::text, 'PROVISIONING'::text, 'RUNNING'::text, 'DEGRADED'::text, 'STOPPED'::text, 'DELETING'::text])", name: "services_status_is_known"
+    t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "services_team_id_is_ulid"
   end
 
   create_table "sessions", id: { type: :string, limit: 26 }, force: :cascade do |t|
@@ -444,6 +487,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_121200) do
   add_foreign_key "node_observations", "nodes", on_delete: :cascade
   add_foreign_key "nodes", "clusters", on_delete: :restrict
   add_foreign_key "projects", "teams", on_delete: :restrict
+  add_foreign_key "services", "environments", on_delete: :restrict
+  add_foreign_key "services", "teams", on_delete: :restrict
   add_foreign_key "sessions", "users", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

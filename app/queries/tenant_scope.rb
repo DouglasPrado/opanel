@@ -49,7 +49,7 @@ class TenantScope
       @model.accessible_to(actor)
     when "TeamMember"
       @model.where(team_id: active_team_ids)
-    when "Project", "Cluster", "Environment"
+    when "Project", "Cluster", "Environment", "Service"
       # Same delegation as `Team`, and for the same reason: the scope lives on
       # the model, where the join through the membership is written once. It also
       # excludes rows of a soft-deleted Team — a tenant that is gone does not keep

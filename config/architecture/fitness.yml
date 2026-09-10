@@ -48,6 +48,15 @@ critical_mutations:
   - command: UpdateEnvironment
     policy: EnvironmentPolicy
     action: update?
+  # M01-12. Creating a Service is a tenant-scoped, role-dependent mutation
+  # (ADMIN and DEVELOPER only). AF-07 requires it to reach the Policy.
+  - command: CreateService
+    policy: ServicePolicy
+    action: create?
+  # M01-12. Updating Service desired state is also tenant-scoped and role-dependent.
+  - command: UpdateServiceDesiredState
+    policy: ServicePolicy
+    action: update?
 
 # AF-06 — field names that carry secret material. A serializer, a log formatter or
 # an audit payload builder that emits one of these in plaintext is a finding.

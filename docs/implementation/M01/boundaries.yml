@@ -686,3 +686,82 @@ boundaries:
     - spec/unit/audit_actions_spec.rb
     # SC-18 fecha aqui: o critério órfão passa a ter onde ser provado.
     - docs/implementation/SPEC_CONFLICTS.md
+
+  # O Service: a intenção do usuário sobre um workload, persistida e versionada.
+  # A Story é deliberadamente de persistência — imagem, réplicas, portas, recursos
+  # e health viram linha no PostgreSQL e nada mais. Nenhuma chamada ao Docker
+  # entra aqui: quem reconcilia é a `M01-18`, e o `AF-01`/`AF-02` provam a
+  # ausência. Operation e Outbox são da `M01-13`, e por isso `operationId` não
+  # aparece em nenhuma resposta desta Story.
+  M01-12:
+    - db/migrate/*_create_services.rb
+    - db/schema.rb
+    # Domínio. A associação inversa em Environment (`has_many :services`) é
+    # necessária para a checagem de slug por Environment e para o bloqueio de
+    # Environment inativo; sem ela a única alternativa seria consultar `Service`
+    # sem escopo, que é exatamente o que o cop proíbe.
+    - app/models/service.rb
+    - app/models/environment.rb
+    # Application Layer.
+    - app/commands/create_service.rb
+    - app/commands/update_service_desired_state.rb
+    - app/queries/services_for_environment.rb
+    - app/queries/service_runtime_view.rb
+    - app/policies/service_policy.rb
+    # A referência de imagem OCI é entrada não confiável que cruza a borda: o
+    # AC7 exige resolver tag mutável para digest e o requisito de segurança
+    # exige recusar referência que escape do registry pretendido. A validação
+    # mora em `lib/opanel/` junto das outras primitivas (`identifier`,
+    # `redaction`), e não dentro do Command, porque o Reconciler da `M01-18` vai
+    # ler o mesmo formato.
+    - lib/opanel/image_ref.rb
+    # `Authorization::POLICIES` despacha por classe do recurso; sem a linha de
+    # `Service` toda autorização de Service levanta `ArgumentError`. O TenantScope
+    # precisa escopar `Service` pelo join de Environment → Project → Team, pelo
+    # mesmo motivo que precisou de `Environment` na `M01-11`.
+    - lib/opanel/authorization.rb
+    - app/queries/tenant_scope.rb
+    # AF-07 exige que uma mutação tenant-scoped declare Policy e ação; as duas
+    # novas entram na lista de fatos que a AF consome. Acrescentar alarga o que é
+    # exigido — não afrouxa nada.
+    - config/architecture/fitness.yml
+    # O allowlist do sanitizer e o registro de ações de audit ganham as ações
+    # novas, como toda Story que audita uma mutação já fez. A lista transcrita
+    # de nomes de ação existe para que acrescentar uma ação custe uma mudança
+    # deliberada em dois lugares; esta Story acrescenta dois (service_created,
+    # service_updated), então tocá-la é a manutenção que o check pede.
+    - app/audit/audit_sanitizer.rb
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    # Entrega.
+    - app/controllers/services_controller.rb
+    - config/routes.rb
+    - app/frontend/pages/Panel/Services.tsx
+    - app/frontend/components/**
+    # Testes.
+    - spec/unit/service_state_machine_spec.rb
+    - spec/unit/service_revision_spec.rb
+    - spec/unit/service_technical_name_spec.rb
+    - spec/unit/image_ref_spec.rb
+    - spec/integration/service_constraints_spec.rb
+    - spec/integration/service_revision_conflict_spec.rb
+    - spec/policies/service_policy_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    - spec/requests/services_spec.rb
+    - spec/security/service_sensitive_fields_spec.rb
+    - spec/frontend/services-page.test.tsx
+    - spec/factories/**
+    # A matriz de rotas cross-team do harness ganha as rotas de Service. Foi ela
+    # que pegou a `EnvironmentsController` respondendo 500 em vez de negar na
+    # `M01-11`; a entrada existe para isso.
+    - spec/support/authorization.rb
+    - docs/implementation/M01/reports/M01-12.md
+    # SC-21: deferral of mutable tag resolution to M01-18.
+    - docs/implementation/SPEC_CONFLICTS.md
+    # Alargamento deliberado, pela mesma razão já registrada na `M01-10`: o AC7
+    # desta Story foi para arbitragem duas vezes, e o `ADR-0007` manda a decisão
+    # ser anexada verbatim a este ledger. É bookkeeping do Milestone, como
+    # tasks.json e reports/, mas o allowlist do gate foi escrito antes de ele
+    # existir. Declarado aqui, na Story cuja arbitragem o escreveu, em vez de
+    # mexer no gate que julga esta execução.
+    - docs/implementation/M01/DECISIONS.md

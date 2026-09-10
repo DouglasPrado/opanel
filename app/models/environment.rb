@@ -62,6 +62,7 @@ class Environment < ApplicationRecord
   belongs_to :project
   belongs_to :cluster
   belongs_to :team
+  has_many :services
 
   validates :name, presence: true, length: { maximum: NAME_MAX_LENGTH }
   validates :slug, presence: true, format: { with: SLUG_FORMAT },

@@ -55,6 +55,11 @@ class AuditSanitizer
     # policy applies, and the revision that is converging.
     "Environment" => %w[name slug type status project_id cluster_id team_id
       auto_promote_secrets desired_revision applied_revision deleted_at].freeze,
+    # Service fields: desired state for workloads running in Environments.
+    "Service" => %w[name slug service_type image_ref replicas ports health_check
+      cpu_reservation cpu_limit memory_reservation memory_limit constraints
+      status environment_id team_id desired_revision applied_revision
+      technical_name deleted_at archived_at].freeze,
     "TeamMember" => %w[role status joined_at].freeze,
     "User" => %w[display_name status email_verified_at].freeze,
     "Session" => %w[expires_at revoked_at last_seen_at mfa_level].freeze,

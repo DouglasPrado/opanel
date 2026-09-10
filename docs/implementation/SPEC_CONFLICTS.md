@@ -321,13 +321,25 @@ Registradas para evitar releitura como pendência. **Nenhuma ação necessária.
 - **Dívida, com herdeiro nomeado:** M02, junto de `M02-EXEC-SPLIT`. A AF precisa existir antes que qualquer Milestone torne um segundo `Node` registrável (`M08-01`..`M08-03`). O que se perde até lá é o prazo mecânico: o gatilho 1 do `ADR-0005` volta a ser prosa, que é o modo de falha que o próprio ADR queria evitar. Os controles compensatórios do `ADR-0005` (AF-01, AF-02, o allowlist de operações, a ausência de primitive `exec`, a redação) continuam implementados, testados e intocados por este adiamento.
 - **Como AC11 é contabilizado:** no relatório de `M01-10` a caixa continua **desmarcada**, e a evidência nomeia `ADR-0005` e `ADR-0007` — o caminho de deferral que `lib/gates/acceptance_mapping.rb` já aceita. Não é uma alegação de satisfação.
 
+## SC-21 — AC7 de M01-12: Armazenamento de digest de imagem
+
+- **Documentos envolvidos:** `docs/implementation/M01/stories/M01-12-service-desired-state-and-revisions.md` AC7; `docs/architecture/01-architecture-overview.md` §"Releases are immutable and identified by digest".
+- **Questão:** Quando o usuário fornece uma referência de imagem OCI, CreateService deve:
+  - (Opção A) Resolver tags mutáveis para digest buscando o registro e armazenar referência + digest resolvido, ou
+  - (Opção B) Armazenar apenas digests fornecidos explicitamente pelo usuário e adiar resolução de tags para o reconciliador.
+- **Situação:** AC7 como redigido é ambíguo. Diz "digest é o que fica em produção" sem proibir explicitamente o adiamento da resolução.
+- **Resolução:** `deferred`. O veredito é **Opção B**. CreateService armazena `image_digest` apenas quando o usuário fixa uma referência com @sha256:. Tags mutáveis são armazenadas como-é em `image_ref` e resolvidas para digest pelo reconciliador M01-18 (ver AC2 naquela Story). Decisão registrada em `DECISIONS.md` em 2026-09-10.
+- **Impacto:** CreateService e UpdateServiceDesiredState aceitam `image_ref` como recebido. Se a referência é `myregistry/app:v1.0`, `image_digest` é null; `image_digest` é preenchido apenas quando a referência é `myregistry/app@sha256:abc123...`.
+- **Encaminhamento para M01-18:** O reconciliador lê `image_digest` (se presente) ou resolve `image_ref` buscando o digest, o armazena e o usa para deploy imutável.
+- **Como AC7 é contabilizado:** No relatório de `M01-12` a caixa de AC7 fica **desmarcada** e a evidência nomeia este conflito (SC-21) e a Story de adiamento (M01-18 AC2). Não é satisfação automática — é deferral explícita com Story herdeira.
+
 ## Resumo
 
 | Estado | Quantidade | Itens |
 |---|---|---|
 | `resolved` | 16 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16, **SC-18**, **SC-19**, **SC-20** |
-| `deferred` | 2 | SC-07 (inventário de componentes, dono `M00-05`), SC-11 (backend de métricas, dono `M09-03`) |
+| `deferred` | 3 | SC-07 (inventário de componentes, dono `M00-05`), SC-11 (backend de métricas, dono `M09-03`), **SC-21** (resolução de tag de imagem, dono `M01-18`) |
 | `unresolved` | 0 | — |
 | informativo | 5 | SC-13.1 … SC-13.5 |
 
-**Nenhum item `unresolved` que bloqueie implementação permanece.**  SC-04 e SC-08 foram decididos em 2026-09-08 pelo dono do repositório, através de `ADR-0001` e `ADR-0002`, ambos agora `accepted`. SC-18 e SC-19 foram decididos em 2026-09-10, o primeiro movendo o critério para a Story onde ele pode ser provado e o segundo através de `ADR-0005`. SC-20 foi decidido em 2026-09-10 por arbitragem (`ADR-0007`, veredito DEBT, registrada em `docs/implementation/M01/DECISIONS.md`): AC1–AC10 de `M01-10` estão satisfeitos, e AC11 fica deliberadamente não satisfeito, contabilizado por deferral a `ADR-0005` e `ADR-0007`, com a dívida herdada por M02 junto de `M02-EXEC-SPLIT`.
+**Nenhum item `unresolved` que bloqueie implementação permanece.**  SC-04 e SC-08 foram decididos em 2026-09-08 pelo dono do repositório, através de `ADR-0001` e `ADR-0002`, ambos agora `accepted`. SC-18 e SC-19 foram decididos em 2026-09-10, o primeiro movendo o critério para a Story onde ele pode ser provado e o segundo através de `ADR-0005`. SC-20 foi decidido em 2026-09-10 por arbitragem (`ADR-0007`, veredito DEBT, registrada em `docs/implementation/M01/DECISIONS.md`): AC1–AC10 de `M01-10` estão satisfeitos, e AC11 fica deliberadamente não satisfeito, contabilizado por deferral a `ADR-0005` e `ADR-0007`, com a dívida herdada por M02 junto de `M02-EXEC-SPLIT`. SC-21 foi decidido em 2026-09-10 por arbitragem: AC7 de `M01-12` fica deliberadamente não satisfeito, armazenando apenas digests explícitos; resolução de tags mutáveis é adiada para `M01-18` AC2.
