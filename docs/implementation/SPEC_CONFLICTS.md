@@ -233,17 +233,13 @@ Complementa — não substitui — [`docs/decisions/pending-documentation-update
   como critério dela, com o caso negativo plantado, e nas Preconditions dela
   como obrigação herdada. A `M01-07` fecha com os oito critérios que provou.
   Sem ADR: é correção de autoria do pack, não decisão de arquitetura.
-- **Resolução aplicada:** `open`. A `M01-07` implementa os outros oito critérios
-  por inteiro e **não** cria a tabela `environments` — fazê-lo seria exatamente o
-  scope creep que `AGENT_RULES` §Scope Discipline proíbe, e colidiria com o
-  boundary da `M01-11`. O AC5 fica declarado como diferido para a `M01-11` no
-  relatório da Story, com esta entrada como referência.
-  `ArchiveProject` nasce com os guardas que **podem** ser provados agora —
-  arquivar um Project já arquivado, e arquivar fora do Team — e o lugar do guarda
-  de Environment fica nomeado no código, referenciando `M01-11`.
-- **Obrigação que a `M01-11` herda**, e que precisa aparecer no relatório dela:
-  fechar o AC5 da `M01-07` — o bloqueio de arquivamento com Environment ativo,
-  com o caso negativo plantado — junto com os critérios próprios dela.
+- **Resolução aplicada:** `closed` em 2026-09-10. A `M01-07` foi implementada com
+  os oito critérios que podia provar naquela altura; o AC5 foi diferido
+  oficialmente no relatório dela com esta entrada como referência. A `M01-11`
+  criou a tabela `environments` e implementou o guarda de arquivamento com o caso
+  negativo plantado: um Project com Environment ativo não pode ser arquivado, e
+  um cujos Environments foram todos deletados pode. O código da `ArchiveProject`
+  foi atualizado para implementar a regra e o TODO foi removido.
 
 ## SC-19 — o Swarm Executor como módulo do processo do Control Plane × serviço separado por RPC (doc 07 §2.2)
 

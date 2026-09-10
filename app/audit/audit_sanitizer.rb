@@ -51,6 +51,10 @@ class AuditSanitizer
     # token is, and it is not a column here or anywhere else.
     "Cluster" => %w[name slug status swarm_id advertise_address team_id observed_at
       unreachable_reason deleted_at].freeze,
+    # Environment fields that matter operationally: what runs where, what secrets
+    # policy applies, and the revision that is converging.
+    "Environment" => %w[name slug type status project_id cluster_id team_id
+      auto_promote_secrets desired_revision applied_revision deleted_at].freeze,
     "TeamMember" => %w[role status joined_at].freeze,
     "User" => %w[display_name status email_verified_at].freeze,
     "Session" => %w[expires_at revoked_at last_seen_at mfa_level].freeze,

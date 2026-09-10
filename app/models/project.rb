@@ -45,6 +45,7 @@ class Project < ApplicationRecord
   SLUG_FORMAT = /\A[a-z0-9]([a-z0-9-]*[a-z0-9])?\z/
 
   belongs_to :team
+  has_many :environments, dependent: :restrict_with_exception
 
   validates :name, presence: true, length: { maximum: NAME_MAX_LENGTH }
   validates :slug, presence: true, format: { with: SLUG_FORMAT },

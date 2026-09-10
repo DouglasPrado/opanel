@@ -5,25 +5,13 @@
 # removal behind `DELETING → reconcile → tombstone`, which is `M02-09`. In M01 a
 # Project is taken out of the way, and that is all.
 #
-# ## AC5 — the guard that cannot be written yet
+# ## AC5 — the guard against active Environments
 #
-# The Story asks for archiving to be **blocked when the Project has active
-# Environments**. `Environment` does not exist: it is created by `M01-11`, whose
-# own precondition is this Story being done. The dependency is circular and it is
-# written in both Story files; it is recorded as `SC-18` in
-# `docs/implementation/SPEC_CONFLICTS.md`, and `M01-11` inherits the obligation to
-# close it.
-#
-# What is *not* done here is worth naming, because it would look like diligence:
-# no `environments` table is created (out of scope, and it would collide with
-# `M01-11`'s boundary), and no registry of "archival blockers" with a single
-# empty implementation is introduced — an abstraction with no second caller is
-# the speculative kind `AGENT_RULES` forbids. The guard's place is marked and the
-# criterion is reported as deferred rather than claimed.
-#
-# Today the rule is vacuously true: with no Environments in the system, no Project
-# can have an active one. Vacuously true is not proven, and this Command does not
-# pretend otherwise.
+# The Story asked for archiving to be **blocked when the Project has active
+# Environments** (M01-07 AC5). `Environment` was created by `M01-11` (SC-18);
+# that Story inherited the obligation to close this guard. The logic now lives
+# here, with the case proved in both directions: a Project with an active
+# Environment cannot be archived, and one whose Environments are all deleted can.
 class ArchiveProject
   ALREADY_ARCHIVED = "This project is already archived."
   BEING_DELETED = "This project is being deleted and can no longer be archived."
@@ -43,9 +31,6 @@ class ArchiveProject
     guard = blocking_reason
     return failure("CONFLICT", guard, field: "status") if guard
 
-    # TODO(M01-11): refuse when the Project has an active Environment, and prove
-    # it with the case planted — this is AC5, deferred by SC-18.
-
     persist
   end
 
@@ -54,12 +39,19 @@ class ArchiveProject
   attr_reader :actor, :project
 
   # Why this Project may not be archived, or `nil`. Read from the state machine
-  # rather than from a chain of conditionals, so "what may follow ACTIVE" is
-  # written in exactly one place.
+  # and from the application rules (active Environments) rather than from a chain
+  # of conditionals, so the rules are written in exactly one place.
   def blocking_reason
-    return nil if project.can_transition_to?(Project::ARCHIVED)
+    # State machine first: the project must be capable of transitioning to ARCHIVED.
+    unless project.can_transition_to?(Project::ARCHIVED)
+      return project.deleting? ? BEING_DELETED : ALREADY_ARCHIVED
+    end
 
-    project.deleting? ? BEING_DELETED : ALREADY_ARCHIVED
+    # Then the application rule: no active Environments.
+    return "This project has active environments and cannot be archived." if project.environments.kept.exists?
+
+    # All guards passed.
+    nil
   end
 
   def persist

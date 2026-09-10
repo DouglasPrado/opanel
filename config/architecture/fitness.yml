@@ -38,6 +38,16 @@ critical_mutations:
   - command: BootstrapCluster
     policy: ClusterPolicy
     action: bootstrap?
+  # M01-11. Creating an Environment is a tenant-scoped, role-dependent mutation
+  # (ADMIN and DEVELOPER only). AF-07 requires it to reach the Policy.
+  - command: CreateEnvironment
+    policy: EnvironmentPolicy
+    action: create?
+  # M01-11. Updating an Environment (name, slug in M01) is also tenant-scoped
+  # and role-dependent.
+  - command: UpdateEnvironment
+    policy: EnvironmentPolicy
+    action: update?
 
 # AF-06 — field names that carry secret material. A serializer, a log formatter or
 # an audit payload builder that emits one of these in plaintext is a finding.

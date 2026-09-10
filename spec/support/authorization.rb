@@ -76,6 +76,14 @@ module AuthorizationHarness
       pattern: %r{\A/t/:team_slug/clusters},
       kind: :tenant_scoped,
       reason: "addresses Clusters of a Team the caller may not belong to"
+    },
+    {
+      # Environments live inside Projects, which live inside Teams. An outsider
+      # reaching an Environment list or mutating an Environment of a Team's
+      # Project is a cross-team leak; the same scoping applies as to Projects.
+      pattern: %r{\A/t/:team_slug/projects/.*/environments},
+      kind: :tenant_scoped,
+      reason: "addresses Environments of a Team's Projects the caller may not belong to"
     }
   ].freeze
 

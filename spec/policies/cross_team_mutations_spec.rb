@@ -83,6 +83,10 @@ RSpec.describe "a user from another Team", type: :request do
   describe "every tenant-scoped mutation route" do
     let!(:project) { create(:project, team: team) }
     let!(:cluster) { create(:cluster, :bootstrapped, team: team) }
+    let!(:environment) { create(:environment, project: project, cluster: cluster) }
+    let!(:other_project) { create(:project, team: other_team) }
+    let!(:other_cluster) { create(:cluster, :bootstrapped, team: other_team) }
+    let!(:other_environment) { create(:environment, project: other_project, cluster: other_cluster) }
 
     # The slug and the id are substituted with **real** values of the Team the
     # outsider is attacking. Filling every `:param` with the same identifier — the
@@ -93,13 +97,38 @@ RSpec.describe "a user from another Team", type: :request do
     # The id has to be of the *right type* for the same reason: a `team_` id on a
     # Cluster route is refused by `Opanel::Identifier.parse` before any tenancy
     # check runs, so the 404 would prove nothing about tenancy.
-    RESOURCE_FOR = { "/projects/" => :project, "/clusters/" => :cluster }.freeze
+    #
+    # For nested resources like environments (which live under projects), multiple
+    # resource types may appear in the path. The mapping is now a list of tuples:
+    # (fragment, parameter_name, resource_type).
+    RESOURCE_FOR = [
+      [ "/projects/", "project_id", :project ],
+      [ "/clusters/", "id", :cluster ],
+      [ "/environments", "id", :environment ]
+    ].freeze
 
     def attack_path(route)
-      kind = RESOURCE_FOR.find { |fragment, _| route[:path].include?(fragment) }&.last
-      resource = kind ? public_send(kind) : team
+      # Start with team slug substitution
+      path = route[:path].gsub(":team_slug", team.slug)
 
-      route[:path].gsub(":team_slug", team.slug).gsub(":id", resource.external_id)
+      # For nested resources, substitute the appropriate resource IDs
+      RESOURCE_FOR.each do |fragment, param, kind|
+        next unless path.include?(fragment)
+
+        # Substitute with the appropriate external ID based on resource type
+        case kind
+        when :project
+          path = path.gsub(":#{param}", project.external_id)
+        when :environment
+          # Use an environment from another team to test cross-team access
+          path = path.gsub(":#{param}", other_environment.external_id)
+        else
+          resource = public_send(kind)
+          path = path.gsub(":#{param}", resource.external_id)
+        end
+      end
+
+      path
     end
 
     AuthorizationHarness.routes_of_kind(:tenant_scoped).each do |route|

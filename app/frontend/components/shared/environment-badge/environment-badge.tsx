@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Icons } from '@/components/ui/icons';
 import { cn } from '@/lib/utils';
 
-export type EnvironmentKind = 'PRODUCTION' | 'STAGING' | 'DEVELOPMENT' | 'PREVIEW';
+export type EnvironmentKind = 'PRODUCTION' | 'HOMOLOGATION' | 'DEVELOPMENT' | 'PREVIEW' | 'CUSTOM';
 
 export interface EnvironmentBadgeProps {
   kind: EnvironmentKind;
@@ -30,9 +30,10 @@ export interface EnvironmentBadgeProps {
  */
 const KIND_LABEL: Record<EnvironmentKind, string> = {
   PRODUCTION: 'Production',
-  STAGING: 'Staging',
+  HOMOLOGATION: 'Homologation',
   DEVELOPMENT: 'Development',
   PREVIEW: 'Preview',
+  CUSTOM: 'Custom',
 };
 
 export function EnvironmentBadge({ kind, className }: EnvironmentBadgeProps) {

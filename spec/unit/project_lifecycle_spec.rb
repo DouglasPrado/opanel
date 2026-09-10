@@ -86,18 +86,35 @@ RSpec.describe "the Project lifecycle", :integration do
       expect(record.result).to eq("SUCCESS")
     end
 
-    # AC5 is **not** proved here, and this example says so rather than leaving a
-    # gap that reads like coverage. `Environment` is created by `M01-11`, whose
-    # own precondition is this Story — recorded as SC-18. Asserting the guard
-    # against a table that does not exist is not possible; asserting that
-    # archiving *succeeds* today is, and it is the honest statement of where the
-    # rule stands.
-    it "archives with nothing to block it, because Environments do not exist yet (SC-18)" do
-      expect(ActiveRecord::Base.connection.table_exists?("environments")).to be(false)
-
+    # AC5 (M01-07) is proved here, moved to M01-11 (SC-18). The guard against
+    # active Environments is proved with both negatives: a Project with an active
+    # Environment cannot be archived, and one with only deleted Environments can.
+    it "archives when it has no Environments" do
       project = create(:project, team: team)
-
       expect(ArchiveProject.call(actor: owner, project: project)).to be_success
+    end
+
+    it "refuses a Project with active Environments (AC5, planted case)" do
+      project = create(:project, team: team)
+      cluster = create(:cluster, team: team)
+      create(:environment, project: project, cluster: cluster)
+
+      result = ArchiveProject.call(actor: owner, project: project)
+
+      expect(result).to be_failure
+      expect(result.code).to eq("CONFLICT")
+      expect(result.message).to match(/active environments/)
+    end
+
+    it "archives a Project whose Environments have all been deleted (AC5, negative case)" do
+      project = create(:project, team: team)
+      cluster = create(:cluster, team: team)
+      create(:environment, :deleted, project: project, cluster: cluster)
+
+      result = ArchiveProject.call(actor: owner, project: project)
+
+      expect(result).to be_success
+      expect(project.reload.status).to eq("ARCHIVED")
     end
   end
 

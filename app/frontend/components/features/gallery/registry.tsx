@@ -900,9 +900,10 @@ export const galleryEntries: GalleryEntry[] = [
     render: () => (
       <div className="flex flex-wrap items-center gap-2">
         <EnvironmentBadge kind="PRODUCTION" />
-        <EnvironmentBadge kind="STAGING" />
+        <EnvironmentBadge kind="HOMOLOGATION" />
         <EnvironmentBadge kind="DEVELOPMENT" />
         <EnvironmentBadge kind="PREVIEW" />
+        <EnvironmentBadge kind="CUSTOM" />
       </div>
     ),
   },

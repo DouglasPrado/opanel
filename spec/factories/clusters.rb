@@ -28,5 +28,10 @@ FactoryBot.define do
       unreachable_reason { "DAEMON_UNREACHABLE" }
       observed_at { Time.current }
     end
+
+    trait :degraded do
+      status { "DEGRADED" }
+      observed_at { Time.current }
+    end
   end
 end

@@ -622,3 +622,67 @@ boundaries:
     # antes de ele existir e ainda não o conhece. Declarado aqui, na Story cuja
     # arbitragem o criou, em vez de mexer no gate que julga esta execução.
     - docs/implementation/M01/DECISIONS.md
+
+  # M01-11 — Environment entity with cluster placement.
+  #
+  # A Story with a second obligation: o AC11 é o `AC5` órfão da `M01-07`
+  # (`SC-18`). `ArchiveProject` carrega um `TODO(M01-11)` no lugar exato onde a
+  # recusa entra, e é por isso que um Command de outra Story aparece aqui — a
+  # dívida foi registrada com o número desta.
+  M01-11:
+    - db/migrate/*_create_environments.rb
+    - db/schema.rb
+    # Domínio.
+    - app/models/environment.rb
+    - app/models/project.rb
+    - app/models/cluster.rb
+    # Application Layer.
+    - app/commands/create_environment.rb
+    - app/commands/update_environment.rb
+    # O `TODO(M01-11)`: a recusa de arquivar um Project com Environment ativo.
+    - app/commands/archive_project.rb
+    - app/queries/environments_for_project.rb
+    - app/queries/environment_overview.rb
+    - app/policies/environment_policy.rb
+    - app/policies/project_policy.rb
+    # AF-07 exige que uma mutação tenant-scoped declare Policy e ação; as duas
+    # novas entram na lista de fatos que a AF consome. Acrescentar alarga o que
+    # é exigido — não afrouxa nada.
+    - config/architecture/fitness.yml
+    # Entrega.
+    - app/controllers/environments_controller.rb
+    - app/controllers/projects_controller.rb
+    - config/routes.rb
+    - app/frontend/pages/Panel/Project.tsx
+    - app/frontend/pages/Panel/Environments.tsx
+    - app/frontend/components/**
+    # Testes.
+    - spec/unit/environment_status_spec.rb
+    - spec/unit/environment_revision_spec.rb
+    - spec/unit/project_lifecycle_spec.rb
+    - spec/integration/environment_constraints_spec.rb
+    - spec/integration/environment_cross_team_cluster_spec.rb
+    - spec/integration/project_constraints_spec.rb
+    - spec/policies/environment_policy_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    - spec/requests/environments_spec.rb
+    - spec/frontend/environments-page.test.tsx
+    - spec/factories/**
+    # Alargamento deliberado, declarado no commit que precisa dele. Todas estas
+    # são listas transcritas de fatos que um registry consome, e acrescentar a
+    # elas *aperta* o que é exigido — nenhuma afrouxa uma regra:
+    #   - o dispatcher de Policy por classe de recurso ganha `Environment`;
+    #   - o TenantScope passa a escopar `Environment` pelo mesmo join de Project;
+    #   - a matriz de rotas cross-team do harness ganha as rotas de Environment,
+    #     e foi ela que pegou a `EnvironmentsController` respondendo 500 em vez
+    #     de negar — a entrada existe para isso;
+    #   - o allowlist do sanitizer e o registro de ações de audit ganham as duas
+    #     ações novas, como toda Story que audita uma mutação já fez.
+    - lib/opanel/authorization.rb
+    - app/queries/tenant_scope.rb
+    - spec/support/authorization.rb
+    - app/audit/audit_sanitizer.rb
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    # SC-18 fecha aqui: o critério órfão passa a ter onde ser provado.
+    - docs/implementation/SPEC_CONFLICTS.md

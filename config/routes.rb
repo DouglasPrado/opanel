@@ -37,6 +37,11 @@ Rails.application.routes.draw do
     # posts the path it is already on.
     patch "projects/:id", to: "projects#update", as: nil
     post "projects/:id/archive", to: "projects#archive", as: :archive_project
+    # Environments (M01-11). Nested under Projects; list, create, show and update.
+    get "projects/:project_id/environments", to: "environments#index", as: :project_environments
+    post "projects/:project_id/environments", to: "environments#create"
+    get "projects/:project_id/environments/:id", to: "environments#show", as: :project_environment
+    patch "projects/:project_id/environments/:id", to: "environments#update"
     # Clusters (M01-08). `preflight` is a GET because it reads the machine and
     # the daemon and changes nothing; `refresh` is a POST because it writes the
     # observation it took.

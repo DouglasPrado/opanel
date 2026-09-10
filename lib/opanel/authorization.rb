@@ -43,7 +43,10 @@ module Opanel
       # decision is constructed with an unsaved one carrying the target Team —
       # which is what lets the dispatcher stay a map from resource class to
       # Policy instead of growing a special case.
-      "Cluster" => "ClusterPolicy"
+      "Cluster" => "ClusterPolicy",
+      # An Environment belongs to a Project which belongs to a Team; the Policy
+      # resolves the actor's membership from the Environment's Team.
+      "Environment" => "EnvironmentPolicy"
     }.freeze
 
     module_function
