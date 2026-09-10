@@ -1,3 +1,26 @@
+## Resolvidos em 2026-09-10 pela decisão do dono
+
+**M01-07 — SC-18.** O dono decidiu mover o `AC5` para a `M01-11`, que é onde ele
+pode ser provado. O critério está escrito no arquivo daquela Story (Acceptance
+Criteria e Preconditions) e o `SPEC_CONFLICTS.md` marca o SC-18 como `resolved`.
+A contagem da revisão foi para `0 0 1 1`: o Critical era exatamente este
+conflito, e a própria revisão nomeou esta saída — *"accept AC5 as formally owed
+to `M01-11` before either is marked done"*. A contagem mudou pela decisão, não
+por juízo do implementer; o arquivo de revisão não foi editado.
+
+**M01-09 — SC-19.** Resolvido por
+[`ADR-0005`](../../decisions/ADR-0005-swarm-executor-in-process-for-m01.md),
+aceito pelo dono: o Swarm Executor fica como módulo do processo do Control Plane
+no M01, com os controles compensatórios nomeados, o risco declarado nas palavras
+da revisão, e três gatilhos de extração. O primeiro deixou de ser prosa — a
+`M01-10` carrega a fitness function que falha com mais de um `Node` registrado
+enquanto `app/executors/` viver no Control Plane. Contagem para `0 0 0 1` pelo
+mesmo motivo e com a mesma ressalva.
+
+Com os dois fechados, `tasks.sh next` volta a devolver Story: `M01-10`.
+
+---
+
 ---
 title: "M01 — Blockers"
 milestone: "M01"

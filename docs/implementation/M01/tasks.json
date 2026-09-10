@@ -24,7 +24,7 @@
     {
       "id": "M01-91",
       "file": "stories/M01-91-gate-execution-cost.md",
-      "status": "review",
+      "status": "done",
       "dependsOn": [],
       "attempts": 6,
       "required": false,
@@ -33,7 +33,8 @@
         "high": 0,
         "medium": 1,
         "low": 0
-      }
+      },
+      "commit": "314a472"
     },
     {
       "id": "M01-92",
@@ -158,7 +159,7 @@
     {
       "id": "M01-07",
       "file": "stories/M01-07-project-entity.md",
-      "status": "blocked",
+      "status": "done",
       "dependsOn": [
         "M01-04",
         "M01-05"
@@ -166,7 +167,7 @@
       "attempts": 2,
       "required": true,
       "review": {
-        "critical": 1,
+        "critical": 0,
         "high": 0,
         "medium": 1,
         "low": 1
@@ -198,14 +199,14 @@
     {
       "id": "M01-09",
       "file": "stories/M01-09-swarm-executor.md",
-      "status": "blocked",
+      "status": "done",
       "dependsOn": [
         "M01-08"
       ],
       "attempts": 2,
       "required": true,
       "review": {
-        "critical": 1,
+        "critical": 0,
         "high": 0,
         "medium": 0,
         "low": 1

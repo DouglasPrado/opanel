@@ -21,6 +21,13 @@ O Manager do bootstrap aparece como `Node` com role, availability, endereço e s
 - Leitura periódica via `ListNodes`/`InspectNode` do executor, com cadência configurável.
 - Status do Node **derivado** da observação, com marcação de dado velho.
 - Tela de listagem de nodes com role, availability, status, capacidade e `lastSeenAt`.
+- **A fitness function que faz o `ADR-0005` expirar.** O ADR aceita o Swarm
+  Executor como módulo dentro do processo do Control Plane enquanto o M01 tiver
+  um nó só, e nomeia como primeiro gatilho de extração o segundo nó. Esta Story
+  é a que torna um segundo nó observável, então é ela que carrega o gatilho:
+  uma AF que falha quando existe mais de um `Node` registrado e `app/executors/`
+  continua carregado no processo do Control Plane. Prazo escrito em prosa não é
+  prazo; este vira vermelho no gate.
 
 ## Out of Scope
 - Drain/activate/promote/demote/remove (`M08-05`, `M08-06`, `M08-07`).
@@ -72,13 +79,14 @@ Lista de nodes na área de Cluster, com badge de `lastSeenAt`. Um node sem obser
 8. Duas execuções concorrentes do job de observação produzem o mesmo resultado.
 9. Um usuário de outro Team não lê os nodes, provado por teste cross-team.
 10. Nenhum token ou credencial aparece na observação, na resposta ou no log.
+11. Uma fitness function falha quando há mais de um `Node` registrado e `app/executors/` ainda vive no processo do Control Plane, e é vista falhando contra um segundo nó plantado (`ADR-0005`, gatilho 1).
 
 ## Required Tests
 - **unit**: derivação de status; detecção de dado velho.
 - **integration**: observação persistida; falha de leitura preservando a última observação.
 - **Docker/Swarm**: leitura real de nodes; node removido virando `DOWN`.
 - **policy**: negativo cross-team.
-- **security**: ausência de credencial na observação.
+- **security**: ausência de credencial na observação; a AF do `ADR-0005` vista vermelha com um segundo nó plantado e verde com um só.
 
 ## Quality Gates
 Local Quality Gate + suíte Docker/Swarm.

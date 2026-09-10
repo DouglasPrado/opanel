@@ -228,6 +228,11 @@ Complementa — não substitui — [`docs/decisions/pending-documentation-update
   `M01-05` e da `M01-06` derrubou.
 - **Como apareceu:** planejamento da `M01-07`, ao mapear os nove critérios contra
   o que existe no repositório.
+- **Resolução:** `resolved` em 2026-09-10, decisão do dono: o critério **migra**
+  para a `M01-11`, onde pode ser provado. Está escrito no arquivo daquela Story
+  como critério dela, com o caso negativo plantado, e nas Preconditions dela
+  como obrigação herdada. A `M01-07` fecha com os oito critérios que provou.
+  Sem ADR: é correção de autoria do pack, não decisão de arquitetura.
 - **Resolução aplicada:** `open`. A `M01-07` implementa os outros oito critérios
   por inteiro e **não** cria a tabela `environments` — fazê-lo seria exatamente o
   scope creep que `AGENT_RULES` §Scope Discipline proíbe, e colidiria com o
@@ -266,6 +271,18 @@ Complementa — não substitui — [`docs/decisions/pending-documentation-update
 - **Como apareceu:** a `M01-09` registrou a divergência no relatório como "de
   forma, não de invariante" e seguiu, citando o próprio §Scope da Story. A
   revisão discordou, com razão: a precedência é arquitetura → Story, e não há ADR.
+- **Resolução:** `resolved` em 2026-09-10 por
+  [`ADR-0005`](../decisions/ADR-0005-swarm-executor-in-process-for-m01.md),
+  aceito pelo dono. O executor fica como módulo do processo do Control Plane no
+  M01; o doc 07 §2.2 **não** é editado e continua sendo o alvo. O ADR nomeia os
+  controles compensatórios que existem e são testados, declara o risco aceito
+  nas palavras da revisão (RCE no mesmo processo alcança o socket, não apenas as
+  onze operações), e fixa três gatilhos de extração — segundo nó, API pública
+  servida do mesmo processo, primeiro workload de terceiro. O primeiro deles
+  deixa de ser prosa: a `M01-10` carrega uma fitness function que falha com mais
+  de um `Node` registrado enquanto `app/executors/` viver no Control Plane.
+  A extração é troca de transporte atrás do contrato `ExecutorCommand` /
+  `ExecutionResult`, que a `M01-09` já entregou — não redesenho.
 - **Resolução aplicada:** `open`. O módulo fica como está — é o que o AF-02 varre
   e o que as Stories seguintes (`M01-17`, `M01-18`) consomem — e a `M01-09` fica
   `blocked` até a decisão. Não foi construído um segundo processo com RPC
@@ -301,9 +318,9 @@ Registradas para evitar releitura como pendência. **Nenhuma ação necessária.
 
 | Estado | Quantidade | Itens |
 |---|---|---|
-| `resolved` | 13 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16 |
+| `resolved` | 15 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16, **SC-18**, **SC-19** |
 | `deferred` | 2 | SC-07 (inventário de componentes, dono `M00-05`), SC-11 (backend de métricas, dono `M09-03`) |
 | `unresolved` | 0 | — |
 | informativo | 5 | SC-13.1 … SC-13.5 |
 
-**Nenhum item `unresolved` permanece.** SC-04 e SC-08 foram decididos em 2026-09-08 pelo dono do repositório, através de `ADR-0001` e `ADR-0002`, ambos agora `accepted`. Nada no Implementation Pack aguarda decisão arquitetural.
+**Nenhum item `unresolved` permanece.** SC-04 e SC-08 foram decididos em 2026-09-08 pelo dono do repositório, através de `ADR-0001` e `ADR-0002`, ambos agora `accepted`. SC-18 e SC-19 foram decididos em 2026-09-10, o primeiro movendo o critério para a Story onde ele pode ser provado e o segundo através de `ADR-0005`. Nada no Implementation Pack aguarda decisão arquitetural.
