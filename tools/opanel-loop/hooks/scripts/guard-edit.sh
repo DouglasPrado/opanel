@@ -28,6 +28,13 @@ decide() {
 
 matches() { printf '%s' "$REL" | grep -Eq "$1"; }
 
+# Outside an autonomous run, gate maintenance is ordinary human-directed work.
+# The ordinary host permission flow applies; active builders cannot edit
+# their judges. No extra permission prompt is added by this plugin.
+if [ ! -f "$ROOT/.backlog-active" ] && matches '^bin/(gate|stop-gate|merge-gate)|^lib/gates/|^tools/opanel-loop/'; then
+  exit 0
+fi
+
 # --- deny: approved specification and the gates themselves -----------------
 matches '^docs/architecture/' \
   && decide deny "docs/architecture/** is approved architecture. A change at this level needs an ADR in docs/decisions/, not an edit."
@@ -43,6 +50,9 @@ matches '^lib/gates/' \
   && decide deny "lib/gates/** implements the gates. Changing a checker to get green needs its own Story or ADR."
 matches '^config/credentials|master\.key$|^\.env' \
   && decide deny "Credentials. No production credential should exist in this workspace at all."
+
+matches '^tools/opanel-loop/' \
+  && decide deny "The running loop cannot edit its own hooks, skills or agents. Perform authorized maintenance outside the backlog run."
 
 # --- ask: legitimately editable, occasionally disastrous -------------------
 matches '^\.rubocop\.yml$|eslint\.config\.(js|ts|mjs)$|^\.eslintrc' \

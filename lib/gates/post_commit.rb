@@ -7,6 +7,8 @@ require_relative "acceptance_mapping"
 require_relative "review_findings"
 require_relative "story_boundary"
 require_relative "suite_types"
+require_relative "test_evidence"
+require_relative "story_scope"
 
 module Opanel
   module Gates
@@ -164,6 +166,19 @@ module Opanel
       # standing in for a Story that declares several. All three read as "pass"
       # in a file whose only checked field was `result`.
       def tests(story, root)
+        records = TestEvidence.records(root)
+        unless records.empty?
+          identity = TestEvidence.identity(root, revision: "HEAD")
+          required = StoryScope.specs(root, story)
+          return failed("no backend specs selected for #{story}; verify the Story scope") if required.empty?
+
+          missing = TestEvidence.uncovered(records, required, identity: identity, context: TestEvidence.context)
+          return ok if missing.empty?
+
+          return failed("missing passing evidence for #{missing.join(', ')} against HEAD's test inputs. " \
+                        "Run bin/test --changed with OPANEL_STORY=#{story}; existing selections are preserved.")
+        end
+
         evidence = File.join(root, "tmp/test-results/rspec-metadata.json")
         unless File.exist?(evidence)
           return failed("no test evidence at tmp/test-results/rspec-metadata.json — run bin/test; " \
@@ -173,11 +188,30 @@ module Opanel
         metadata = JSON.parse(File.read(evidence))
         return failed("the last recorded run was #{metadata['result']}") unless metadata["result"] == "pass"
 
-        commit = metadata["commit"].to_s
-        head, _stderr, _ok = sh("git", "rev-parse", "HEAD", root: root)
-        unless commit.empty? || head.start_with?(commit) || commit.start_with?(head)
-          return failed("the test evidence is from commit #{commit[0, 9]}, not from HEAD " \
-                        "#{head[0, 9]} — re-run the suite against what was committed")
+        # The tree, not the commit (M01-92). The pre-commit hook runs before the
+        # commit exists, so evidence it produces always named the parent and the
+        # suite had to run a third time only to make the hash match. What the
+        # question actually is — did this suite run against this code? — the
+        # tree answers: an empty commit or an amended message keeps evidence
+        # valid, and one changed tracked file invalidates it.
+        #
+        # `commit` is still recorded and still checked when `tree` is absent, so
+        # evidence written by an older bin/test-metadata is judged as before.
+        tree = metadata["tree"].to_s
+        if tree.empty?
+          commit = metadata["commit"].to_s
+          head, _stderr, _ok = sh("git", "rev-parse", "HEAD", root: root)
+          unless commit.empty? || head.start_with?(commit) || commit.start_with?(head)
+            return failed("the test evidence is from commit #{commit[0, 9]}, not from HEAD " \
+                          "#{head[0, 9]} — re-run the suite against what was committed")
+          end
+        else
+          head_tree, _stderr, _ok = sh("git", "rev-parse", "HEAD^{tree}", root: root)
+          unless head_tree.strip == tree
+            return failed("the test evidence is from tree #{tree[0, 9]}, not from HEAD's tree " \
+                          "#{head_tree.strip[0, 9]} — a tracked file changed after the recorded " \
+                          "run; re-run bin/test")
+          end
         end
 
         executed = metadata["tests"].to_i

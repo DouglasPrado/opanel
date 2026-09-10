@@ -296,8 +296,8 @@ decision_of() {
 }
 
 guard_edit() {
-  decision_of "$(printf '{"tool_input":{"file_path":"%s/%s"}}' "$REPO_ROOT" "$1" \
-    | CLAUDE_PROJECT_DIR="$REPO_ROOT" bash "$EDIT" 2>/dev/null)"
+  decision_of "$(printf '{"tool_input":{"file_path":"%s/%s"}}' "$FAKE_ROOT" "$1" \
+    | CLAUDE_PROJECT_DIR="$FAKE_ROOT" bash "$EDIT" 2>/dev/null)"
 }
 
 [ "$(guard_edit bin/stop-gate)" = "deny" ] || fail "bin/stop-gate must be denied"

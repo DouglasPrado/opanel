@@ -7,6 +7,7 @@
 
 set -uo pipefail
 ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+[ -f "$ROOT/.backlog-active" ] || exit 0
 cd "$ROOT" 2>/dev/null || exit 0
 
 INPUT="$(cat)"

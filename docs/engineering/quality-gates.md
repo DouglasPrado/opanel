@@ -104,3 +104,20 @@ owner, justification, mitigation and an expiry. `bin/suppression-gate` fails on 
 reduction with no waiver **and on a waiver that has expired**, which is the whole
 mechanism — otherwise a temporary relaxation becomes permanent by nobody
 deciding anything.
+
+## Story execution (ADR-0005)
+
+The backlog records a fixed Story base before editing via `bin/story-scope start
+Mxx-NN`. `bin/story-scope files` and `specs` show the local selection. Export
+`OPANEL_STORY=Mxx-NN` for local gates and commits; an active backlog also supplies
+the ID automatically. Reopening the Story preserves its base. Older runs without
+a base keep the conservative comparison with main; do not reset the base after
+implementation to hide changes. CI and merge retain their full checks.
+
+`tmp/test-results/runs/` retains every test execution. Local tests reuse matching
+passing selections for one hour; use `bin/test --force` for an external dependency
+change or an explicit rerun. Seeds and CI always execute. Reports and task state
+alone do not invalidate test inputs, but remain subject to their separate gates.
+Post-commit combines related evidence instead of demanding a new full run after
+each partial suite. Gate JSON is retained under `tmp/gate/runs/` in both text and
+JSON display modes. See [ADR-0005](../decisions/ADR-0005-incremental-story-gates.md).

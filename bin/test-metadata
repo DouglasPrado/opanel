@@ -17,6 +17,9 @@
 
 require "json"
 require "time"
+require "tmpdir"
+require "fileutils"
+require_relative "../lib/gates/test_evidence"
 
 status, duration_ms, suite_type, parallel, scope, fast, paths = ARGV
 root = File.expand_path("..", __dir__)
@@ -63,6 +66,28 @@ selected = paths.to_s.split(/\s+/).reject(&:empty?)
 # answer. The same tree id the pre-commit record uses (`git write-tree` on a
 # fully staged index) matches this on the commit's tree, which is what lets one
 # run serve every gate stage.
+# The content of everything git **could** commit — tracked files plus untracked
+# files it does not ignore — as a tree id.
+#
+# `working_tree_id` below answers "did this suite run against this committed
+# code?", which is the question the Post-commit Gate asks. This one answers a
+# different question: "has this exact code already been proved?" — and for that,
+# a new spec file nobody has added yet has to count, because it is code the run
+# would execute. Built in a throwaway index so neither the real index nor the
+# working tree is touched.
+def committable_tree_id
+  index = File.join(Dir.tmpdir, "opanel-test-index-#{Process.pid}")
+  environment = { "GIT_INDEX_FILE" => index }
+  return nil unless system(environment, "git", "read-tree", "HEAD", out: File::NULL, err: File::NULL)
+
+  return nil unless system(environment, "git", "add", "-A", out: File::NULL, err: File::NULL)
+
+  id = IO.popen(environment, [ "git", "write-tree" ], &:read).to_s.strip
+  id.empty? ? nil : id
+ensure
+  FileUtils.rm_f(index)
+end
+
 def working_tree_id
   snapshot = git("stash create")
   return git("rev-parse #{snapshot}^{tree}") if snapshot
@@ -70,8 +95,19 @@ def working_tree_id
   git("rev-parse HEAD^{tree}")
 end
 
+# `bin/test` asks for the identity before deciding whether to run at all.
+if ARGV.first == "--identity"
+  puts committable_tree_id
+  exit 0
+end
+
+evidence = Opanel::Gates::TestEvidence
 metadata = {
   suite: "rspec",
+  input_identity: ENV["OPANEL_TEST_INPUT_ID"],
+  inputs_stable: ENV["OPANEL_TEST_INPUT_ID"] == evidence.identity(root),
+  context: evidence.context,
+  spec_files: JSON.parse(ENV.fetch("OPANEL_TEST_SPEC_FILES", "[]")),
   type: suite_type,
   # `all` when nothing narrowed the run, and the narrowing otherwise. A consumer
   # asking "did the integration suite run?" needs both.
@@ -89,12 +125,18 @@ metadata = {
   database: ENV.fetch("OPANEL_TEST_DATABASE_NAME", "opanel_test"),
   commit: git("rev-parse HEAD"),
   tree: working_tree_id,
+  # Identity for "already proved", not for "matches the commit". See above.
+  committable_tree: committable_tree_id,
   branch: git("rev-parse --abbrev-ref HEAD"),
   dirty: !git("status --porcelain").nil?,
   ruby: RUBY_VERSION,
-  finished_at: Time.now.utc.iso8601
+  finished_at: Time.now.utc.iso8601(6)
 }.merge(junit_counts("tmp/test-results/rspec-#{ENV.fetch('OPANEL_TEST_RUN_ID', 'adhoc')}*.xml"))
 
 path = "tmp/test-results/rspec-metadata.json"
-File.write(path, JSON.pretty_generate(metadata))
+evidence.write(path, metadata)
+if ENV["OPANEL_TEST_RUN_ID"]
+  evidence.write("tmp/test-results/runs/#{ENV.fetch("OPANEL_TEST_RUN_ID")}.json", metadata)
+end
+evidence.write("tmp/test-results/rspec-metadata-complete.json", metadata) if metadata[:complete]
 puts "test evidence: #{path} (#{metadata[:result]}, #{metadata['tests']} example(s), #{metadata[:duration_ms]}ms)"

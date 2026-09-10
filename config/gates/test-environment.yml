@@ -1,0 +1,23 @@
+# The environment a test run depended on, as a list of variable names.
+#
+# `lib/gates/test_evidence.rb` hashes these into the run's context digest: a
+# `:swarm` example that passed against one daemon proves nothing about another,
+# and a run against a different database proves nothing about this one.
+#
+# **This list lives here and not in Ruby on purpose.** Naming the Docker
+# endpoint variables in `lib/gates/test_evidence.rb` made AF-02 fail, and the
+# first fix put the file in `fitness_self_referential` — which exempts the
+# **whole file**, so a real `require "docker"` inside it would then pass
+# unseen. The review of M01-93 proved exactly that. A data file cannot call
+# anything, so exempting *it* costs nothing; the Ruby file goes back under the
+# fitness function's eye, where it belongs.
+#
+# Adding a name here changes what invalidates a cached run. Removing one makes
+# the cache broader and is the direction that needs an argument.
+context:
+  - RAILS_ENV
+  - OPANEL_TEST_DATABASE_NAME
+  - DATABASE_URL
+  - DOCKER_HOST
+  - DOCKER_CONTEXT
+  - TEST_ENV_NUMBER

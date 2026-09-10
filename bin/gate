@@ -134,7 +134,7 @@ check_no_verify_absent() {
 record_pre_commit_evidence() {
   local tree check json_names=""
 
-  if [ "$GATE_FAILURES" -ne 0 ]; then
+  if [ "$GATE_FAILURES" -ne 0 ] || [ -n "$GATE_ONLY" ]; then
     # Only in the text form. Under `--format json` the report already says
     # `"result": "fail"`, and a line of prose on stderr is one a caller reading
     # both streams has to parse as JSON and cannot.
@@ -167,16 +167,8 @@ case "$gate" in
     gate_run "format" bin/format --check --changed
     gate_run "lint" bin/lint --changed
     gate_run "typecheck" bin/typecheck
-    # `--parallel` is NOT used here, and the reason is measured rather than
-    # assumed: it takes the suite from 193s to 88s and turns five specs red.
-    # spec/security/production_logging_spec.rb boots the app in production mode
-    # and four of its examples collide across workers;
-    # spec/security/security_scan_spec.rb's history scan is the fifth. The suite
-    # is not parallel-safe, and a faster gate that reports false failures is
-    # worse than a slow one — it teaches people to ignore red.
-    #
-    # Making those specs parallel-safe is the remaining half of M01-91.
-    gate_run "tests" bin/test --changed
+    # Independent test databases per worker; gate probes use scratch checkouts.
+    gate_run "tests" bin/test --changed --parallel
     # Reported separately from the Ruby suite, because "tests passed" that covers
     # one of the two languages in the diff is the claim this whole file exists to
     # stop being an opinion.
@@ -186,14 +178,20 @@ case "$gate" in
       gate_skip "frontend-tests" "no frontend file changed"
     fi
     gate_run "migrations" bin/migration-gate
-    if git diff --name-only "$(git merge-base HEAD "${OPANEL_GATE_BASE:-main}" 2>/dev/null || echo HEAD)" \
-        | grep -qE '^(app/contracts/|app/controllers/api/|config/ci/jobs\.yml)'; then
+    if gate_files changed '.' | grep -qE '^(app/contracts/|app/controllers/api/|config/ci/jobs\.yml)'; then
       gate_run "contracts" bin/test --type contract
     else
       gate_skip "contracts" "no contract changed"
     fi
-    gate_run "security" bin/security --fast
+    gate_run "security" bin/security --fast --diff
     gate_run "fitness" bin/fitness
+    # M01-92 — the acceptance-mapping checker runs only in post-commit, and a
+    # report it could not read surfaced five Stories late: every report since
+    # M01-05 mapped zero criteria and nobody saw it before the commit. Here it
+    # is a warning that names the template; post-commit still blocks, unchanged.
+    if [ -n "$story" ] && ! post_commit_check acceptance-mapping >/dev/null 2>&1; then
+      gate_warn "acceptance-mapping" "the Story report maps criteria the post-commit checker cannot read — one checklist item per criterion, evidence in backticks (docs/templates/STORY_REPORT.md)"
+    fi
     gate_finish
     ;;
 

@@ -77,3 +77,17 @@ proved at all.
 - `OPANEL_MAX_STORIES_PER_RUN` — stop cleanly after N Stories (checkpointing).
 - Delete `.backlog-active` to stop the loop after the current turn.
 - Turn budget: `stories × 6 + 30`. Reaching it blocks the Milestone.
+
+## Bounded execution
+
+Story bases are captured by `tasks.sh set <ID> in_progress`; retain the same base
+on retries. Tests reuse input-matched per-run evidence, including across report
+and task updates. CI never reuses this local cache. Reviewer tools are read-only;
+the lead writes the returned review verbatim. A five-minute deadline is checked
+before reviewer tool calls, and incomplete output never counts as approval.
+A fourth automatic Story attempt blocks the Story. Maintenance outside a backlog
+run uses the normal host permissions; an active builder cannot edit its judges.
+
+Run `python3 tools/opanel-loop/scripts/budget-test.py` alongside the smoke test.
+Restart the Claude session after updating plugin hooks/agent definitions so the
+new definitions are loaded.

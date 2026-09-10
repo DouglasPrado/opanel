@@ -26,6 +26,7 @@ format="text"
 parallel="no"
 scope="all"
 fast="no"
+force="no"
 type="all"
 paths=""
 seed=""
@@ -36,6 +37,7 @@ while [ $# -gt 0 ]; do
     --type=*) type="${1#--type=}" ;;
     --parallel) parallel="yes" ;;
     --changed) scope="changed" ;;
+    --force) force="yes" ;;
     --fast) fast="yes" ;;
     --seed) seed="$2"; shift ;;
     --format) format="$2"; shift ;;
@@ -61,19 +63,10 @@ if [ "$scope" = "changed" ] && [ -z "${paths// /}" ]; then
   # Ruby under app/ or lib/ that no spec covers exits non-zero here rather than
   # selecting nothing: "there was nothing to run" and "everything passed" are not
   # the same answer.
-  changed_files="$(gate_files changed '.')"
-
-  if [ -z "$changed_files" ]; then
-    echo "bin/test: nothing changed"
-    exit 0
-  fi
-
-  if ! paths="$(printf '%s\n' "$changed_files" | ruby lib/gates/related_specs.rb)"; then
+  if ! paths="$(bin/story-scope specs)"; then
     exit 1
   fi
-
   paths="$(printf '%s' "$paths" | tr '\n' ' ')"
-
   if [ -z "${paths// /}" ]; then
     echo "bin/test: no backend spec is related to the change"
     exit 0
@@ -101,10 +94,41 @@ export OPANEL_JUNIT=1
 # RuboCop, gitleaks and RSpec itself against planted failures. The Pre-commit
 # Gate uses it to stay inside its budget; CI never does, so the check moves
 # rather than disappearing (Annex I §12.1, §21.2).
-[ "$fast" = "yes" ] && export OPANEL_FAST_TESTS=1
+if [ "$fast" = "yes" ]; then
+  export OPANEL_FAST_TESTS=1
+else
+  unset OPANEL_FAST_TESTS
+fi
 
 seed_args=""
 [ -n "$seed" ] && seed_args="--seed $seed"
+
+# Freeze inputs before execution. Reports written afterwards cannot attest
+# that a different tree was tested; a concurrent source edit invalidates the run.
+export OPANEL_TEST_INPUT_ID
+OPANEL_TEST_INPUT_ID="$(ruby -r./lib/gates/test_evidence -e 'puts Opanel::Gates::TestEvidence.identity(Dir.pwd)')" || exit 1
+export OPANEL_TEST_SPEC_FILES
+OPANEL_TEST_SPEC_FILES="$(ruby -r./lib/gates/test_evidence -e '
+  paths = ARGV.first.to_s.split
+  paths = ["spec"] if paths.empty?
+  puts Opanel::Gates::TestEvidence.expand(paths, Dir.pwd).to_json
+' "$paths")" || exit 1
+
+# CI, seeded reproductions and --force always execute. The ledger retains every
+# selection, so contract/probe runs cannot clobber a previously proved suite.
+if [ "$force" != "yes" ] && [ -z "${CI:-}" ] && [ -z "$seed" ]; then
+  if ruby -r./lib/gates/test_evidence -e '
+    e = Opanel::Gates::TestEvidence
+    required = JSON.parse(ENV.fetch("OPANEL_TEST_SPEC_FILES"))
+    missing = e.uncovered(e.records(Dir.pwd), required,
+      identity: ENV.fetch("OPANEL_TEST_INPUT_ID"), context: e.context,
+      fast: ARGV[0] == "yes", parallel: (ARGV[1] == "yes" ? true : nil), fresh: true)
+    exit(required.any? && missing.empty? ? 0 : 1)
+  ' "$fast" "$parallel"; then
+    echo "tests: already proven for these inputs and this selection — bin/test --force to run anyway"
+    exit 0
+  fi
+fi
 
 started="$(gate_now_ms)"
 

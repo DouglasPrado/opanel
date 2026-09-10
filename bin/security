@@ -96,47 +96,119 @@ gate_run "allowlist" ruby lib/gates/secret_allowlist.rb
 if ! command -v gitleaks > /dev/null 2>&1; then
   gate_fail "secret-scan" "gitleaks is not installed. Install it (brew install gitleaks) — a secret scan that does not run is not a pass."
 else
-  # Whole tree by default. `--staged` scans the staged diff instead, which is
-  # exactly the question a pre-commit gate asks — "is there a secret in what I am
-  # about to commit?" — and is what keeps that gate inside its budget. A gate slow
-  # enough to be annoying gets bypassed, and a bypassed gate protects nothing
-  # (Annex I §12.1). **CI always scans the whole tree and the history**: the scope
-  # moves, the check does not.
-  # `--diff`: the files that differ from the merge base, working tree included
-  # (M01-91 §3). This is the question the *local* gate asks — "is there a secret
-  # in what I changed?" — and it costs seconds instead of the 80 s a scan of
-  # 170 MB costs on every run. The full tree and the history still run in CI and
-  # in post-commit: the scope moves, the check does not (Annex I §21.2). Each
-  # file is scanned on its own because `gitleaks dir` takes one path; a
-  # deleted file is skipped because there is nothing left to scan.
+  # ## What the scanner scans, and why it is not the checkout
+  #
+  # `gitleaks dir .` walks the filesystem. This checkout is 952 MB —
+  # `node_modules/` 484, `log/` 181, `vendor/` 151, `tmp/` 108 — and **13 MB,
+  # 1 047 files, is what git can commit**. Scanning the other 98,6% cost 79 s on
+  # every run and could not find a leak that matters: a file git ignores cannot
+  # be committed, so it cannot leak by this path.
+  #
+  # So the scope is the **committable set**: what git tracks, plus what is
+  # untracked and not ignored (a pasted credential lands in a new file before
+  # anyone runs `git add`). It is derived from git's own ignore rules, never
+  # from a path list here or in `gitleaks.toml` — if `node_modules/` stopped
+  # being ignored it would be scanned again, with nothing to change. That is the
+  # difference between narrowing a scanner and excluding a directory from it.
+  #
+  # The set is copied into a directory and scanned by **one** `gitleaks`
+  # process. `gitleaks dir` takes a single path, and the first version of
+  # `--diff` ran one process per file: 1 047 processes, 18 s, nearly all of it
+  # spawn. The copy is 13 MB and costs a fraction of a second.
+  #
+  # `--staged` (pre-commit: "is there a secret in what I am about to commit?")
+  # and `--history` stay in `gitleaks git` mode, which reads objects and never
+  # walked the checkout in the first place. **CI still scans the tree and the
+  # history**: the scope moves, the check does not (Annex I §21.2).
+  scan_set() {
+    # One `local` per name: bash expands every word of a `local` before it
+    # assigns any of them, so `report="…/$name.json"` on the same line reads an
+    # unset `name` and, under `set -u`, aborts the scan.
+    local name="$1"
+    # **Outside the repository, on purpose.** `gitleaks dir` honours the
+    # `.gitignore` of the repository it finds itself in, so a copy under `tmp/`
+    # — which this repository ignores — is scanned as ~0 bytes: 1 049 files
+    # present, nothing read, "no leaks found" in 381µs. That is a scanner that
+    # passes because it looked at nothing, and the `--diff` negative in
+    # spec/security/security_scan_spec.rb is what caught it.
+    local root
+    root="$(mktemp -d "${TMPDIR:-/tmp}/opanel-scan-XXXXXX")"
+    local report="$SCANNER_DIR/$name.json"
+    local status=0
+    local output
+
+    # Copy the listed files, keeping their paths. Ruby rather than `tar -T`
+    # because it filters what the list can legitimately contain and the copy
+    # cannot: a tracked file deleted in the working tree, and a symlink (git
+    # stores its target as content; following it would leave the tree).
+    if ! ruby -rfileutils -e '
+      root = ARGV[0]
+      FileUtils.rm_rf(root)
+      FileUtils.mkdir_p(root)
+      # NUL only. The first version also split on "\n", and a newline inside a
+      # file name — a byte git tracks perfectly well — cut the path into pieces
+      # that matched no file, so the file was copied nowhere and scanned by
+      # nobody. The independent review planted a secret in such a file and the
+      # scan reported PASS while the old `gitleaks dir .` found it. Every
+      # producer below emits -z for this reason.
+      $stdin.read.split("\0").each do |path|
+        next if path.empty? || File.symlink?(path) || !File.file?(path)
+
+        destination = File.join(root, path)
+        FileUtils.mkdir_p(File.dirname(destination))
+        FileUtils.cp(path, destination)
+      end
+    ' "$root"; then
+      echo "could not assemble the set to scan" >&2
+      return 1
+    fi
+
+    output="$(gitleaks dir "$root" \
+      --config config/security/gitleaks.toml \
+      --redact \
+      --no-banner \
+      --report-format json \
+      --report-path "$report" \
+      --exit-code 1 2>&1)" || status=$?
+
+    # A finding names the file by its path in the repository, not by the copy's.
+    printf '%s\n' "$output" | sed "s|$root/||g"
+    [ -f "$report" ] && ruby -e 'File.write(ARGV[0], File.read(ARGV[0]).gsub(ARGV[1] + "/", ""))' "$report" "$root"
+    rm -rf "$root"
+
+    return $status
+  }
+
+  # Everything git can commit, NUL-delimited so a path with a space or a quote
+  # survives. The two lists cannot overlap: `--others` is exactly the untracked.
+  committable_set() {
+    git ls-files -z
+    git ls-files --others --exclude-standard -z
+  }
+
   if [ "$scope" = "diff" ]; then
-    # `gate_files changed` is the tracked diff plus the index; a **new** file is
-    # neither until it is added, and a new file is exactly where a pasted
-    # credential lands. The first version of this scope missed it — the
-    # negative in spec/security/security_scan_spec.rb planted a secret in an
-    # untracked file and the scan passed — so untracked files are in the set.
-    diff_files="$({ gate_files changed '.'; git ls-files --others --exclude-standard; } | sort -u \
-      | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done)"
-    if [ -z "$diff_files" ]; then
-      gate_skip "secret-scan-diff" "nothing changed since the merge base"
+    # The local gate asks a narrower question — "is there a secret in what I
+    # changed?" — over the same committable set. `gate_files changed` is the
+    # tracked diff plus the index; a **new** file is neither until it is added,
+    # and the first version of this scope missed exactly that (the negative in
+    # spec/security/security_scan_spec.rb planted a secret in an untracked file
+    # and the scan passed).
+    # Straight from git, NUL-delimited, rather than through `gate_files`: that
+    # helper is newline-based and every caller of it treats a line as a path,
+    # which is exactly the assumption that lost a file above. `--diff-filter`
+    # keeps added, copied, modified and renamed and drops deletions, which have
+    # nothing left to scan.
+    diff_base="$(bin/story-scope base 2>/dev/null || true)"
+    [ -n "$diff_base" ] || diff_base="$(git merge-base HEAD "${OPANEL_GATE_BASE:-main}" 2>/dev/null || echo HEAD)"
+    diff_count="$({ git diff --name-only -z --diff-filter=ACMR "$diff_base"; \
+      git ls-files --others --exclude-standard -z; } | tr -cd '\0' | wc -c | tr -d ' ')"
+    if [ "$diff_count" = "0" ]; then
+      gate_skip "secret-scan-diff" "nothing changed since the Story's base"
     else
       scan_diff() {
-        local failed=0 n=0 f
-        # One report per file, in a directory wiped per run: a single path
-        # would keep only the last file's findings, and on a Milestone branch
-        # "changed since the merge base" is most of the tree (1 048 files when
-        # this was measured) — still 18 s against 80 s, but not a thousand
-        # stale reports next to the scanner's own.
-        rm -rf "$SCANNER_DIR/diff"
-        mkdir -p "$SCANNER_DIR/diff"
-        while IFS= read -r f; do
-          n=$((n + 1))
-          gitleaks dir "$f" --config config/security/gitleaks.toml --redact --no-banner \
-            --report-format json --report-path "$SCANNER_DIR/diff/$n.json" --exit-code 1 || failed=1
-        done <<EOF
-$diff_files
-EOF
-        return "$failed"
+        { git diff --name-only -z --diff-filter=ACMR "$diff_base"
+          git ls-files --others --exclude-standard -z
+        } | scan_set "gitleaks-diff"
       }
       gate_run "secret-scan-diff" scan_diff
     fi
@@ -149,13 +221,8 @@ EOF
       --report-path "$SCANNER_DIR/gitleaks.json" \
       --exit-code 1
   else
-    gate_run "secret-scan" gitleaks dir . \
-      --config config/security/gitleaks.toml \
-      --redact \
-      --no-banner \
-      --report-format json \
-      --report-path "$SCANNER_DIR/gitleaks.json" \
-      --exit-code 1
+    scan_tree() { committable_set | scan_set "gitleaks"; }
+    gate_run "secret-scan" scan_tree
   fi
 
   if [ "$history" = "yes" ]; then

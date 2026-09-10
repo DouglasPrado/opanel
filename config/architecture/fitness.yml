@@ -80,6 +80,13 @@ fitness_self_referential:
   - lib/gates/fitness_functions.rb
   - lib/gates/workspace_guardrail.rb
   - config/architecture/fitness.yml
+  # M01-93: the test-evidence ledger hashes the environment a run depended on,
+  # and `DOCKER_HOST`/`DOCKER_CONTEXT` are part of it — a `:swarm` example that
+  # passed against one daemon proves nothing about another. It reads the two
+  # variables to build a digest and makes no call: same case as the guardrail
+  # above, and deliberately **not** `docker_boundaries`, which is the Tier-0
+  # list that grants access to the Engine.
+  - lib/gates/test_evidence.rb
 
 # Waivers. Same contract as the security waivers: reason, owner, deadline, and the
 # Story that removes it. An expired waiver blocks again automatically.

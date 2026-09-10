@@ -1,5 +1,6 @@
 require "rails_helper"
 require "tmpdir"
+require "yaml"
 require_relative "../../lib/gates/fitness_functions"
 
 # AC1, AC2, AC3, AC10 — the Tier-0 boundary (Annex C §8, T01), asserted against
@@ -88,6 +89,43 @@ RSpec.describe "the Swarm Executor is the only privileged boundary", type: :secu
         .select { |p| code(p).match?(DOCKER_PROCESS) }
 
       expect(offenders).to be_empty, offenders.join("\n")
+    end
+  end
+
+  # M01-93 — `fitness_self_referential` exempts a whole file from AF-02, and the
+  # review of that Story showed what that costs: a planted
+  # `SOCK = "/var/run/docker.sock"` inside `lib/gates/test_evidence.rb` left
+  # AF-02 reporting `pass`. The exemption is the right list — those files talk
+  # *about* Docker, they do not talk to it — but "does not talk to it" was an
+  # assertion nobody made. This makes it.
+  describe "the AF-02 exemptions still do not touch Docker (M01-93)" do
+    def exempt_files
+      YAML.safe_load_file(File.join(ROOT, "config/architecture/fitness.yml"))
+        .fetch("fitness_self_referential").reject { |path| path.end_with?(".yml") }
+    end
+
+    # Narrower than AF-02 on purpose: naming `DOCKER_HOST` is why these files
+    # are exempt, so naming it cannot be the offence. Reaching the socket, a
+    # client library or the CLI is.
+    TOUCHES = Regexp.union(
+      %r{/var/run/docker\.sock}, /\bDocker::\w+/, DOCKER_PROCESS
+    )
+
+    it "is a list that exists and is not empty" do
+      expect(exempt_files).not_to be_empty
+    end
+
+    it "holds no file that reaches the Engine" do
+      offenders = exempt_files.select { |path| File.exist?(File.join(ROOT, path)) && code(path).match?(TOUCHES) }
+
+      expect(offenders).to be_empty,
+        "exempt from AF-02 and reaching Docker anyway:\n#{offenders.join("\n")}"
+    end
+
+    it "would recognise one" do
+      expect(%(SOCK = "/var/run/docker.sock"\n)).to match(TOUCHES)
+      expect(%(Docker::Service.create({})\n)).to match(TOUCHES)
+      expect(%(ENV["DOCKER_HOST"]\n)).not_to match(TOUCHES)
     end
   end
 

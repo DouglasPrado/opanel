@@ -104,13 +104,17 @@ RSpec.describe "the local gate's budget (M01-91)", :slow do
       git("rev-parse", "#{snapshot.empty? ? 'HEAD' : snapshot}^{tree}")
     end
 
-    # The newest `done` Story on this line of history, from the packs' own
-    # state. Nil when no Story has closed yet.
-    def last_closed_story_commit
-      commits = Dir.glob(File.join(GATE_ROOT, "docs/implementation/*/tasks.json")).flat_map do |path|
+    # Every `done` Story's commit on this line of history, from the packs' own
+    # state.
+    def closed_story_commits
+      Dir.glob(File.join(GATE_ROOT, "docs/implementation/*/tasks.json")).flat_map { |path|
         JSON.parse(File.read(path)).fetch("stories", []).filter_map { |s| s["commit"] if s["status"] == "done" }
-      end
-      commits.select { |c| ancestor?(c, "HEAD") }.max_by { |c| git("rev-list", "--count", c).to_i }
+      }.select { |c| ancestor?(c, "HEAD") }
+    end
+
+    # How many Stories closed after the kept record was written.
+    def stories_closed_since(commit)
+      closed_story_commits.count { |c| c != commit && ancestor?(commit, c) }
     end
 
     it "ran under the ceiling the last time it ran in full" do
@@ -133,9 +137,17 @@ RSpec.describe "the local gate's budget (M01-91)", :slow do
       unless ancestor?(commit, "HEAD")
         skip "the kept record is from outside this history (#{commit[0, 12]}) — run bin/test"
       end
-      floor = last_closed_story_commit
-      if floor && !ancestor?(floor, commit)
-        skip "the kept record (#{commit[0, 12]}) predates the last closed Story (#{floor[0, 12]}) — run bin/test"
+      # **One** Story behind is allowed, and more is not. A suite cannot read
+      # its own duration, so the newest record this example can ever see was
+      # written before the Story that is closing — the first version of this
+      # bound demanded the record be at or after the last closed Story, and so
+      # went pending on exactly the run that closes a Story. `bin/gate
+      # post-commit` refuses a suite with a skipped example, so that bound
+      # charged every Story an extra full suite. Two Stories behind is drift,
+      # and that is what this refuses.
+      behind = stories_closed_since(commit)
+      if behind > 1
+        skip "the kept record (#{commit[0, 12]}) is #{behind} closed Stories behind HEAD — run bin/test"
       end
 
       provenance = "measured at #{commit[0, 12]}, tree #{metadata['tree'].to_s[0, 12]}; " \

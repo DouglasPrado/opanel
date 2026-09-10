@@ -479,6 +479,56 @@ boundaries:
   # que vivem ali (o post-commit aceitar evidência por árvore; o aviso de
   # acceptance-mapping no gate local) são entregues como patch em `evidence/`
   # para o operador aplicar — o humano é o gate, e o hook não é contornado.
+  # Fora da faixa do Milestone pelo mesmo motivo da M01-91: toca a máquina que
+  # julga as Stories. As duas checagens que somam 98% do gate passam a trabalhar
+  # sobre o risco (13 MB commitáveis) em vez do disco (952 MB de checkout), e os
+  # specs de gate deixam de rodar o gate contra o checkout de quem os roda.
+  M01-93:
+    - bin/security
+    # Onde a identidade de uma execução de suíte é calculada e gravada: é ali
+    # que "a mesma árvore já provada não roda de novo" tem de nascer, para a
+    # suíte rodar uma vez por Story em vez de duas.
+    - bin/test
+    - spec/security/security_scan_spec.rb
+    # Os dois specs que provam os gates plantando arquivos no checkout real, e
+    # que por isso ficam serializados pelo RepositoryLock na cauda do paralelo.
+    - spec/gates/gate_scripts_spec.rb
+    - spec/gates/ci_pipeline_spec.rb
+    # Os tetos medidos mudam quando o custo muda.
+    - spec/gates/gate_budget_spec.rb
+    # Onde a identidade de uma execução é asseverada contra um repositório
+    # fixture, ao lado do `tree` que a M01-92 introduziu.
+    - spec/gates/test_evidence_spec.rb
+    - bin/test-metadata
+    - spec/support/**
+    # Onde a seleção do gate nasce. O `--changed` comparava com `main`, então
+    # cada Story testava o Milestone acumulado — 1 047 arquivos, os 104 specs,
+    # sempre. A base passa a ser o HEAD do início da Story, gravada por
+    # `tasks.sh set <ID> in_progress`.
+    - bin/story-scope
+    - lib/gates/story_scope.rb
+    - bin/_gate_lib.sh
+    # O ledger de execuções: identidade das entradas congelada antes de rodar,
+    # um registro por execução, seleções parciais que compõem em vez de se
+    # sobrescrever.
+    - lib/gates/test_evidence.rb
+    - spec/gates/incremental_evidence_spec.rb
+    # As duas metades que o hook nega ao implementer e que o operador aplicou:
+    # o post-commit somando seleções, e o gate local usando a base da Story.
+    - bin/gate
+    - lib/gates/post_commit.rb
+    # O loop em si — prazo do reviewer no hook, recusa da quarta tentativa,
+    # e a documentação que descreve os gates que mudaram.
+    - tools/opanel-loop/**
+    - docs/engineering/quality-gates.md
+    # `fitness_self_referential`, não `docker_boundaries`: o ledger lê
+    # DOCKER_HOST para o digest de ambiente e não chama nada. A lista Tier-0
+    # fica intocada.
+    - config/architecture/fitness.yml
+    # A isenção da AF-02 isenta o arquivo inteiro; a asserção estreita que diz
+    # "estes arquivos falam sobre Docker, não falam com Docker" nasce aqui.
+    - spec/security/executor_isolation_spec.rb
+
   M01-92:
     - bin/test-metadata
     - bin/test

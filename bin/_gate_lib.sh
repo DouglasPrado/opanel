@@ -255,6 +255,14 @@ PY
     exit 1
   fi
 
+  # Keep each run, in either display format, for the independent reviewer.
+  local record_path
+  record_path="tmp/gate/runs/${GATE_NAME//:/-}-$$-$GATE_STARTED_AT.json"
+  if ! gate_write_json "$record_path"; then
+    echo "could not persist gate evidence: $record_path" >&2
+    exit 1
+  fi
+
   if [ "$GATE_FORMAT" = "json" ]; then
     python3 - "$GATE_RESULTS_FILE" "$GATE_NAME" "$result" "$duration" <<'PY'
 import json, sys
@@ -295,11 +303,11 @@ gate_files() {
     return 0
   fi
 
-  base="$(git merge-base HEAD "${OPANEL_GATE_BASE:-main}" 2>/dev/null || git rev-parse HEAD)"
-  {
-    git diff --name-only --diff-filter=ACMR "$base"
-    git diff --name-only --diff-filter=ACMR --cached
-  } | sort -u | grep -E "$pattern" | while read -r file; do
+  # The loop records a base when opening the Story. CI keeps branch scope.
+  # Include untracked files; a new source file must be checked before staging.
+  local files
+  files="$(bin/story-scope files)" || exit 1
+  printf '%s\n' "$files" | grep -E "$pattern" | while IFS= read -r file; do
     [ -e "$file" ] && printf '%s\n' "$file"
   done || true
 }

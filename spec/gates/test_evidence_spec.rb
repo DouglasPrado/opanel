@@ -29,6 +29,8 @@ RSpec.describe "test evidence keyed by tree", type: :unit do
       FileUtils.mkdir_p(File.join(dir, "bin"))
       FileUtils.mkdir_p(File.join(dir, "tmp/test-results"))
       FileUtils.cp(File.join(GATE_ROOT, "bin/test-metadata"), File.join(dir, "bin/test-metadata"))
+      FileUtils.mkdir_p(File.join(dir, "lib/gates"))
+      FileUtils.cp(File.join(GATE_ROOT, "lib/gates/test_evidence.rb"), File.join(dir, "lib/gates/test_evidence.rb"))
       File.write(File.join(dir, "app.rb"), "puts 1\n")
 
       sh("git", "init", "-q", dir: dir)
@@ -46,6 +48,59 @@ RSpec.describe "test evidence keyed by tree", type: :unit do
   end
 
   def head_tree(dir) = sh("git", "rev-parse", "HEAD^{tree}", dir: dir)
+
+  # M01-93 — the identity that decides whether a run has already been proved.
+  # `tree` answers "did this run against what was committed?"; this answers
+  # "is this the same code I already ran?", and for that an untracked file has
+  # to count, because a new spec nobody has added yet is code the run executes.
+  describe "the committable-tree identity (M01-93)" do
+    def identity(dir) = sh("ruby", "bin/test-metadata", "--identity", dir: dir)
+
+    it "changes when a tracked file changes" do
+      fixture do |dir|
+        before = identity(dir)
+        File.write(File.join(dir, "app.rb"), "puts 2\n")
+
+        expect(identity(dir)).not_to eq(before)
+      end
+    end
+
+    it "changes when an untracked file appears — the case `tree` deliberately ignores" do
+      fixture do |dir|
+        before = identity(dir)
+        File.write(File.join(dir, "new_spec.rb"), "it { }\n")
+
+        expect(identity(dir)).not_to eq(before)
+        # And the committed-code identity does not move, which is why the two
+        # fields exist rather than one.
+        expect(record(dir)["tree"]).to eq(head_tree(dir))
+      end
+    end
+
+    it "does not change when only an ignored file appears" do
+      fixture do |dir|
+        File.write(File.join(dir, ".gitignore"), "junk/\n")
+        sh("git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A", dir: dir)
+        sh("git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "ignore", dir: dir)
+        before = identity(dir)
+
+        FileUtils.mkdir_p(File.join(dir, "junk"))
+        File.write(File.join(dir, "junk/big.log"), "noise\n")
+
+        expect(identity(dir)).to eq(before)
+      end
+    end
+
+    it "leaves the repository's own index untouched" do
+      fixture do |dir|
+        staged_before = sh("git", "status", "--porcelain", dir: dir)
+        File.write(File.join(dir, "loose.rb"), "x\n")
+        identity(dir)
+
+        expect(sh("git", "status", "--porcelain", dir: dir)).to eq("#{staged_before}?? loose.rb".strip)
+      end
+    end
+  end
 
   it "records a tree id, alongside the commit it already recorded" do
     fixture do |dir|
