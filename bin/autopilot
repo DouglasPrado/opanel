@@ -140,6 +140,91 @@ RUN_LOG="$LOG_DIR/$(date -u '+%Y%m%dT%H%M%SZ').log"
 
 say() { printf '[autopilot %s] %s\n' "$(date -u '+%H:%M:%SZ')" "$*" | tee -a "$RUN_LOG"; }
 
+# --- progress ----------------------------------------------------------------
+# `claude -p` writes nothing until it exits, so a session that is working looks
+# identical to one that is hung: hours of silence either way. The state it is
+# moving through, though, is all on disk, and that is what this reads.
+#
+# Not --output-format stream-json. That would report the session's own events,
+# which is more detail, but it would also cost the plain-text log that the
+# session-limit detector and every diagnosis in this script read — and those are
+# load-bearing. Polling what the run records is less precise about the inside of
+# a turn and exact about what actually happened.
+
+# Which agent the loop has to be running, derived from what it recorded. The
+# statuses are not ambiguous: each one is entered by exactly one dispatch.
+agent_for() {
+  case "$1" in
+    in_progress)   printf 'builder' ;;
+    review)        printf 'reviewer' ;;
+    fix_required)  printf 'builder (fixing review findings)' ;;
+    blocked)       printf 'arbiter' ;;
+    *)             printf '%s' "$1" ;;
+  esac
+}
+
+progress_snapshot() {
+  # `story_status`, not `status`: that name is read-only in zsh, and a helper
+  # nobody can source into a shell to try out is a helper nobody tries out.
+  local mdir story story_status attempts done total mstatus
+  [ -f .backlog-active ] || { printf 'no active run'; return; }
+  mdir="$(head -n1 .backlog-active | tr -d '[:space:]')"
+  [ -f "$mdir/tasks.json" ] || { printf 'run opening'; return; }
+
+  done="$(jq '[.stories[]|select(.status=="done")]|length' "$mdir/tasks.json" 2>/dev/null || echo '?')"
+  total="$(jq '.stories|length' "$mdir/tasks.json" 2>/dev/null || echo '?')"
+  mstatus="$(jq -r '.status' "$mdir/review-state.json" 2>/dev/null || echo '?')"
+
+  story="$(jq -r '[.stories[]|select(.status!="done" and .status!="pending")][0] // empty | .id' "$mdir/tasks.json" 2>/dev/null)"
+  if [ -z "$story" ]; then
+    printf '%s %s/%s · %s · between Stories' "$(basename "$mdir")" "$done" "$total" "$mstatus"
+    return
+  fi
+  story_status="$(jq -r --arg s "$story" '.stories[]|select(.id==$s)|.status' "$mdir/tasks.json")"
+  attempts="$(jq -r --arg s "$story" '.stories[]|select(.id==$s)|.attempts' "$mdir/tasks.json")"
+  printf '%s %s/%s · %s %s (attempt %s) · %s' \
+    "$(basename "$mdir")" "$done" "$total" "$story" "$story_status" "$attempts" "$(agent_for "$story_status")"
+}
+
+# Runs beside the session and reports only what changed, so a quiet hour is quiet
+# in the log too rather than three hundred identical lines.
+progress_ticker() {
+  local last_state="" last_commit="" last_adrs="" last_verdicts="" now
+  last_commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
+  last_adrs="$(ls docs/decisions/ADR-*.md 2>/dev/null | wc -l | tr -d ' ')"
+
+  while :; do
+    sleep "${OPANEL_PROGRESS_EVERY:-60}"
+
+    now="$(progress_snapshot)"
+    if [ "$now" != "$last_state" ]; then
+      say "· $now"
+      last_state="$now"
+    fi
+
+    now="$(git rev-parse --short HEAD 2>/dev/null || true)"
+    if [ -n "$now" ] && [ "$now" != "$last_commit" ]; then
+      say "· commit $now — $(git log -1 --format=%s 2>/dev/null)"
+      last_commit="$now"
+    fi
+
+    now="$(ls docs/decisions/ADR-*.md 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$now" != "$last_adrs" ]; then
+      say "· ADR written: $(ls -t docs/decisions/ADR-*.md 2>/dev/null | head -1)"
+      last_adrs="$now"
+    fi
+
+    if [ -f .backlog-active ]; then
+      mdir="$(head -n1 .backlog-active | tr -d '[:space:]')"
+      now="$(grep -cE '^\*?\*?Verdict:' "$mdir/DECISIONS.md" 2>/dev/null || echo 0)"
+      if [ -n "$last_verdicts" ] && [ "$now" != "$last_verdicts" ]; then
+        say "· arbiter: $(grep -hE '^\*?\*?Verdict:' "$mdir/DECISIONS.md" 2>/dev/null | tail -1 | tr -s ' ')"
+      fi
+      last_verdicts="$now"
+    fi
+  done
+}
+
 # What the working directories look like right now: newest modification time and
 # file count, over the places work actually lands. Cheap, and it changes on any
 # write, create or delete — which is all the watchdog needs to answer "did this
@@ -210,6 +295,12 @@ while :; do
     >>"$RUN_LOG" 2>&1 &
   session_pid=$!
 
+  progress_ticker &
+  ticker_pid=$!
+  # Killed on every exit from this iteration — the wait below, the watchdog, an
+  # interrupt — so a stopped run never leaves a ticker writing to its log.
+  trap 'kill "$ticker_pid" 2>/dev/null; kill "$session_pid" 2>/dev/null' INT TERM
+
   # The watchdog. A session that stops writing has stopped working, whatever its
   # process table says.
   #
@@ -261,6 +352,8 @@ while :; do
 
   wait "$session_pid" 2>/dev/null
   rc=$?
+  kill "$ticker_pid" 2>/dev/null
+  wait "$ticker_pid" 2>/dev/null || true
   elapsed=$(( $(date +%s) - started_at ))
 
   say "session $session ended (exit $rc) after ${elapsed}s"
