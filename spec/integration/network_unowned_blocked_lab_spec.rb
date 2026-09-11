@@ -7,16 +7,15 @@ RSpec.describe "Unowned network BLOCKED scenario", type: :integration, swarm: tr
   let(:environment) { create(:environment, project: project, cluster: cluster, team: team) }
 
   it "BLOCKs when unowned network exists with same name (AC6)" do
-    # Create an environment-specific network name
-    network_name = lab_name("net")
-
-    # Create a network in Swarm without platform labels (unowned)
-    unowned_net = create_lab_network(name: network_name)
+    # Create an unowned network with the exact technical name the reconciler will ask for
+    technical_name = Opanel::Ownership.technical_name_for(environment)
+    unowned_net = create_lab_network(name: technical_name)
     expect(lab_resource_exists?("network", unowned_net)).to be true
+    created_resources << [ "network", technical_name ]
 
-    # Create desired network record pointing to the unowned network
+    # Create desired network record
     network = create(:network, environment: environment, cluster: cluster, team: team,
-                             name: network_name, status: Network::PROVISIONING, desired_revision: 1)
+                             status: Network::PROVISIONING, desired_revision: 1)
 
     # Run reconciler - it should detect the unowned network and BLOCK
     executor = SwarmExecutor.new
@@ -30,5 +29,7 @@ RSpec.describe "Unowned network BLOCKED scenario", type: :integration, swarm: tr
     expect(run).to be_present
     expect(run.result).to eq(ReconciliationRun::BLOCKED)
     expect(run.error_reason).to be_present
+    expect(network.status).to eq(Network::DEGRADED)
+    expect(network.applied_revision).to be_nil
   end
 end

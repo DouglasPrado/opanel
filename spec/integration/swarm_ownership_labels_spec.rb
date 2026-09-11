@@ -75,7 +75,7 @@ RSpec.describe "Swarm ownership labels", :swarm do
         type: "create_service",
         cluster_id: "test-cluster",
         resource_type: "Service",
-        resource_id: service.id,
+        resource_id: service.external_id,
         payload: {
           "name" => service_name,
           "image" => "redis:latest",

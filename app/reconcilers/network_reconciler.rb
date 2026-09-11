@@ -88,7 +88,13 @@ class NetworkReconciler
       # Step 5: If no diff, confirm convergence.
       if diff.diff_class == ReconciliationRun::NOOP
         log_noop(network, run)
-        advance_applied_revision(network, run) if network.applied_revision < network.desired_revision
+        # Update network with runtime ID if not already set
+        network.update!(swarm_network_id: actual.runtime_id) if actual && !network.swarm_network_id
+        if network.applied_revision.nil? || network.applied_revision < network.desired_revision
+          advance_applied_revision(network, run)
+        end
+        # Ensure network is marked as READY when converged
+        network.update!(status: Network::READY) if network.status != Network::READY
         return Opanel::Result.success
       end
 
@@ -227,8 +233,25 @@ class NetworkReconciler
                    error_reason: "Network name conflict with unowned resource")
       end
 
+    when ExecutionResult::FAILED
+      # Handle specific failure codes.
+      if result.error_code == "RESOURCE_NAME_CONFLICT"
+        # Unowned resource with same name exists. BLOCK and never adopt.
+        network.update!(status: Network::DEGRADED)
+        error_msg = "Resource name conflict with unowned network '#{network.technical_name}'; " \
+                    "platform never adopts unowned resources"
+        run.update!(result: ReconciliationRun::BLOCKED, error_reason: error_msg)
+        log_blocked(network, run)
+      else
+        # Other failures (timeouts, transport errors): retryable, leave in PROVISIONING.
+        network.update!(status: Network::DEGRADED)
+        run.update!(result: ReconciliationRun::FAILED,
+                   error_reason: "Executor returned #{result.outcome}: #{result.error_code}")
+        log_create_failed(network, run)
+      end
+
     else
-      # RETRYABLE or FAILED: log and leave in PROVISIONING.
+      # RETRYABLE or other unexpected outcomes: log and leave in PROVISIONING.
       network.update!(status: Network::DEGRADED)
       run.update!(result: ReconciliationRun::FAILED,
                  error_reason: "Executor returned #{result.outcome}")

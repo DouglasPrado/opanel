@@ -645,3 +645,63 @@ rodada seguida em que o relatório é o artefato que reprova a Story, e a quinta
 vez no M01 em que um critério foi dado por satisfeito sem exemplo que o prove.
 
 `tasks.sh attempt` recusou em 3 e bloqueou a Story sozinho.
+
+---
+
+## M01-17 — rodada final: 117 exemplos, 1 falha, e ela é o AC4
+
+**Estado:** os cinco itens da terceira arbitragem de 2026-09-11 foram executados.
+AC6 passou pela primeira vez na história desta Story — o exemplo agora cria a
+network não-possuída sob o nome exato que o reconciler pede
+(`Ownership.technical_name_for(environment)`), de modo que a colisão realmente
+acontece, e `network_reconciler.rb` ganhou o ramo `RESOURCE_NAME_CONFLICT` que
+registra `BLOCKED` com diagnóstico em vez de `FAILED`/"retry". AC5 passou.
+`swarm_ownership_labels_spec.rb` ficou 4/4 com a troca de `service.id` por
+`service.external_id`.
+
+**Medição do lead, nos dezesseis arquivos declarados:**
+
+```
+network_diff_spec 7/0 · network_reconciler_spec 3/0 · ownership_predicate_spec 15/0
+ownership_technical_name_spec 13/0 · swarm_executor_spec 33/0
+executor_contract_spec 8/0 · swarm_ownership_labels_spec 4/0
+swarm_ownership_reidentification_spec 3/0 · network_reconciler_lab_spec 4/1
+network_isolation_lab_spec 1/0 · network_unowned_blocked_lab_spec 1/0
+environment_network_operation_spec 3/0 · network_applied_revision_spec 3/0
+reconciliation_run_spec 3/0 · reconciler_user_intent_spec 1/0
+network_policy_spec 15/0
+----------------------------------------------------------------
+117 exemplos, 1 falha
+```
+
+**A falha, reduzida.** `spec/integration/network_reconciler_lab_spec.rb:36`
+(AC4): `expect(run.diff_class).to eq("NOOP")` recebe `"CREATE"` em `:73`. O que
+está estabelecido, com evidência, e o que não está:
+
+- A primeira execução **encontra** a network por label. Não é inferência:
+  `network_reconciler.rb:199-206` só marca `READY` e só avança
+  `applied_revision` quando `inspect_network_in_swarm` devolve uma observação e
+  `managed_by_platform?` a aceita, e o exemplo afirma as duas coisas em `:47-48`
+  — ambas passam.
+- A segunda execução chama o mesmo `inspect_network_in_swarm` e obtém `nil`:
+  `NetworkDiff:40-44` só responde `CREATE` quando `actual.nil?`.
+- Não há exceção engolida. O `rescue StandardError` de
+  `network_reconciler.rb:135-143` registra `network.reconciliation.inspect_failed`,
+  e esse evento não aparece na execução do exemplo.
+- Não é resíduo no daemon: depois da suíte não resta nenhuma network com label
+  `com.opanel.*`.
+- Não é o caminho de adoção de `find_by_label`: o AC5, doze linhas abaixo, cria
+  a network **com** `labels_for(environment)` e é reconhecida `NOOP` — o mesmo
+  filtro `com.opanel.environment_id`, verde.
+
+Ou seja: a mesma chamada, contra o mesmo daemon, no mesmo exemplo, encontra a
+network imediatamente após criá-la e não a encontra na execução seguinte. O
+builder classificou isso como "requires investigation of `find_by_label`
+contract"; a redução acima descarta o contrato de `find_by_label` como causa
+única, e a causa restante não está diagnosticada.
+
+**Condição de encerramento da arbitragem:** "If the AC4, AC5 and AC6 examples are
+not green at the end of this round, `M01-17` is a `BLOCK` with `Blocks-On:
+HUMAN` — no further raise, no further ADR, no further round"
+(`DECISIONS.md`, terceira entrada de 2026-09-11). AC5 e AC6 estão verdes; o AC4
+não.
