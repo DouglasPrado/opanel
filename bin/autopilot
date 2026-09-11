@@ -46,8 +46,17 @@ short_runs=0
 # Minutes without a single file written before the session counts as hung.
 HANG_MINUTES="${OPANEL_HANG_MINUTES:-20}"
 
-# The longest the runner will sleep waiting for an account quota to reset.
-MAX_QUOTA_WAIT="${OPANEL_MAX_QUOTA_WAIT:-28800}"   # 8h
+# The longest the runner will sleep waiting for a session limit to reset.
+#
+# A day, because a reset is never further away than that and the alternative is
+# refusing a legitimate wait: at 05:30 a 21:00 reset is 15.5 h out, and the first
+# value here — eight hours — would have stopped the run rather than waited for it,
+# which is the whole behaviour this exists to provide.
+#
+# The bound is a guard against a misread time, not a policy about how long to
+# wait. The wake time is printed before the sleep, so a wrong one is visible in
+# the log rather than discovered a day later.
+MAX_QUOTA_WAIT="${OPANEL_MAX_QUOTA_WAIT:-86400}"   # 24h
 
 # Reads "resets 9pm", "resets 9:30pm" or "resets 21:00" out of the CLI's own
 # limit message and answers the epoch second of the next such moment. Local time,
@@ -187,6 +196,10 @@ while :; do
   # hooks, and a hook `deny` is not a permission prompt — it refuses regardless
   # of this flag.
   started_at=$(date +%s)
+  # Where this session's output begins. Everything read back about it — the
+  # session limit above all — is scoped to the lines after this mark, never to
+  # the accumulated log.
+  log_mark="$(wc -l < "$RUN_LOG" 2>/dev/null || echo 0)"
   claude -p "Invoke the opanel-loop autopilot skill and follow it exactly: run the Opanel Milestone chain unattended. There is nobody to answer a question, so do not ask one — arbitrate as the skill instructs." \
     --dangerously-skip-permissions \
     "${BUDGET_ARGS[@]}" \
@@ -248,6 +261,41 @@ while :; do
 
   say "session $session ended (exit $rc) after ${elapsed}s"
 
+  # --- the session limit ----------------------------------------------------
+  # Checked after *every* session, before anything else reads the exit, and
+  # against only the lines this session wrote.
+  #
+  # Both of those were wrong at first. The check sat inside the short-session
+  # branch, so a session that worked for three hours and then hit the limit was
+  # not recognised — the runner simply started another, which died in sixty
+  # seconds, and only that one triggered the wait. And it grepped the whole run
+  # log, which accumulates across sessions, so a limit message from hours ago
+  # would have sent a healthy run to sleep.
+  #
+  # A spent session limit is a wait, not a failure. The CLI prints the reset
+  # time — "You've hit your session limit · resets 9pm (America/Sao_Paulo)" — so
+  # the runner sleeps until then and carries on. Overnight that is the difference
+  # between waking to a finished Milestone and waking to a log that stopped.
+  session_output="$(tail -n +"$((log_mark + 1))" "$RUN_LOG" 2>/dev/null)"
+  if printf '%s' "$session_output" | grep -qi "hit your session limit\|usage limit\|rate limit"; then
+    resume_at="$(printf '%s' "$session_output" | quota_resets_at /dev/stdin)"
+    if [ -n "$resume_at" ]; then
+      wait_for=$(( resume_at - $(date +%s) ))
+      # Never sleep past a working day on a parsed string: a misread "9pm"
+      # should cost minutes, not a night.
+      if [ "$wait_for" -gt 0 ] && [ "$wait_for" -le "$MAX_QUOTA_WAIT" ]; then
+        say "session limit reached; sleeping $((wait_for / 60))m until $(date -r "$resume_at" '+%H:%M') and resuming"
+        sleep "$((wait_for + 60))"
+        short_runs=0
+        continue
+      fi
+      say "session limit reached, but its reset is $((wait_for / 3600))h away — past the ${MAX_QUOTA_WAIT}s this runner will wait. Rerun bin/autopilot then; the chain picks up from what is recorded."
+    else
+      say "session limit reached and the reset time could not be read. Rerun bin/autopilot when it resets; the chain picks up from what is recorded."
+    fi
+    break
+  fi
+
   # A session that returns in seconds did no work, whatever it exited with. The
   # first version only backed off on a non-zero exit, so a misconfiguration that
   # exited 0 spun as fast as the CLI could start — nine sessions in twenty
@@ -257,38 +305,14 @@ while :; do
   if [ "$elapsed" -le "$MIN_SESSION_SECONDS" ]; then
     short_runs=$((short_runs + 1))
     say "session did no work (${elapsed}s < ${MIN_SESSION_SECONDS}s); $short_runs in a row"
-    # A spent quota is not a failure, it is a wait. The CLI prints the reset
-    # time — "You've hit your session limit · resets 9pm (America/Sao_Paulo)" —
-    # so the runner sleeps until then and carries on, instead of ending a run
-    # that had nothing wrong with it. Overnight, that is the difference between
-    # waking to a finished Milestone and waking to a log that stopped at 23:12.
-    if tail -40 "$RUN_LOG" | grep -qi "hit your session limit\|usage limit"; then
-      resume_at="$(quota_resets_at "$RUN_LOG")"
-      if [ -n "$resume_at" ]; then
-        wait_for=$(( resume_at - $(date +%s) ))
-        # Never sleep past a working day on a parsed string: a misread "9pm"
-        # should cost minutes, not a night.
-        if [ "$wait_for" -gt 0 ] && [ "$wait_for" -le "$MAX_QUOTA_WAIT" ]; then
-          say "account quota spent; sleeping $((wait_for / 60))m until $(date -r "$resume_at" '+%H:%M') and resuming"
-          sleep "$((wait_for + 60))"
-          short_runs=0
-          continue
-        fi
-      fi
-      say "account quota spent and the reset time could not be read from the log. Rerun bin/autopilot when it resets; the chain picks up from what is recorded."
-      break
-    fi
 
     if [ "$short_runs" -ge "$MAX_SHORT_RUNS" ]; then
-      # Say which of the two it is. The first version called every fast-exit
-      # streak "a broken setup", and the streak it actually met was an account
-      # usage limit — the run was fine, the quota was not, and the log said to go
-      # fix an installation that had nothing wrong with it.
-      if grep -qi "session limit\|usage limit\|rate limit" "$RUN_LOG" 2>/dev/null; then
-        say "stopping: the account hit its usage limit. Nothing here is broken — rerun bin/autopilot once the quota resets; the chain picks up from what is recorded."
-      else
-        say "stopping: $MAX_SHORT_RUNS sessions in a row did nothing and the log does not name a usage limit. Read $RUN_LOG before rerunning."
-      fi
+      # A session limit never reaches here — it is recognised per session above
+      # and breaks there. What is left is a setup that genuinely does nothing,
+      # which is the only thing this message should now claim. The version that
+      # also guessed "usage limit" from the whole log would have said it on a
+      # stale line from an earlier session.
+      say "stopping: $MAX_SHORT_RUNS sessions in a row did nothing, and none of them reported a session limit. Read $RUN_LOG before rerunning."
       break
     fi
     sleep 30
