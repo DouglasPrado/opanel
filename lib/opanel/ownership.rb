@@ -78,26 +78,33 @@ module Opanel::Ownership
 
     # Returns a deterministic technical name derived from opaque IDs, not slugs.
     #
-    # Pattern:
-    # - Service: svc_<projectId>_<environmentId>_<serviceId>
-    # - Network: net_<projectId>_<environmentId>
+    # Pattern (after ADR-0009 §5 and accounting for the Engine's 63-character limit):
+    # - Service: svc_<serviceId> (34 characters maximum)
+    # - Network: net_<environmentId> (34 characters maximum)
     # - Certificate: cert_<certificateId> (when the entity exists)
     # - Secret: vault_<secretVersionId>
     #
     # The name is stable; renaming a Team, Project, Environment or Service does not
     # change it (AC3). The product never uses this name as a primary identifier; it is
-    # metadata for the Swarm resource itself.
+    # metadata for the Swarm resource itself (doc 09 §195: "derivado de IDs/slugs
+    # sanitizados, mas o produto **nunca depende desse nome como identificador primário**").
+    #
+    # The original scheme (net_<projectId>_<environmentId>, 65 characters) exceeded the
+    # Engine's 63-character limit for every Environment. ADR-0009 §5 addresses owned
+    # resources by ownership label (com.opanel.environment_id, com.opanel.service_id, etc),
+    # so the technical name is no longer looked up. The names derived here carry only
+    # sufficient information to be stable and collision-free by construction — each
+    # Environment ULID is unique within the cluster, and each Service ULID is unique
+    # within its Environment. Truncating a ULID would make collision probabilistic,
+    # violating M01-16 AC8; a hash digest would stop being "derivado de IDs".
     def technical_name_for(resource)
       case resource
       when Service
-        project_id = external_id(resource.environment.project_id, :project)
-        environment_id = external_id(resource.environment_id, :environment)
         service_id = external_id(resource.id, :service)
-        "svc_#{project_id}_#{environment_id}_#{service_id}"
+        "svc_#{service_id}"
       when Environment
-        project_id = external_id(resource.project_id, :project)
         environment_id = external_id(resource.id, :environment)
-        "net_#{project_id}_#{environment_id}"
+        "net_#{environment_id}"
       else
         raise ArgumentError, "technical_name_for does not support #{resource.class}"
       end

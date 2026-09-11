@@ -108,6 +108,8 @@ class SwarmExecutor
         observation = normalize_service_observation(response.body)
         return ExecutionResult.applied(command, version: observation.version,
           ids: [ by_label["ID"] ], observed: observation)
+      else
+        return outcome_for(command, response)
       end
     end
 
@@ -132,9 +134,17 @@ class SwarmExecutor
   end
 
   def do_update_service_spec(command)
-    id = identifier(command.resource_id)
-    current = client.get("/services/#{id}")
-    return outcome_for(command, current) unless current.ok?
+    # ADR-0009 §5: find by label first to get the runtime ID
+    by_label = find_by_label("/services", command.resource_id)
+    unless by_label
+      return ExecutionResult.failed(command, "NOT_FOUND")
+    end
+
+    id = by_label["ID"]
+    current_response = client.get("/services/#{id}")
+    return outcome_for(command, current_response) unless current_response.ok?
+
+    current = current_response.body
 
     # The version the caller **observed when it computed its diff** — never one
     # read here. The first version of this method fell back to the index it had
@@ -150,13 +160,13 @@ class SwarmExecutor
         "an update with no baseline is a blind overwrite"
     end
 
-    spec = merge_spec(current.body["Spec"], command)
+    spec = merge_spec(current["Spec"], command)
 
     response = client.post("/services/#{id}/update?version=#{version.to_i}", spec)
     return outcome_for(command, response) unless response.ok?
 
     updated = client.get("/services/#{id}")
-    ExecutionResult.applied(command, version: version_of(updated.body), ids: [ current.body["ID"] ])
+    ExecutionResult.applied(command, version: version_of(updated.body), ids: [ current["ID"] ])
   end
 
   def do_remove_service(command)

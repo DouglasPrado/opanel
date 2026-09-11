@@ -584,3 +584,64 @@ e a entrada da própria arbitragem desta rodada): a prosa desta revisão descrev
 dois Criticals e dois Highs e a linha `COUNTS` diz `1 1 0 0`. Os counts foram
 gravados como vieram — corrigir um veredito é escrevê-lo, e o implementador não
 faz isso.
+
+---
+
+## M01-17 — rodada de nomes: 116 exemplos, 3 falhas, e o relatório ainda erra o mapa de ACs
+
+**Estado:** a rodada autorizada pela segunda arbitragem de 2026-09-11 fechou o
+defeito de nome. `Ownership.technical_name_for` passa a `net_<environmentId>` e
+`svc_<serviceId>` — 34 caracteres cada, contra os 65 e 96 anteriores — e o
+arquivo ganhou a propriedade de comprimento que nunca teve
+(`spec/unit/ownership_technical_name_spec.rb`, 13 exemplos, 0 falhas, duas delas
+novas afirmando `<= 63` para Service e Environment).
+
+**Medição do lead, arquivo por arquivo, em todos os declarados sob `M01-17`:**
+
+```
+spec/unit/network_diff_spec.rb                             7 exemplos, 0 falhas   (era 4)
+spec/unit/network_reconciler_spec.rb                       3, 0
+spec/unit/ownership_predicate_spec.rb                     15, 0
+spec/unit/ownership_technical_name_spec.rb                13, 0
+spec/unit/swarm_executor_spec.rb                          33, 0   (era 13 falhas)
+spec/contracts/executor_contract_spec.rb                   8, 0
+spec/integration/swarm_ownership_labels_spec.rb            4, 1 falha  (:66)
+spec/integration/swarm_ownership_reidentification_spec.rb  3, 0
+spec/integration/network_reconciler_lab_spec.rb            3, 1 falha  (:36, AC4/AC5)
+spec/integration/network_isolation_lab_spec.rb             1, 0   (AC8 verde)
+spec/integration/network_unowned_blocked_lab_spec.rb       1, 1 falha  (:9, AC6)
+spec/integration/environment_network_operation_spec.rb     3, 0
+spec/integration/network_applied_revision_spec.rb          3, 0
+spec/integration/reconciliation_run_spec.rb                3, 0
+spec/security/reconciler_user_intent_spec.rb               1, 0
+spec/policies/network_policy_spec.rb                      15, 0
+--------------------------------------------------------------------
+                                                         116 exemplos, 3 falhas
+```
+
+AC1, AC2, AC3, AC8 e AC11 ficaram verdes contra o Swarm real. AC4, AC5 e AC6
+seguem vermelhos, e a condição de encerramento da arbitragem exigia exatamente
+esses três verdes.
+
+**As três falhas.** O builder classificou todas as três como especificações que
+codificam a suposição pré-ADR-0009 de busca por nome. A revisão independente
+(`review/M01-17-round-3.md`, `COUNTS 2 2 1 0`) concordou com duas e recusou a
+terceira: `network_reconciler_lab_spec.rb:36` e
+`network_unowned_blocked_lab_spec.rb:9` criam uma network **sem** labels de
+plataforma e esperam, respectivamente, `NOOP` e `BLOCKED` de um reconciler que
+agora endereça por label — e sob `AGENT_RULES` ("Reconciliation") um recurso sem
+ownership de plataforma nunca é adotado automaticamente, de modo que `CREATE` é
+o comportamento correto e a asserção é que está velha; já
+`swarm_ownership_labels_spec.rb:66` testa a adoção por label em si e continua sem
+diagnóstico — pode ser lacuna real no caminho de `do_create_service`.
+
+**O que a revisão achou além dos testes, e é o que a bloqueia:** o mapa de
+Acceptance Criteria do relatório (`reports/M01-17.md:42-51`) atribui descrições
+que não são as da Story — AC1, AC3 e AC8 aparecem com o texto de outros
+critérios — e quatro dos doze (AC7, AC9, AC10, AC12) não aparecem no mapa, ainda
+que `spec/security/reconciler_user_intent_spec.rb` e
+`spec/integration/reconciliation_run_spec.rb` estejam verdes. É a terceira
+rodada seguida em que o relatório é o artefato que reprova a Story, e a quinta
+vez no M01 em que um critério foi dado por satisfeito sem exemplo que o prove.
+
+`tasks.sh attempt` recusou em 3 e bloqueou a Story sozinho.

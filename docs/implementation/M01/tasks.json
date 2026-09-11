@@ -345,11 +345,11 @@
       ],
       "attempts": 3,
       "required": true,
-      "reason": "Reopened by review-state.sh adr-written on ADR-0009-executor-observed-runtime-state.md, which records the executor-observation contract the arbiter BLOCK of 2026-09-11 named as missing. Four rounds ran before that contract existed (attempts 1-4, the fourth an arbitrated raise); all four converged on a read path the ADR has now decided. The arbiter of 2026-09-11 (DECISIONS.md, entry 'M01/M01-17 - attempts', verdict FIX) set this counter to 2 rather than resetting it: tasks.sh refuses at >= 3, so one tasks.sh attempt call yields 3 and the loop's own guard re-arms the instant this round ends. If the five lab examples stay red, M01-17 returns as a BLOCK candidate, not another raise.",
+      "reason": "Reopened by review-state.sh adr-written on ADR-0009-executor-observed-runtime-state.md, which records the executor-observation contract the arbiter BLOCK of 2026-09-11 named as missing. Four rounds ran before that contract existed (attempts 1-4, the fourth an arbitrated raise); all four converged on a read path the ADR has now decided. The arbiter of 2026-09-11 (DECISIONS.md, entry 'M01/M01-17 - attempts', verdict FIX) set this counter to 2 rather than resetting it: tasks.sh refuses at >= 3, so one tasks.sh attempt call yields 3 and the loop's own guard re-arms the instant this round ends. If the five lab examples stay red, M01-17 returns as a BLOCK candidate, not another raise.\n\nRound 6 (attempts 3, the bounded fix) closed the Critical it was given — network_reconciler.rb:183 now labels from network.environment and com.opanel.project_id is in the create payload — and the five lab examples stayed red for a cause no round and no review had ever named: Ownership.technical_name_for emits net_<prj_ULID>_<env_ULID> = 65 characters and the Engine refuses above 63 (BLOCKERS.md, reproduced against the lab daemon: 65 chars -> HTTP 400 'name must be 63 characters or fewer'; the same name at 63 -> HTTP 201). The svc_ form is 96 characters, which is M01-18's resource. That method belongs to lib/opanel/ownership.rb, which the previous arbitration explicitly forbade that round to edit, so the round could not have closed it even in principle. The arbiter of 2026-09-11 (DECISIONS.md, the entry after the round-2 review, verdict FIX) ruled it a new finding under the convergence rule and granted this Story's one raise on the post-ADR budget, naming the scheme: net_<environmentId> and svc_<serviceId>, 34 characters each, with truncated ULIDs and hash digests both refused. Counter set to 2 for the same mechanical reason as before: tasks.sh:173 refuses at >= 3, so one normal attempt call yields 3 and the loop's guard ends the Story the instant the round closes. This is the last raise — if the lab examples for AC1, AC2, AC4, AC5, AC6 and AC8 are not green at the end of this round, M01-17 is a BLOCK, with no further raise and no further ADR.",
       "review": {
-        "critical": 1,
-        "high": 1,
-        "medium": 0,
+        "critical": 2,
+        "high": 2,
+        "medium": 1,
         "low": 0
       },
       "blockedReason": {
@@ -425,7 +425,7 @@
   ],
   "run": {
     "startedAt": "2026-09-11T08:42:15Z",
-    "turns": 2,
+    "turns": 4,
     "doneAtStart": 18
   }
 }

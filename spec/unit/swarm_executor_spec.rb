@@ -168,7 +168,9 @@ logger: logger)
   # AC5 — doc 07 §5.3 onto doc 09 §28, one line each.
   describe "error classification (AC5)" do
     def result_for(status, body = nil)
-      executor("GET /services/svc_1" => response(status, body)).execute(command("inspect_service"))
+      # ADR-0009 §5: address by label filter first, then use the runtime ID
+      executor("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => response(status, body)).execute(command("inspect_service"))
     end
 
     it "400 → FAILED VALIDATION_ERROR" do
@@ -187,8 +189,9 @@ logger: logger)
     # The Engine answers a stale-version update with **500**, not 409 — proved
     # against the lab. The message is what says it is a conflict.
     it "500 'update out of sequence' → CONFLICT" do
-      ex = executor("GET /services/svc_1" => response(200, SERVICE),
-        "POST /services/svc_1/update" => response(500,
+      ex = executor("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => response(200, SERVICE),
+        "POST /services/s1/update" => response(500,
 "message" => "rpc error: code = Unknown desc = update out of sequence"))
 
       result = ex.execute(command("update_service_spec", replicas: 2, version: 11))
@@ -207,7 +210,8 @@ logger: logger)
     end
 
     it "a transport failure before the daemon could act → RETRYABLE" do
-      ex = executor("GET /services/svc_1" => EngineClient::Error.new(:transient, "could not connect"))
+      ex = executor("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => EngineClient::Error.new(:transient, "could not connect"))
 
       result = ex.execute(command("inspect_service"))
 
@@ -231,19 +235,19 @@ logger: logger)
     end
 
     it "retry_after_observing answers NOOP when the runtime already shows the effect, without resending" do
-      client = ScriptedClient.new("GET /services/svc_1" => response(200, SERVICE))
+      client = ScriptedClient.new("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => response(200, SERVICE))
       ex = described_class.new(client: client, engine: engine, logger: logger)
 
       result = ex.retry_after_observing(command("create_service", image: "img"))
 
       expect(result).to be_noop
       expect(result.safe_metadata[:reobserved]).to be(true)
-      expect(client.calls.map(&:first)).to eq([ "GET" ])
+      expect(client.calls.map(&:first)).to eq([ "GET", "GET" ])
     end
 
     it "retry_after_observing applies once more only when the observation shows nothing" do
       client = ScriptedClient.new(
-        "GET /services/svc_1" => response(404, "message" => "no such service"),
         "GET /services?" => response(200, []),
         "POST /services/create" => response(201, "ID" => "s1"),
         "GET /services/s1" => response(200, SERVICE)
@@ -253,12 +257,12 @@ logger: logger)
       result = ex.retry_after_observing(command("create_service", image: "img"))
 
       expect(result).to be_applied
-      # Observed first, then created — never created first.
-      expect(client.calls.map { |m, p, _| "#{m} #{p}" }.first).to eq("GET /services/svc_1")
+      # Observed first (by label filter), then created — never created first.
+      expect(client.calls.map { |m, p, _| "#{m} #{p}" }.first).to match(%r{GET /services\?})
     end
 
     it "retry_after_observing treats an absent resource as converged for a remove" do
-      client = ScriptedClient.new("GET /services/svc_1" => response(404, "message" => "no such service"))
+      client = ScriptedClient.new("GET /services?" => response(200, []))
       ex = described_class.new(client: client, engine: engine, logger: logger)
 
       expect(ex.retry_after_observing(command("remove_service"))).to be_noop
@@ -323,7 +327,8 @@ logger: logger).execute(command("create_service", image: "img"))
     end
 
     it "treats removing an absent network as converged (AC8)" do
-      result = executor("DELETE /networks/net_1" => response(404)).execute(command("remove_network", id: "net_1"))
+      result = executor("GET /networks?" => response(200, []),
+        "DELETE /networks/net_1" => response(404)).execute(command("remove_network", id: "net_1"))
 
       expect(result).to be_noop
     end
@@ -335,8 +340,9 @@ logger: logger).execute(command("create_service", image: "img"))
     # transport exists to avoid — and this example encoded it as expected. Now an
     # update with no baseline is refused, and nothing is sent.
     it "refuses an update that carries no observed version, and sends nothing" do
-      client = ScriptedClient.new("GET /services/svc_1" => response(200, SERVICE),
-        "POST /services/svc_1/update" => response(200, {}))
+      client = ScriptedClient.new("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => response(200, SERVICE),
+        "POST /services/s1/update" => response(200, {}))
       ex = described_class.new(client: client, engine: engine, logger: logger)
 
       expect { ex.execute(command("update_service_spec", replicas: 3)) }
@@ -345,8 +351,9 @@ logger: logger).execute(command("create_service", image: "img"))
     end
 
     it "sends the version the caller observed, and the merged spec" do
-      client = ScriptedClient.new("GET /services/svc_1" => response(200, SERVICE),
-        "POST /services/svc_1/update" => response(200, {}))
+      client = ScriptedClient.new("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => response(200, SERVICE),
+        "POST /services/s1/update" => response(200, {}))
       described_class.new(client: client, engine: engine, logger: logger)
         .execute(command("update_service_spec", replicas: 3, version: 12))
 
@@ -356,8 +363,9 @@ logger: logger).execute(command("create_service", image: "img"))
     end
 
     it "sends the version the command carries when it does" do
-      client = ScriptedClient.new("GET /services/svc_1" => response(200, SERVICE),
-        "POST /services/svc_1/update" => response(200, {}))
+      client = ScriptedClient.new("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => response(200, SERVICE),
+        "POST /services/s1/update" => response(200, {}))
       described_class.new(client: client, engine: engine,
 logger: logger).execute(command("update_service_spec", replicas: 3, version: 7))
 
@@ -365,8 +373,9 @@ logger: logger).execute(command("update_service_spec", replicas: 3, version: 7))
     end
 
     it "applies a revision over the current spec rather than a blank one" do
-      client = ScriptedClient.new("GET /services/svc_1" => response(200, SERVICE),
-        "POST /services/svc_1/update" => response(200, {}))
+      client = ScriptedClient.new("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => response(200, SERVICE),
+        "POST /services/s1/update" => response(200, {}))
       described_class.new(client: client, engine: engine, logger: logger)
         .execute(command("update_service_spec", replicas: 3, version: 12))
 
@@ -381,7 +390,8 @@ logger: logger).execute(command("update_service_spec", replicas: 3, version: 7))
     it "records operation, resource, correlation, duration, outcome and observed version" do
       captured = []
       allow(logger).to receive(:info) { |entry| captured << entry }
-      executor("GET /services/svc_1" => response(200, SERVICE)).execute(command("inspect_service"))
+      executor("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => response(200, SERVICE)).execute(command("inspect_service"))
 
       entry = captured.last
       expect(entry).to include(event: "executor.inspect_service", command_id: "cmd_inspect_service",
@@ -394,7 +404,8 @@ logger: logger).execute(command("update_service_spec", replicas: 3, version: 7))
       allow(logger).to receive(:info) { |entry| captured << entry }
       planted = "curl: (52) X-Registry-Auth: not-a-real-registry-auth-value-x1 " \
                 "Authorization: Bearer not-a-real-bearer-token-x1 SWMTKN-1-example-not-a-real-token-x1"
-      ex = executor("GET /services/svc_1" => EngineClient::Error.new(:transient, planted))
+      ex = executor("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => EngineClient::Error.new(:transient, planted))
 
       ex.execute(command("inspect_service"))
 
@@ -408,7 +419,8 @@ logger: logger).execute(command("update_service_spec", replicas: 3, version: 7))
     it "never logs a response body" do
       captured = []
       allow(logger).to receive(:info) { |entry| captured << entry }
-      executor("GET /services/svc_1" => response(200,
+      executor("GET /services?" => response(200, [ SERVICE ]),
+        "GET /services/s1" => response(200,
 SERVICE.merge("Secret" => "do-not-log-me"))).execute(command("inspect_service"))
 
       expect(captured.map(&:to_s).join).not_to include("do-not-log-me")

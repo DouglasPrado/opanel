@@ -13,6 +13,23 @@ RSpec.describe "Network Diff Calculation", type: :unit do
     create(:environment, project: project, cluster: cluster, team: team)
   end
 
+  # Convert Engine JSON to RuntimeObservation (ADR-0009 §2)
+  def network_observation(engine_json)
+    Opanel::RuntimeObservation.new(
+      kind: "network",
+      runtime_id: engine_json["Id"],
+      name: engine_json["Spec"]["Name"],
+      labels: engine_json["Spec"]["Labels"] || {},
+      version: engine_json["Version"]&.dig("Index"),
+      attributes: {
+        "driver" => engine_json["Spec"]["Driver"],
+        "scope" => engine_json["Spec"]["Scope"],
+        "attachable" => engine_json["Spec"]["Attachable"],
+        "internal" => engine_json["Spec"]["Internal"]
+      }.compact
+    )
+  end
+
   describe "compute_diff" do
     it "returns NOOP when desired and actual states are equivalent" do
       network = create(:network, environment: environment, cluster: cluster,
@@ -23,8 +40,8 @@ RSpec.describe "Network Diff Calculation", type: :unit do
       # Mock the ownership check to return true for this test
       allow(Opanel::Ownership).to receive(:managed_by_platform?).and_return(true)
 
-      actual = {
-        "ID" => "aabbccdd112233",
+      engine_json = {
+        "Id" => "aabbccdd112233",
         "Version" => { "Index" => 1 },
         "CreatedAt" => "2026-09-11T00:00:00Z",
         "UpdatedAt" => "2026-09-11T00:00:00Z",
@@ -35,7 +52,7 @@ RSpec.describe "Network Diff Calculation", type: :unit do
         }
       }
 
-      diff = Opanel::NetworkDiff.compute(desired: network, actual: actual)
+      diff = Opanel::NetworkDiff.compute(desired: network, actual: network_observation(engine_json))
 
       expect(diff.diff_class).to eq(ReconciliationRun::NOOP)
     end
@@ -55,8 +72,8 @@ RSpec.describe "Network Diff Calculation", type: :unit do
         team: team, status: Network::PROVISIONING, desired_revision: 1)
 
       # A network without the com.opanel.managed label
-      actual = {
-        "ID" => "net_456",
+      engine_json = {
+        "Id" => "net_456",
         "Spec" => {
           "Name" => "some-other-network",
           "Labels" => {},
@@ -64,7 +81,7 @@ RSpec.describe "Network Diff Calculation", type: :unit do
         }
       }
 
-      diff = Opanel::NetworkDiff.compute(desired: network, actual: actual)
+      diff = Opanel::NetworkDiff.compute(desired: network, actual: network_observation(engine_json))
 
       expect(diff.diff_class).to eq(ReconciliationRun::BLOCKED_CLASS)
       expect(diff.error_reason).to include("is not managed by the platform")
@@ -75,8 +92,8 @@ RSpec.describe "Network Diff Calculation", type: :unit do
         team: team, status: Network::PROVISIONING, desired_revision: 1)
 
       # A network with the expected name but wrong ownership
-      actual = {
-        "ID" => "net_789",
+      engine_json = {
+        "Id" => "net_789",
         "Spec" => {
           "Name" => network.technical_name,
           "Labels" => { "com.other" => "label" },  # No com.opanel.managed
@@ -84,7 +101,7 @@ RSpec.describe "Network Diff Calculation", type: :unit do
         }
       }
 
-      diff = Opanel::NetworkDiff.compute(desired: network, actual: actual)
+      diff = Opanel::NetworkDiff.compute(desired: network, actual: network_observation(engine_json))
 
       expect(diff.diff_class).to eq(ReconciliationRun::BLOCKED_CLASS)
     end
@@ -98,8 +115,8 @@ RSpec.describe "Network Diff Calculation", type: :unit do
       # Mock the ownership check to return true for this test
       allow(Opanel::Ownership).to receive(:managed_by_platform?).and_return(true)
 
-      actual = {
-        "ID" => "aabbccdd445566",
+      engine_json = {
+        "Id" => "aabbccdd445566",
         "Spec" => {
           "Name" => environment.technical_name,
           "Labels" => { "com.opanel.managed" => "true" },
@@ -107,7 +124,7 @@ RSpec.describe "Network Diff Calculation", type: :unit do
         }
       }
 
-      diff = Opanel::NetworkDiff.compute(desired: network, actual: actual)
+      diff = Opanel::NetworkDiff.compute(desired: network, actual: network_observation(engine_json))
 
       expect(diff.diff_class).to eq(ReconciliationRun::NOOP)
     end

@@ -10,17 +10,17 @@ RSpec.describe Opanel::Ownership, "technical_name_for" do
   let(:service) { create(:service, environment: environment) }
 
   describe "generating names from IDs" do
-    it "generates svc_<projectId>_<environmentId>_<serviceId> for a Service (AC3)" do
+    it "generates svc_<serviceId> for a Service (AC3)" do
       name = Opanel::Ownership.technical_name_for(service)
 
-      expected = "svc_#{project.external_id}_#{environment.external_id}_#{service.external_id}"
+      expected = "svc_#{service.external_id}"
       expect(name).to eq(expected)
     end
 
-    it "generates net_<projectId>_<environmentId> for an Environment (AC3)" do
+    it "generates net_<environmentId> for an Environment (AC3)" do
       name = Opanel::Ownership.technical_name_for(environment)
 
-      expected = "net_#{project.external_id}_#{environment.external_id}"
+      expected = "net_#{environment.external_id}"
       expect(name).to eq(expected)
     end
 
@@ -28,6 +28,20 @@ RSpec.describe Opanel::Ownership, "technical_name_for" do
       unsupported = double("UnsupportedResource")
       expect { Opanel::Ownership.technical_name_for(unsupported) }
         .to raise_error(ArgumentError, /does not support/)
+    end
+
+    it "respects the Engine's 63-character limit for Service names" do
+      name = Opanel::Ownership.technical_name_for(service)
+
+      # Engine constraint: "name must be 63 characters or fewer" (HTTP 400 if exceeded)
+      expect(name.length).to be <= 63
+    end
+
+    it "respects the Engine's 63-character limit for Environment (network) names" do
+      name = Opanel::Ownership.technical_name_for(environment)
+
+      # Engine constraint: "name must be 63 characters or fewer" (HTTP 400 if exceeded)
+      expect(name.length).to be <= 63
     end
   end
 

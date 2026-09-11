@@ -1106,6 +1106,13 @@ boundaries:
     - lib/opanel/configuration.rb
     - .env.example
     # Tests.
+    # The arbitration of 2026-09-11 (the entry after the round-2 review) changed
+    # the technical-name scheme to `net_<environmentId>` / `svc_<serviceId>`:
+    # the previous `net_<prj>_<env>` is 65 characters and the Engine refuses
+    # above 63. This file holds the only two examples that assert the pattern,
+    # and it gains the length property it never had. Its collision,
+    # rename-stability and determinism examples are untouched.
+    - spec/unit/ownership_technical_name_spec.rb
     - spec/unit/network_diff_spec.rb
     - spec/unit/network_reconciler_spec.rb
     - spec/integration/environment_network_operation_spec.rb
