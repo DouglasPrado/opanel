@@ -180,7 +180,7 @@ class NetworkReconciler
       correlation_id: Current.correlation_id.presence || SecureRandom.uuid,
       payload: {
         name: network.technical_name,
-        labels: Opanel::Ownership.labels_for(network),
+        labels: Opanel::Ownership.labels_for(network.environment),
         attachable: false
       }
     )

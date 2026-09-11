@@ -337,7 +337,7 @@
     {
       "id": "M01-17",
       "file": "stories/M01-17-environment-network-reconciler.md",
-      "status": "review",
+      "status": "blocked",
       "dependsOn": [
         "M01-14",
         "M01-15",
@@ -345,7 +345,17 @@
       ],
       "attempts": 3,
       "required": true,
-      "reason": "Reopened by review-state.sh adr-written on ADR-0009-executor-observed-runtime-state.md, which records the executor-observation contract the arbiter BLOCK of 2026-09-11 named as missing. Four rounds ran before that contract existed (attempts 1-4, the fourth an arbitrated raise); all four converged on a read path the ADR has now decided. The arbiter of 2026-09-11 (DECISIONS.md, entry 'M01/M01-17 - attempts', verdict FIX) set this counter to 2 rather than resetting it: tasks.sh refuses at >= 3, so one tasks.sh attempt call yields 3 and the loop's own guard re-arms the instant this round ends. If the five lab examples stay red, M01-17 returns as a BLOCK candidate, not another raise."
+      "reason": "Reopened by review-state.sh adr-written on ADR-0009-executor-observed-runtime-state.md, which records the executor-observation contract the arbiter BLOCK of 2026-09-11 named as missing. Four rounds ran before that contract existed (attempts 1-4, the fourth an arbitrated raise); all four converged on a read path the ADR has now decided. The arbiter of 2026-09-11 (DECISIONS.md, entry 'M01/M01-17 - attempts', verdict FIX) set this counter to 2 rather than resetting it: tasks.sh refuses at >= 3, so one tasks.sh attempt call yields 3 and the loop's own guard re-arms the instant this round ends. If the five lab examples stay red, M01-17 returns as a BLOCK candidate, not another raise.",
+      "review": {
+        "critical": 1,
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "blockedReason": {
+        "qualifier": "BLOCKED_FOR_HUMAN_APPROVAL",
+        "diagnosis": "Automatic attempt budget exhausted (3). Preserve findings and evidence; continue independent Stories. A human must authorize a new attempt budget."
+      }
     },
     {
       "id": "M01-18",

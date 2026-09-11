@@ -49,74 +49,109 @@ RSpec.describe Opanel::Ownership, "managed_by_platform?" do
     deep_merge(defaults, overrides)
   end
 
+  # Build a RuntimeObservation from an Engine Service response
+  def service_observation(engine_service)
+    Opanel::RuntimeObservation.new(
+      kind: "service",
+      runtime_id: engine_service["ID"],
+      name: engine_service.dig("Spec", "Name"),
+      labels: engine_service.dig("Spec", "Labels") || {},
+      version: engine_service.dig("Version", "Index"),
+      attributes: {}
+    )
+  end
+
+  # Build a RuntimeObservation from an Engine Network response
+  def network_observation(engine_network)
+    Opanel::RuntimeObservation.new(
+      kind: "network",
+      runtime_id: engine_network["Id"],
+      name: engine_network.dig("Spec", "Name"),
+      labels: engine_network.dig("Spec", "Labels") || {},
+      version: nil,
+      attributes: {
+        "driver" => engine_network.dig("Spec", "Driver"),
+        "scope" => engine_network.dig("Spec", "Scope")
+      }
+    )
+  end
+
   describe "accepting owned resources (AC4 negative)" do
     it "returns true for a valid Service with correct labels" do
-      runtime = service_runtime_resource
+      engine_service = service_runtime_resource
+      observation = service_observation(engine_service)
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be true
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be true
     end
 
     it "returns true for a valid Network with correct labels" do
-      runtime = network_runtime_resource
+      engine_network = network_runtime_resource
+      observation = network_observation(engine_network)
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be true
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be true
     end
 
     it "returns true even if optional labels are missing" do
-      runtime = service_runtime_resource
+      engine_service = service_runtime_resource
       # release_id is optional (Release does not exist yet)
-      runtime["Spec"]["Labels"].delete("com.opanel.release_id")
+      engine_service["Spec"]["Labels"].delete("com.opanel.release_id")
+      observation = service_observation(engine_service)
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be true
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be true
     end
   end
 
   describe "rejecting foreign resources (AC4)" do
     it "returns false for a resource without com.opanel.managed label" do
-      runtime = service_runtime_resource
-      runtime["Spec"]["Labels"].delete("com.opanel.managed")
+      engine_service = service_runtime_resource
+      engine_service["Spec"]["Labels"].delete("com.opanel.managed")
+      observation = service_observation(engine_service)
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
 
     it "returns false for a resource with managed=false" do
-      runtime = service_runtime_resource
-      runtime["Spec"]["Labels"]["com.opanel.managed"] = "false"
+      engine_service = service_runtime_resource
+      engine_service["Spec"]["Labels"]["com.opanel.managed"] = "false"
+      observation = service_observation(engine_service)
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
 
     it "returns false for a resource with no labels at all" do
-      runtime = service_runtime_resource
-      runtime["Spec"].delete("Labels")
+      engine_service = service_runtime_resource
+      engine_service["Spec"].delete("Labels")
+      observation = service_observation(engine_service)
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
 
-    it "returns false for a non-Hash object" do
+    it "returns false for a non-RuntimeObservation object" do
       expect(Opanel::Ownership.managed_by_platform?(nil)).to be false
-      expect(Opanel::Ownership.managed_by_platform?("not a hash")).to be false
+      expect(Opanel::Ownership.managed_by_platform?("not an observation")).to be false
       expect(Opanel::Ownership.managed_by_platform?(123)).to be false
     end
   end
 
   describe "AC5: inconsistent IDs logged as anomaly, not removed" do
     it "returns false and logs when team_id decode fails" do
-      runtime = service_runtime_resource
-      runtime["Spec"]["Labels"]["com.opanel.team_id"] = "invalid_id"
+      engine_service = service_runtime_resource
+      engine_service["Spec"]["Labels"]["com.opanel.team_id"] = "invalid_id"
+      observation = service_observation(engine_service)
 
       expect(Rails.logger).to receive(:warn).with(hash_including(
         event: "ownership.anomaly",
         reason: include("decode failed")
       ))
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
 
     it "returns false and logs when project team_id does not match" do
-      runtime = service_runtime_resource
+      engine_service = service_runtime_resource
       other_team = create(:team)
-      runtime["Spec"]["Labels"]["com.opanel.team_id"] = other_team.external_id
+      engine_service["Spec"]["Labels"]["com.opanel.team_id"] = other_team.external_id
+      observation = service_observation(engine_service)
       # project still belongs to original team, so the IDs don't match
 
       expect(Rails.logger).to receive(:warn).with(hash_including(
@@ -124,13 +159,14 @@ RSpec.describe Opanel::Ownership, "managed_by_platform?" do
         reason: include("does not match")
       ))
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
 
     it "returns false and logs when environment project_id does not match" do
-      runtime = service_runtime_resource
+      engine_service = service_runtime_resource
       other_project = create(:project, team: team)
-      runtime["Spec"]["Labels"]["com.opanel.project_id"] = other_project.external_id
+      engine_service["Spec"]["Labels"]["com.opanel.project_id"] = other_project.external_id
+      observation = service_observation(engine_service)
       # environment still belongs to original project
 
       expect(Rails.logger).to receive(:warn).with(hash_including(
@@ -138,13 +174,14 @@ RSpec.describe Opanel::Ownership, "managed_by_platform?" do
         reason: include("does not match")
       ))
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
 
     it "returns false and logs when service environment_id does not match" do
-      runtime = service_runtime_resource
+      engine_service = service_runtime_resource
       other_environment = create(:environment, project: project)
-      runtime["Spec"]["Labels"]["com.opanel.environment_id"] = other_environment.external_id
+      engine_service["Spec"]["Labels"]["com.opanel.environment_id"] = other_environment.external_id
+      observation = service_observation(engine_service)
       # service still belongs to original environment
 
       expect(Rails.logger).to receive(:warn).with(hash_including(
@@ -152,45 +189,50 @@ RSpec.describe Opanel::Ownership, "managed_by_platform?" do
         reason: include("does not match")
       ))
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
 
     it "returns false and logs when required IDs are missing" do
-      runtime = service_runtime_resource
-      runtime["Spec"]["Labels"].delete("com.opanel.environment_id")
+      engine_service = service_runtime_resource
+      engine_service["Spec"]["Labels"].delete("com.opanel.environment_id")
+      observation = service_observation(engine_service)
 
       expect(Rails.logger).to receive(:warn).with(hash_including(
         event: "ownership.anomaly",
         reason: include("missing required ID labels")
       ))
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
   end
 
   describe "defensive coding: default to 'not ours' on ambiguity (AC5)" do
     it "returns false when Spec is missing" do
-      runtime = service_runtime_resource
-      runtime.delete("Spec")
+      # When building RuntimeObservation from malformed Engine response
+      engine_service = service_runtime_resource
+      engine_service.delete("Spec")
+      observation = service_observation(engine_service)
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
 
     it "returns false when any required field is missing" do
-      runtime = service_runtime_resource
-      runtime["Spec"].delete("Labels")
+      engine_service = service_runtime_resource
+      engine_service["Spec"].delete("Labels")
+      observation = service_observation(engine_service)
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
 
     it "returns false when a referenced entity does not exist" do
-      runtime = service_runtime_resource
+      engine_service = service_runtime_resource
       # Point to a team that does not exist
-      runtime["Spec"]["Labels"]["com.opanel.team_id"] = "tm_01arZ3ndektsv4rrffqaev" # Fake ID
+      engine_service["Spec"]["Labels"]["com.opanel.team_id"] = "tm_01arZ3ndektsv4rrffqaev" # Fake ID
+      observation = service_observation(engine_service)
 
       expect(Rails.logger).to receive(:warn)
 
-      expect(Opanel::Ownership.managed_by_platform?(runtime)).to be false
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
     end
   end
 

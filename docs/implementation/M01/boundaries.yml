@@ -1071,6 +1071,17 @@ boundaries:
     - spec/contracts/executor_contract_spec.rb
     - spec/unit/swarm_executor_spec.rb
     - spec/integration/swarm_ownership_labels_spec.rb
+    # ADR-0009 §4 changed `managed_by_platform?` to demand a
+    # `RuntimeObservation` rather than a raw Engine Hash. The two specs that
+    # assert that predicate were written under M01-16 against the old shape
+    # and were never migrated, so three positives that assert `true` now get
+    # `false` and the negatives pass on the type guard instead of their own
+    # reason. They are the decision's direct consequence and absent from the
+    # diff — declared here by the arbitration of 2026-09-11 so the migration
+    # happens where the contract changed, with no assertion deleted,
+    # inverted or weakened.
+    - spec/unit/ownership_predicate_spec.rb
+    - spec/integration/swarm_ownership_reidentification_spec.rb
     - docs/decisions/pending-documentation-updates.md
     # ADR-0002 §3: both new entities register an identifier prefix.
     - lib/opanel/identifier.rb

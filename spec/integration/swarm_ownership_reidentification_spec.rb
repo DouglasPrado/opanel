@@ -13,6 +13,18 @@ RSpec.describe "Swarm ownership reidentification", :swarm do
   let(:environment) { create(:environment, project: project) }
   let(:service) { create(:service, environment: environment, desired_revision: 3) }
 
+  # Convert an Engine Service response to a RuntimeObservation
+  def service_observation_from_engine(engine_service)
+    Opanel::RuntimeObservation.new(
+      kind: "service",
+      runtime_id: engine_service["ID"],
+      name: engine_service.dig("Spec", "Name"),
+      labels: engine_service.dig("Spec", "Labels") || {},
+      version: engine_service.dig("Version", "Index"),
+      attributes: {}
+    )
+  end
+
   describe "AC7: reidentification from labels alone" do
     it "re-derives ownership from Swarm labels after Control Plane restart" do
       # Step 1: Create a Service with ownership labels
@@ -61,10 +73,11 @@ RSpec.describe "Swarm ownership reidentification", :swarm do
       expect(services.length).to eq(1)
 
       runtime_service = services.first
+      observation = service_observation_from_engine(runtime_service)
 
       # Step 4: Verify the predicate correctly identifies this as ours
       # using ONLY what Swarm reports (labels)
-      expect(Opanel::Ownership.managed_by_platform?(runtime_service)).to be true
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be true
 
       # Step 5: Verify the labels are exactly what we can re-read from Swarm
       swarm_labels = runtime_service.dig("Spec", "Labels") || {}
@@ -138,7 +151,8 @@ RSpec.describe "Swarm ownership reidentification", :swarm do
 
       # Both should be identified correctly
       services.each do |runtime_service|
-        expect(Opanel::Ownership.managed_by_platform?(runtime_service)).to be true
+        observation = service_observation_from_engine(runtime_service)
+        expect(Opanel::Ownership.managed_by_platform?(observation)).to be true
         labels = runtime_service.dig("Spec", "Labels") || {}
         expect(labels["com.opanel.managed"]).to eq("true")
         expect(labels["com.opanel.service_id"]).to be_present
@@ -197,10 +211,12 @@ RSpec.describe "Swarm ownership reidentification", :swarm do
       foreign = services.find { |s| s["ID"] == foreign_id }
 
       # Our service is identified as owned
-      expect(Opanel::Ownership.managed_by_platform?(owned)).to be true
+      owned_observation = service_observation_from_engine(owned)
+      expect(Opanel::Ownership.managed_by_platform?(owned_observation)).to be true
 
       # Foreign service is not
-      expect(Opanel::Ownership.managed_by_platform?(foreign)).to be false
+      foreign_observation = service_observation_from_engine(foreign)
+      expect(Opanel::Ownership.managed_by_platform?(foreign_observation)).to be false
 
       # Clean up
       client.delete("/services/#{owned_id}")

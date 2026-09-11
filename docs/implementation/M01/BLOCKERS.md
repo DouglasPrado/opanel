@@ -483,3 +483,104 @@ o `AGENT_RULES` proíbe em conflito de segurança.
 que o entrega. As duas opções estão em `docs/implementation/SPEC_CONFLICTS.md`
 SC-19. Até lá `M01-17`/`M01-18` podem consumir o módulo — ele é o que o AF-02
 permite — mas a M01-09 não fecha.
+
+---
+
+## M01-17 — todo nome técnico de network tem 65 caracteres, e o Swarm recusa acima de 63
+
+**Estado:** a rodada limitada autorizada pela arbitragem de 2026-09-11 fechou o
+Critical que lhe foi dado — `network_reconciler.rb:183` passa a
+`labels_for(network.environment)` e a label `com.opanel.project_id` agora sai no
+payload (provado abaixo) — e os cinco exemplos de laboratório continuam vermelhos
+por uma causa **diferente**, que nenhuma rodada e nenhuma revisão anterior
+nomeou.
+
+**Diagnóstico reproduzível.** `Opanel::Ownership.technical_name_for(Environment)`
+devolve `net_<prj_ULID>_<env_ULID>`: `net_` (4) + `prj_` + 26 (30) + `_` (1) +
+`env_` + 26 (30) = **65 caracteres, sempre**. O Engine recusa em 63. Não é
+intermitência nem anomalia do daemon — é determinístico e vale para *todo*
+Environment:
+
+```sh
+# o comando que o reconciler monta (probe via bin/rails runner -e test)
+payload={"name" => "net_prj_01M27WZAE8P40GW1TEHTV2P5TN_env_01M27WZAES96CG2QR6CZY1FGNY",
+         "labels" => {"com.opanel.managed" => "true", "com.opanel.team_id" => "…",
+                      "com.opanel.project_id" => "prj_01M27WZAE8P40GW1TEHTV2P5TN",
+                      "com.opanel.environment_id" => "env_01M27WZAES96CG2QR6CZY1FGNY",
+                      "com.opanel.desired_revision" => "1"}, "attachable" => false}
+outcome="FAILED" code="VALIDATION_ERROR" safe_metadata={http_status: 400}
+
+# o mesmo nome, direto no socket do lab (65 caracteres)
+$ curl --unix-socket … -X POST …/v1.44/networks/create -d '{"Name":"net_prj_…_env_…", …}'
+{"message":"rpc error: code = InvalidArgument desc = name must be 63 characters or fewer"}
+HTTP=400
+
+# os mesmos 65 caracteres truncados em 63, nada mais alterado
+HTTP=201  {"Id":"jjtozpyk7paac3v6ybm0rtg6c","Warning":""}
+```
+
+**Correção do registro.** `docs/implementation/M01/reports/M01-17.md:140,157`
+afirma "Docker VALIDATION_ERROR … despite identical curl requests succeeding
+(HTTP 201)" e classifica as cinco falhas como "Docker issue, não defeito de
+código". A afirmação não se sustenta: o curl que devolveu 201 usava um nome
+curto. Com o nome que o reconciler realmente monta, o curl devolve 400 e a
+mensagem do Engine diz exatamente o que falta. O defeito é de código, e está em
+`lib/opanel/ownership.rb:90-104` — arquivo que a arbitragem de 2026-09-11
+proibiu explicitamente esta rodada de editar, de modo que a rodada não poderia
+tê-lo fechado nem em princípio.
+
+**Alcance além da M01-17.** O mesmo método gera
+`svc_<prj_ULID>_<env_ULID>_<svc_ULID>` = **96 caracteres** para Service, que é o
+recurso da `M01-18`. O esquema de nomes não é imposto por nenhum documento
+aprovado: `docs/architecture/09-data-model-apis-contracts.md:195` pede apenas que
+o nome seja "determinístico e derivado de IDs/slugs sanitizados" e que o produto
+nunca dependa dele como identificador primário, e a `M01-16` (`:22,49,55,60`)
+pede derivação de IDs, estabilidade sob rename e ausência de colisão por
+construção. Um esquema mais curto que preserve as três propriedades satisfaz
+igualmente a especificação; qual esquema é decisão de quem arbitra, não desta
+sessão.
+
+**Evidência de teste desta rodada:** 26 exemplos declarados, 21 verdes
+(`spec/unit/network_reconciler_spec.rb` 3/3 com a nova asserção de
+`com.opanel.project_id` no payload; `spec/unit/ownership_predicate_spec.rb`
+15/15 migrados para `RuntimeObservation`;
+`spec/integration/swarm_ownership_reidentification_spec.rb` 3/3 migrados),
+5 vermelhos — os três arquivos de laboratório, todos pela causa acima.
+
+**Segunda correção do registro: o relatório mediu 6 dos 8 arquivos declarados.**
+O item (4) da arbitragem pedia "re-run all eight files declared for this Story"
+com prestação de contas por arquivo. O comando registrado em
+`reports/M01-17.md:20-33` lista **seis** arquivos, e a tabela por arquivo
+(`:38-46`) tem seis linhas. Os três ausentes — todos declarados sob `M01-17` em
+`boundaries.yml:1071-1073` — medidos nesta sessão, no mesmo working tree da
+rodada:
+
+```sh
+$ bin/test spec/unit/swarm_executor_spec.rb              # 33 examples, 13 failures
+$ bin/test spec/contracts/executor_contract_spec.rb      #  8 examples,  0 failures
+$ bin/test spec/integration/swarm_ownership_labels_spec.rb  # 4 examples, 1 failure
+```
+
+O total real dos oito arquivos declarados é **71 exemplos, 19 falhas** — não
+"26 examples, 21 passing, 5 failing". As 13 falhas de `swarm_executor_spec.rb`
+caem em `retry_after_observing` (`:233,244,260`), idempotência de remoção
+(`:325`), a linha de log do AC12 (`:381,392,408`) e a classificação de erro do
+AC5 (`:174,178,183,200,205,209`) — as asserções da `M01-09` sobre o arquivo que
+a ADR-0009 reescreveu. `swarm_ownership_labels_spec.rb:66` ("finds an existing
+Service by ownership labels on retry") é o mesmo defeito de nome no caminho de
+Service: `svc_<prj>_<env>_<svc>` tem 96 caracteres.
+
+**`bin/gate pre-commit --story M01-17` no fim da rodada:** `tests` FAIL
+(1410 exemplos, 29 falhas), `secret-scan` PASS, `migrations` PASS,
+`no-stray-files` PASS, `diff-boundary` **PASS** — o diff não saiu do boundary
+declarado. Das 29, seis são as falhas pré-existentes de `DECISIONS.md:70,162-166`
+e dezenove são as acima; o restante é o resíduo já arbitrado do `bin/gate`.
+
+**Revisão independente da rodada:** `review/M01-17-round-2.md`,
+`COUNTS 1 1 0 0`. A revisão da rodada anterior permanece intacta e verbatim em
+`review/M01-17.md` (`COUNTS 3 4 3 0`), como a arbitragem exigiu. Registrado
+também, porque é a terceira ocorrência da mesma classe no M01 (`DECISIONS.md:232`
+e a entrada da própria arbitragem desta rodada): a prosa desta revisão descreve
+dois Criticals e dois Highs e a linha `COUNTS` diz `1 1 0 0`. Os counts foram
+gravados como vieram — corrigir um veredito é escrevê-lo, e o implementador não
+faz isso.
