@@ -114,6 +114,10 @@ if [ -n "$TOTAL_USD" ] && [ -z "$BUDGET_USD" ]; then
   exit 2
 fi
 
+# Expanded below as ${BUDGET_ARGS[@]+"${BUDGET_ARGS[@]}"}, never bare. macOS ships
+# bash 3.2, where expanding an empty array under `set -u` is an unbound-variable
+# error — which is how the spend-cap commit broke every session that did not ask
+# for a cap, sixty seconds after it was installed.
 BUDGET_ARGS=()
 if [ -n "$BUDGET_USD" ]; then
   BUDGET_ARGS=(--max-budget-usd "$BUDGET_USD")
@@ -202,7 +206,7 @@ while :; do
   log_mark="$(wc -l < "$RUN_LOG" 2>/dev/null || echo 0)"
   claude -p "Invoke the opanel-loop autopilot skill and follow it exactly: run the Opanel Milestone chain unattended. There is nobody to answer a question, so do not ask one — arbitrate as the skill instructs." \
     --dangerously-skip-permissions \
-    "${BUDGET_ARGS[@]}" \
+    ${BUDGET_ARGS[@]+"${BUDGET_ARGS[@]}"} \
     >>"$RUN_LOG" 2>&1 &
   session_pid=$!
 
