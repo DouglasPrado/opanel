@@ -757,3 +757,46 @@ ADR-0009 da M01-17, mistura que já estava commitada antes desta sessão começa
 Os counts foram gravados como vieram. Corrigir um veredito é escrevê-lo, e o
 implementador não faz isso: quem decide o que a corrente faz com este High é a
 arbitragem.
+
+---
+
+## Débito aceito em M01-17 — dois itens para o humano na pilha
+
+Registrado pela arbitragem DEBT de 2026-09-11 (última entrada de `DECISIONS.md`),
+que fechou a M01-17 em `1f24e9c` com `review 0 0 1 0` — o Medium sendo a
+reclassificação arbitrada do único High da revisão. Os dois itens viajam ao corpo
+do `bin/milestone-pr`; nas palavras do revisor:
+
+> **HIGH — Boundary Violation: 8 files outside M01-17's declared scope**
+> Files modified or created outside boundaries.yml:1041-1132:
+> - `bin/autopilot` (substantive changes to quota handling)
+> - `bin/next-milestone` (substantive changes to block reason detection)
+> - 6 files under `tools/opanel-loop/**` explicitly forbidden by DECISIONS.md line 315
+> Changes outside the boundary block acceptance, per AGENT_RULES and engineering
+> playbook.
+
+**1 — Defeito de base velha, terceira aparição** (`DECISIONS.md:82-86,150`).
+O achado acima é verdadeiro do *diff* e falso da *Story*. `bin/story-scope` nunca
+re-baseia uma Story reaberta, então a base salva (`eafe075`) precede oito commits
+de manutenção do loop — `676d2a4`, `dd23d4d`, `a190608`, `0516320`, `22fdeef`,
+`81f49ce`, `634ad0d`, `55cc3b5` — e o diff da Story anexa todos eles. Nenhum dos
+quatro commits da M01-17 toca `bin/` ou `tools/`:
+`git diff --name-only 888deb0~1 1f24e9c -- bin tools` é vazio, e o
+`diff-boundary` do `bin/gate` passou. Pertence a `M01-91`/`M01-93`, que são donas
+de `lib/gates/**` e `bin/gate`, como manutenção conduzida por humano fora de uma
+execução autônoma.
+
+**2 — `634ad0d` mistura duas coisas num commit.** Ele carrega manutenção do loop
+junto com a implementação de ADR-0009 da M01-17, contra `AGENT_RULES`
+§"Git Discipline". Pré-existente a esta sessão, e não reparável pela execução que
+é julgada por esses arquivos.
+
+**Observação de ferramenta, para o mesmo dono.** `bin/milestone-pr:95` monta o
+corpo do PR com `grep -E '^(Verdict|Situation|Reason):' DECISIONS.md`. Duas das
+arbitragens desta sessão vieram com os campos em negrito (`**Verdict:** FIX`) em
+vez de texto simples, e essas não serão capturadas pelo grep. O ledger completo
+está no arquivo; apenas o resumo do PR fica incompleto.
+
+**`git stash@{0}`** continua estacionado: é a implementação de uma sessão anterior
+escrita contra o contrato ainda não decidido, e a ADR-0009 rejeitou a forma que
+ela escolheu. Cabe ao humano descartá-la.
