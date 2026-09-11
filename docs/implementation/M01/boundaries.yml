@@ -848,3 +848,80 @@ boundaries:
     - docs/implementation/SPEC_CONFLICTS.md
     - docs/implementation/M01/reports/M01-13.md
     - docs/implementation/M01/DECISIONS.md
+
+  M01-14:
+    # The dispatcher publishes what `M01-13` already commits, and the sweep is
+    # the guarantee behind doc 07 §9.2: PostgreSQL, not the broker, decides that
+    # an Operation still owes work. Two new pieces of schema — the consumer-side
+    # `inbox_events` dedup table, and the watchdog's observation on `operations`.
+    #
+    # Doc 07 §5.2 does not contain a `STALLED` status; Annex B §6 asks for the
+    # watchdog to mark one. The approved state machine outranks the Story, so the
+    # mark is an attribute of the Operation, not an eleventh status, and the
+    # existing `status_in_valid_set` CHECK stays as it is.
+    - db/migrate/*.rb
+    - db/schema.rb
+    # Domain: the dedup record, and the two models the sweep reads and marks.
+    - app/models/inbox_event.rb
+    - app/models/outbox_event.rb
+    - app/models/operation.rb
+    # Application layer: the two Commands and two Queries the Story names.
+    - app/commands/publish_pending_outbox_events.rb
+    - app/commands/recover_stalled_operations.rb
+    - app/queries/pending_outbox_events.rb
+    - app/queries/stalled_operations.rb
+    - app/queries/outbox_health.rb
+    # Jobs: the dispatcher, the recovery sweep, and the cadence that drives them.
+    - app/jobs/publish_outbox_events_job.rb
+    - app/jobs/recover_stalled_operations_job.rb
+    - app/jobs/application_job.rb
+    - config/recurring.yml
+    - config/queue.yml
+    # Routing an event to its logical queue, the thresholds and cadences that
+    # must not be magic numbers, and the backpressure signal the writers consult.
+    - lib/opanel/queues.rb
+    - lib/opanel/configuration.rb
+    - lib/opanel/queue_backpressure.rb
+    # Widened during planning: `OperationPayload::SCHEMAS` is keyed by operation
+    # type, and the dispatcher validates an OutboxEvent, which is keyed by event
+    # type. AC8 needs the event-type allowlist, and the allowlist of what a
+    # payload may contain already lives here — a second one elsewhere would be
+    # the divergence this file exists to prevent.
+    - lib/opanel/operation_payload.rb
+    # Widened during implementation: ADR-0002 §3 requires a new entity to
+    # register its identifier prefix, and `UlidPrimaryKey#external_id` raises
+    # `UnknownType` until it does — `inbox_events` cannot exist without this
+    # line. `.env.example` is versioned alongside `Configuration::KEYS`, and
+    # `spec/unit/configuration_spec.rb` fails when the two drift.
+    - lib/opanel/identifier.rb
+    - .env.example
+    # Widened during implementation, for one word. `spec/gates/unscoped_tenant_
+    # _query_spec.rb:104` requires every model with `belongs_to :team` to appear
+    # in `TENANT_SCOPED`; `M01-13` added `Operation` and did not register it, and
+    # the omission only shows now that M01-14 touches the neighbourhood. Adding
+    # `Operation` is the whole change — `OutboxEvent` and `InboxEvent` have no
+    # `team_id` and must not be listed.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # Backpressure applies where a non-essential Operation is created.
+    - app/commands/update_service_desired_state.rb
+    # Audit of a recovery, and the allowlist of what it may record.
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    # Tests.
+    - spec/unit/pending_outbox_events_spec.rb
+    - spec/unit/stalled_operations_spec.rb
+    - spec/unit/operation_watchdog_spec.rb
+    - spec/integration/outbox_dispatcher_spec.rb
+    - spec/integration/outbox_broker_unavailable_spec.rb
+    - spec/integration/operation_recovery_sweep_spec.rb
+    - spec/integration/operation_recovery_sweep_concurrent_spec.rb
+    - spec/integration/inbox_dedup_spec.rb
+    - spec/integration/queue_backpressure_spec.rb
+    - spec/security/outbox_payload_redaction_spec.rb
+    - spec/security/outbox_schema_version_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-14.md
+    - docs/implementation/M01/DECISIONS.md

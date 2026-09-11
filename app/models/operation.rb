@@ -118,4 +118,16 @@ class Operation < ApplicationRecord
   def mark_superseded!
     transition_to!(SUPERSEDED) unless terminal?
   end
+
+  # Mark this Operation as stalled (watchdog observation, not a status change).
+  # stalled_at and stalled_reason are attributes that record the watchdog's finding.
+  # An Operation with stalled_at != nil is observed to have no progress (doc 07 §22, Annex B §6).
+  def mark_stalled!(reason)
+    update!(stalled_at: Time.current.utc, stalled_reason: reason)
+  end
+
+  # Check if this Operation is marked as stalled.
+  def stalled?
+    stalled_at.present?
+  end
 end

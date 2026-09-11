@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_000600) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_000700) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -119,6 +119,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000600) do
     t.check_constraint "type = ANY (ARRAY['PRODUCTION'::text, 'HOMOLOGATION'::text, 'DEVELOPMENT'::text, 'PREVIEW'::text, 'CUSTOM'::text])", name: "environments_type_is_known"
   end
 
+  create_table "inbox_events", id: :string, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "processed_at"
+    t.string "result_ref"
+    t.string "source", null: false
+    t.string "source_event_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["source", "source_event_id"], name: "index_inbox_events_source_event_id_unique", unique: true
+    t.index ["source"], name: "index_inbox_events_on_source"
+    t.index ["source_event_id"], name: "index_inbox_events_on_source_event_id"
+  end
+
   create_table "infrastructure_checkpoints", force: :cascade do |t|
     t.bigint "counter", default: 0, null: false
     t.datetime "created_at", null: false
@@ -223,11 +235,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000600) do
     t.string "resource_id", null: false
     t.string "resource_type", null: false
     t.datetime "started_at"
+    t.datetime "stalled_at"
+    t.string "stalled_reason"
     t.string "status", null: false
     t.string "team_id", null: false
     t.string "type", null: false
     t.datetime "updated_at", null: false
     t.index ["resource_id"], name: "index_operations_on_resource_id"
+    t.index ["stalled_at"], name: "index_operations_stalled"
     t.index ["resource_type", "status", "created_at"], name: "index_operations_by_resource_status"
     t.index ["resource_type", "status", "next_attempt_at"], name: "index_operations_for_retry_dispatch"
     t.index ["resource_type"], name: "index_operations_on_resource_type"

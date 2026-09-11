@@ -64,4 +64,71 @@ module Opanel::OperationPayload
     valid, error = valid?(operation_type, payload)
     raise ArgumentError, error unless valid
   end
+
+  # Event type schemas: allowlist of known OutboxEvent types and their versions (AC8, M01-14).
+  #
+  # This is separate from operation payloads but related: Operations generate OutboxEvents.
+  # An OutboxEvent carries an event_type and schema_version, which the dispatcher
+  # validates before publishing. An unknown event type → unknown schema_version → skip and log.
+  #
+  # Event types are domain-oriented (service.desired_state.changed.v1) and version the
+  # logical event, not the operation type. Multiple operation types may emit the same event.
+  EVENT_SCHEMAS = {
+    "service.desired_state.changed.v1" => {
+      schema_version: 1,
+      fields: %i[
+        schemaVersion
+        service_id
+        environment_id
+        project_id
+        team_id
+        desired_revision
+        changes
+        timestamp
+      ].freeze
+    },
+    "service.deployed.v1" => {
+      schema_version: 1,
+      fields: %i[
+        schemaVersion
+        service_id
+        release_id
+        image_digest
+        timestamp
+      ].freeze
+    }
+  }.freeze
+
+  # Validate an OutboxEvent's schema (dispatcher, AC8).
+  # Checks both the column schema_version and the payload's schemaVersion field.
+  # @param event_type [String] the event type (e.g., "service.desired_state.changed.v1")
+  # @param schema_version [Integer] the column schema_version
+  # @param payload [Hash, optional] the event payload (to validate payload.schemaVersion against column)
+  # @return [Array] [valid?, error_message]
+  def self.event_valid?(event_type, schema_version, payload = nil)
+    schema = EVENT_SCHEMAS[event_type]
+    return [ false, "Unknown event type: #{event_type}" ] if schema.nil?
+
+    if schema_version != schema[:schema_version]
+      return [ false,
+"schemaVersion mismatch for #{event_type}: expected #{schema[:schema_version]}, got #{schema_version}" ]
+    end
+
+    # If payload is provided, validate that its schemaVersion matches the column.
+    if payload.present?
+      payload_version = (payload[:schemaVersion] || payload["schemaVersion"])
+      if payload_version.present? && payload_version != schema_version
+        return [ false,
+"Payload schemaVersion #{payload_version} disagrees with column schema_version #{schema_version}" ]
+      end
+    end
+
+    [ true, nil ]
+  end
+
+  # Validate an OutboxEvent's schema and raise if invalid.
+  def self.event_validate!(event_type, schema_version)
+    valid, error = event_valid?(event_type, schema_version)
+    raise ArgumentError, error unless valid
+  end
 end

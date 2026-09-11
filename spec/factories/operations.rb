@@ -42,6 +42,36 @@ FactoryBot.define do
     request_id { SecureRandom.uuid }
     correlation_id { SecureRandom.uuid }
     requested_by { "usr_test" }
+
+    # Traits for different operation statuses (M01-14 testing).
+    trait :queued do
+      status { Operation::QUEUED }
+      next_attempt_at { Time.current.utc }
+    end
+
+    trait :running do
+      status { Operation::RUNNING }
+      started_at { 1.minute.ago }
+      next_attempt_at { Time.current.utc }
+    end
+
+    trait :succeeded do
+      status { Operation::SUCCEEDED }
+      started_at { 5.minutes.ago }
+      finished_at { 1.minute.ago }
+    end
+
+    trait :failed do
+      status { Operation::FAILED }
+      started_at { 5.minutes.ago }
+      finished_at { 1.minute.ago }
+      error_code { "transient" }
+    end
+
+    trait :superseded do
+      status { Operation::SUPERSEDED }
+      finished_at { 1.minute.ago }
+    end
   end
 
   factory :operation_attempt do
@@ -79,5 +109,15 @@ FactoryBot.define do
     partition_key { "service_1" }
     occurred_at { Time.current.utc }
     published_at { nil }
+  end
+
+  factory :inbox_event do
+    sequence(:id) { |n| "ibevt_#{n.to_s.rjust(19, '0')}" }
+
+    source { "test_source" }
+    sequence(:source_event_id) { |n| "ext_#{n}" }
+
+    processed_at { nil }
+    result_ref { nil }
   end
 end

@@ -223,8 +223,8 @@ class UpdateServiceDesiredState
       memory_reservation: service.memory_reservation,
       memory_limit: service.memory_limit,
       constraints: service.constraints,
-      correlation_id: request_id || SecureRandom.uuid,
-      request_id: request_id || SecureRandom.uuid,
+      correlation_id: correlation_id,
+      request_id: request_id,
       actor_id: actor.external_id
     }
 
@@ -232,6 +232,13 @@ class UpdateServiceDesiredState
     Opanel::OperationPayload.validate!("UPDATE_SERVICE", operation_payload)
 
     # Create the Operation (PENDING status, awaiting dispatch to queue in M01-14).
+    # Apply backpressure if queue is saturated: defer next_attempt_at instead of rejecting (C4, AC7).
+    next_attempt_at = if Opanel::QueueBackpressure.active?
+      Opanel::QueueBackpressure.deferred_next_attempt_at
+    else
+      Time.current.utc
+    end
+
     operation = Operation.create!(
       team_id: service.team.id,
       resource_type: "Service",
@@ -245,7 +252,8 @@ class UpdateServiceDesiredState
       requested_by: actor.external_id,
       attempt_count: 0,
       error_code: nil,
-      idempotency_key: idempotency_key
+      idempotency_key: idempotency_key,
+      next_attempt_at: next_attempt_at
     )
 
     # Create the OutboxEvent (publishedAt is null until dispatcher publishes in M01-14).
@@ -267,8 +275,15 @@ class UpdateServiceDesiredState
   end
 
   def request_id
-    # TODO: pass request_id from the controller (M01-13 AC2 implementation detail).
-    nil
+    # Source from the HTTP request context (set by CorrelationMiddleware).
+    # For non-HTTP entry points (jobs, CLI), use a generated ID.
+    Current.request_id.presence || SecureRandom.uuid
+  end
+
+  def correlation_id
+    # Source from the HTTP request context (set by CorrelationMiddleware).
+    # For non-HTTP entry points (jobs, CLI), use a generated ID.
+    Current.correlation_id.presence || SecureRandom.uuid
   end
 
   def failure(code, message, **details)

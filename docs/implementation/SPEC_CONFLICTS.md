@@ -333,6 +333,15 @@ Registradas para evitar releitura como pendência. **Nenhuma ação necessária.
 - **Encaminhamento para M01-18:** O reconciliador lê `image_digest` (se presente) ou resolve `image_ref` buscando o digest, o armazena e o usa para deploy imutável.
 - **Como AC7 é contabilizado:** No relatório de `M01-12` a caixa de AC7 fica **desmarcada** e a evidência nomeia este conflito (SC-21) e a Story de adiamento (M01-18 AC2). Não é satisfação automática — é deferral explícita com Story herdeira.
 
+## SC-23 — InboxEvent external_id column shadows UlidPrimaryKey.external_id method
+
+- **Documentos envolvidos:** `docs/architecture/07-internal-control-plane.md` §10.2 (linha ???, `externalId` no contexto de dedup); `docs/decisions/ADR-0002-opaque-identifiers.md` (`external_id` como método público do ULID do objeto); `app/models/concerns/ulid_primary_key.rb` (define `external_id` como method que retorna o `id` serializado).
+- **Decisão antiga:** Dedup spec doc 07 §10.2 nomeia o campo como `externalId` (formato JSON/API).
+- **Decisão atual:** `InboxEvent` armazena o ID do evento externo em coluna `source_event_id`, **não** `external_id`. Razão: `UlidPrimaryKey` define `external_id` como accessor que retorna o ULID **próprio** do objeto (`ibevt_01H…`), e uma coluna de mesmo nome sombra o método. Durante `mark_processed!(result_ref)`, a validação `validates :external_id` lê o método (que retorna nil antes da save) em vez da coluna, falha com "External can't be blank", e `update!` falha.
+- **Impacto:** Nome de coluna, índice único `(source, source_event_id)`, validações do modelo, referências em specs.
+- **Resolução aplicada:** `resolved`. Coluna criada como `source_event_id` em migration 20260910000700_create_inbox_events. Semântica de AC4 (dedup por `source` + `externalId` do evento) **não muda** — `source_event_id` carrega o mesmo valor que `externalId` levaria. ADR-0002 continua válido: `external_id` permanece o método público para a identidade **interna** do `InboxEvent` (seu ULID). O número de serie `externalId` (do mensageiro) agora vive em `source_event_id`.
+- **Documentação:** Doc 07 §10.2 menciona dedup schema como `(source, externalId)`; ela continua verdadeira. A implementação espelha a spec no sentido semântico; o nome Ruby reflete a coluna com precisão.
+
 ## SC-22 — Field naming: resourceType/resourceId vs scopeType/scopeId
 
 - **Documentos envolvidos:** `docs/architecture/07-internal-control-plane.md` §5.1 (linhas 262-263, `scopeType/scopeId`); `docs/architecture/09-data-model-apis-contracts.md` §9.1 (linhas 306, `resourceType/resourceId`) e §21 (`CommandEnvelope`, `resourceType`/`resourceId`); `docs/implementation/M01/stories/M01-13-operation-and-outbox-transaction.md` §Scope (linha 19, `resourceType`/`resourceId`).
@@ -345,7 +354,7 @@ Registradas para evitar releitura como pendência. **Nenhuma ação necessária.
 
 | Estado | Quantidade | Itens |
 |---|---|---|
-| `resolved` | 17 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16, **SC-18**, **SC-19**, **SC-20**, **SC-22** |
+| `resolved` | 18 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16, **SC-18**, **SC-19**, **SC-20**, **SC-22**, **SC-23** |
 | `deferred` | 3 | SC-07 (inventário de componentes, dono `M00-05`), SC-11 (backend de métricas, dono `M09-03`), **SC-21** (resolução de tag de imagem, dono `M01-18`) |
 | `unresolved` | 0 | — |
 | informativo | 5 | SC-13.1 … SC-13.5 |

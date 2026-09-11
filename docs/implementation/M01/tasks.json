@@ -270,17 +270,28 @@
         "medium": 0,
         "low": 0
       },
-      "commit": "b5e4e30"
+      "commit": "7d3ac8b"
     },
     {
       "id": "M01-14",
       "file": "stories/M01-14-outbox-dispatcher-and-recovery-sweep.md",
-      "status": "pending",
+      "status": "review",
       "dependsOn": [
         "M01-13"
       ],
-      "attempts": 0,
-      "required": true
+      "attempts": 4,
+      "required": true,
+      "review": {
+        "critical": 0,
+        "high": 0,
+        "medium": 2,
+        "low": 0
+      },
+      "reason": "Fourth and last attempt, granted by the arbiter in a fresh context under ADR-0007 (DECISIONS.md, 2026-09-10, verdict FIX); tasks.sh caps automatic attempts at three and has no command for an arbitrated raise, so the counter is written here rather than reset. The recorded counts 0 0 2 0 are NOT the reviewer's. The follow-up review in review/M01-14.md ends COUNTS 0 2 0 0 and is untouched; the arbiter's second decision on this Story (DECISIONS.md, 2026-09-11, verdict DEBT) reclassified both Highs to Medium — one rests on an execution-order claim the code refutes, the other on commit 12ff1d8, which bin/story-scope's stale saved base dragged into the diff. Both remain on the record and travel to the Milestone debt ledger and the PR body.",
+      "blockedReason": {
+        "qualifier": "BLOCKED_FOR_HUMAN_APPROVAL",
+        "diagnosis": "Automatic attempt budget exhausted (3). Preserve findings and evidence; continue independent Stories. A human must authorize a new attempt budget."
+      }
     },
     {
       "id": "M01-15",
@@ -381,8 +392,8 @@
     }
   ],
   "run": {
-    "startedAt": "2026-09-10T20:32:05Z",
-    "turns": 34,
-    "doneAtStart": 13
+    "startedAt": "2026-09-11T01:19:36Z",
+    "turns": 1,
+    "doneAtStart": 15
   }
 }
