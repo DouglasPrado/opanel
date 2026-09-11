@@ -50,9 +50,10 @@ RSpec.describe "Node observation, against a real Swarm Engine", :swarm, :integra
 
       inspect_result = executor.execute(inspect_cmd)
       expect(inspect_result).to be_applied
-      expect(inspect_result.safe_metadata[:role]).to eq("manager")
-      expect(inspect_result.safe_metadata[:state]).to be_present
-      expect(inspect_result.safe_metadata[:availability]).to be_present
+      # ADR-0009 §2: node attributes are in observed.attributes
+      expect(inspect_result.observed&.attributes["role"]).to eq("manager")
+      expect(inspect_result.observed&.attributes["state"]).to be_present
+      expect(inspect_result.observed&.attributes["availability"]).to be_present
     end
 
     it "the manager node reports READY state when Swarm is healthy" do
@@ -71,7 +72,8 @@ RSpec.describe "Node observation, against a real Swarm Engine", :swarm, :integra
       inspect_result = executor.execute(inspect_cmd)
       expect(inspect_result).to be_applied
       # The bootstrap verified the Engine is healthy and runs Swarm in manager mode
-      expect(inspect_result.safe_metadata[:state]).to eq("ready")
+      # ADR-0009 §2: state is in observed.attributes
+      expect(inspect_result.observed&.attributes["state"]).to eq("ready")
     end
   end
 
@@ -99,25 +101,26 @@ RSpec.describe "Node observation, against a real Swarm Engine", :swarm, :integra
         expect(inspect_result).to be_applied
 
         # Create the node record and observation
-        metadata = inspect_result.safe_metadata
+        # ADR-0009 §2: node attributes are in observed.attributes
+        attrs = inspect_result.observed&.attributes || {}
         node = cluster.nodes.find_or_create_by!(swarm_node_id: swarm_node_id) do |n|
-          n.hostname = swarm_node_id # In real usage, the metadata would have this
-          n.role = (metadata[:role] || "manager").upcase
+          n.hostname = attrs["hostname"] || swarm_node_id
+          n.role = attrs["role"].upcase
           n.availability = Node::ACTIVE
-          n.status = (metadata[:state] || "joining").upcase
+          n.status = attrs["state"].upcase
         end
 
         NodeObservation.create!(
           node_id: node.id,
-          status: (metadata[:state] || "joining").upcase,
-          availability: (metadata[:availability] || "ACTIVE").upcase,
+          status: attrs["state"].upcase,
+          availability: (attrs["availability"] || "ACTIVE").upcase,
           observed_at: Time.current
         )
 
         # Verify the node and observation exist
         expect(node.persisted?).to be true
         expect(node.observations.count).to be >= 1
-        expect(node.latest_observation&.status).to eq((metadata[:state] || "joining").upcase)
+        expect(node.latest_observation&.status).to eq(attrs["state"].upcase)
       end
     end
   end

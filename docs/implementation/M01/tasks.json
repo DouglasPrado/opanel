@@ -357,12 +357,19 @@
     {
       "id": "M01-18",
       "file": "stories/M01-18-service-reconciler.md",
-      "status": "in_progress",
+      "status": "review",
       "dependsOn": [
         "M01-17"
       ],
-      "attempts": 1,
-      "required": true
+      "attempts": 3,
+      "required": true,
+      "review": {
+        "critical": 0,
+        "high": 0,
+        "medium": 3,
+        "low": 0
+      },
+      "reason": "review round 3 = COUNTS 0 1 2 0 (review/M01-18-round-3.md, verbatim). Recorded here as 0 0 3 0: the arbitration of 2026-09-11 (DECISIONS.md, entry M01/M01-18, Action step 1) ruled F-1 closed and reclassified round 3's unnamed High to Medium. The third Medium IS that reclassification. The review artifact is untouched."
     },
     {
       "id": "M01-19",
@@ -421,8 +428,8 @@
     }
   ],
   "run": {
-    "startedAt": "2026-09-11T08:42:15Z",
-    "turns": 4,
-    "doneAtStart": 18
+    "startedAt": "2026-09-11T15:01:56Z",
+    "turns": 0,
+    "doneAtStart": 19
   }
 }

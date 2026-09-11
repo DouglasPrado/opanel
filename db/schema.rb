@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_11_001000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_11_001100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -391,11 +391,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_001000) do
     t.text "service_type", default: "WEB", null: false
     t.text "slug", null: false
     t.text "status", default: "DRAFT", null: false
+    t.string "swarm_service_id"
     t.string "team_id", limit: 26, null: false
     t.text "technical_name", null: false
     t.timestamptz "updated_at", null: false
     t.index ["environment_id", "id"], name: "index_services_on_environment_id_and_id"
     t.index ["environment_id", "slug"], name: "index_services_unique_slug_per_environment_when_not_deleted", unique: true, where: "(deleted_at IS NULL)"
+    t.index ["swarm_service_id"], name: "index_services_unique_swarm_service_id", unique: true, where: "((swarm_service_id IS NOT NULL) AND (deleted_at IS NULL))"
     t.index ["team_id"], name: "index_services_on_team_id"
     t.check_constraint "applied_revision IS NULL OR applied_revision <= desired_revision", name: "services_applied_revision_not_ahead"
     t.check_constraint "btrim(image_ref) <> ''::text", name: "services_image_ref_present"
@@ -410,6 +412,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_001000) do
     t.check_constraint "status = ANY (ARRAY['DRAFT'::text, 'PROVISIONING'::text, 'RUNNING'::text, 'DEGRADED'::text, 'STOPPED'::text, 'DELETING'::text])", name: "services_status_is_known"
     t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "services_team_id_is_ulid"
   end
+
+  add_check_constraint "services", "swarm_service_id IS NULL OR swarm_service_id::text ~ '^[a-z0-9]+$'::text", name: "services_swarm_service_id_valid", validate: false
 
   create_table "sessions", id: { type: :string, limit: 26 }, force: :cascade do |t|
     t.timestamptz "created_at", null: false

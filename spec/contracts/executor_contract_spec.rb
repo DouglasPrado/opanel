@@ -71,4 +71,76 @@ RSpec.describe "the executor contracts (doc 07 §20)", type: :contract do
       expect(result.safe_metadata).to be_frozen
     end
   end
+
+  # ADR-0009 §3 says the contract spec asserts this, and until M01-18 nothing
+  # did: *"An inspect that answers APPLIED with `observed: nil` is a defect"*.
+  # It is the assumption every reconciler makes — `inspect_service` is how the
+  # diff learns Actual State — and an unasserted assumption is how the network
+  # reconciler read `network_data` from a bag nobody wrote for five rounds.
+  describe "an inspect that succeeded (ADR-0009 §3)" do
+    def scripted(responses)
+      client = Class.new do
+        def initialize(responses) = @responses = responses
+        def get(path)
+          key = @responses.keys.find { |k| path.start_with?(k) }
+          @responses.fetch(key) { raise "unscripted GET #{path}" }
+        end
+      end.new(responses)
+
+      info = SwarmBootstrap::Info.new(engine_version: "29.7.2", swarm_state: "active", swarm_id: "a",
+        node_id: "n1", manager?: true, node_count: 1, data_root: "/var/lib/docker")
+      SwarmExecutor.new(client: client, engine: Class.new { define_singleton_method(:info) { info } },
+        logger: instance_double(ActiveSupport::Logger, info: nil))
+    end
+
+    def response(status, body)
+      EngineClient::Response.new(status: status, body: body, raw: JSON.generate(body))
+    end
+
+    let(:service_body) do
+      { "ID" => "s1", "Version" => { "Index" => 12 },
+        "Spec" => { "Name" => "web", "Labels" => { "com.opanel.service_id" => "svc_1" },
+                    "Mode" => { "Replicated" => { "Replicas" => 2 } },
+                    "TaskTemplate" => { "ContainerSpec" => { "Image" => "busybox@sha256:abc" } } } }
+    end
+
+    it "carries a normalized observation of the kind it inspected" do
+      executor = scripted("/services?" => response(200, [ service_body ]),
+        "/services/s1" => response(200, service_body))
+      command = ExecutorCommand.new(id: "c", type: "inspect_service", cluster_id: "cl",
+        resource_type: "Service", resource_id: "svc_1")
+
+      result = executor.execute(command)
+
+      expect(result).to be_applied
+      expect(result.observed).to be_a(Opanel::RuntimeObservation)
+      expect(result.observed.kind).to eq("service")
+      expect(result.observed.runtime_id).to eq("s1")
+      expect(result.observed.labels).to include("com.opanel.service_id" => "svc_1")
+      expect(result.observed.attributes).to include("image" => "busybox@sha256:abc", "replicas" => 2)
+    end
+
+    it "carries none when the inspect failed, because nothing was read" do
+      executor = scripted("/services?" => response(200, []))
+      command = ExecutorCommand.new(id: "c", type: "inspect_service", cluster_id: "cl",
+        resource_type: "Service", resource_id: "svc_1")
+
+      result = executor.execute(command)
+
+      expect(result).to be_failed
+      expect(result.observed).to be_nil
+    end
+
+    it "keeps the observation out of the metadata bag that reaches the log" do
+      executor = scripted("/services?" => response(200, [ service_body ]),
+        "/services/s1" => response(200, service_body))
+      command = ExecutorCommand.new(id: "c", type: "inspect_service", cluster_id: "cl",
+        resource_type: "Service", resource_id: "svc_1")
+
+      result = executor.execute(command)
+
+      expect(result.safe_metadata).not_to have_key(:observed)
+      expect(result.safe_metadata.to_s).not_to include("busybox@sha256:abc")
+    end
+  end
 end

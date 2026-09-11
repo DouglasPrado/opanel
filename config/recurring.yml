@@ -26,6 +26,13 @@ production:
     class: ReconcileNetworksJob
     queue: system
     schedule: every <%= ENV.fetch("OPANEL_NETWORK_RECONCILE_CADENCE_SECONDS", "60") %> seconds
+  # The sweep is what makes convergence a guarantee rather than a hope: an
+  # Operation that was never consumed, a worker that died mid-apply and a
+  # runtime that drifted are all found by looking again (doc 07 §11.2, §23).
+  reconcile_services:
+    class: ReconcileServicesJob
+    queue: system
+    schedule: every <%= ENV.fetch("OPANEL_SERVICE_RECONCILE_CADENCE_SECONDS", "30") %> seconds
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12

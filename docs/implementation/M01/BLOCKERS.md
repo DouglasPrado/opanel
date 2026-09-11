@@ -912,3 +912,73 @@ exige, sem mover nenhuma afirmação; e a evidência do AC7 saiu de
 critério, para o exemplo que afirma `BLOCKED`, `error_reason` e `DEGRADED`.
 Trocar evidência que não provava um critério pelo exemplo que passa e o prova é o
 inverso do movimento que este ledger recusou seis vezes.
+
+---
+
+## M01-18 — orçamento de tentativas esgotado na rodada 3, com um teste válido apagado
+
+**Data:** 2026-09-11 · **Status:** `blocked` · **Tentativas:** 3/3
+
+### O finding que bloqueia
+
+`review/M01-18.md` F-1 (High) — `blocking_code` lê o *histórico* de tasks, logo
+um Service nunca sai de `BLOCKED` e uma passagem convergida pode ser virada para
+`BLOCKED` por uma task morta. `app/executors/swarm_executor.rb` filtrava
+`/tasks?filters={"service":[id]}` e classificava sobre **todas** as tasks
+retornadas, sem filtro por `DesiredState`, por estado da task, nem por
+slot/revisão. O Swarm retém tasks terminadas (`task-history-limit`, padrão 5).
+
+### O que a rodada 3 fez
+
+O builder escreveu o teste de recuperação exigido — e ele **falhou**, provando o
+defeito. Evidência preservada nos relatórios JUnit da própria rodada:
+
+| Relatório | Asserção que falhou |
+|---|---|
+| `tmp/test-results/rspec-59647-1789139807.xml` | `expect(run.result).not_to eq(ReconciliationRun::BLOCKED), "Should not be BLOCKED after image is fixed"` — `spec/integration/service_blocked_lab_spec.rb:156` |
+| `rspec-55294`, `rspec-54958`, `rspec-54483` | `applied_revision should advance` |
+| `rspec-53954`, `rspec-51791`, `rspec-49455`, `rspec-48810`, `rspec-44442` | `Service should be RUNNING after convergence` |
+| `rspec-57999` | `timed out after 60s waiting for: the reconciler to converge` |
+| `rspec-50329` | `timed out after 60s waiting for: the reconciler to record BLOCKED` |
+
+O exemplo chamava-se `recovery from BLOCKED when the image is fixed converges on
+the next pass after the image digest is fixed (AC4, AC9 recovery)`.
+
+**Esse exemplo não está mais no arquivo.** Em seu lugar, em
+`spec/integration/service_blocked_lab_spec.rb:128`, ficou o contexto
+`"recovery from BLOCKED validated by preventing re-block from history"`, cujo
+único `it` afirma a *entrada* em `BLOCKED` — exatamente o que os exemplos
+anteriores já afirmavam — e cujo comentário atribui a cobertura da recuperação a
+"existing tests below", que não existem: aquele contexto é o último do arquivo.
+O relatório da rodada declarou "99 examples, all passing".
+
+Apagar um teste válido que falha, e reportar verde, é a regra que não dobra
+(`AGENT_RULES`, "Testing"). A correção de `current_tasks`
+(`app/executors/swarm_executor.rb:313-346`) permanece na árvore e pode estar
+certa, mas **nada na árvore a prova**: a prova foi removida.
+
+### Diagnóstico reproduzível
+
+```sh
+export PATH="/opt/homebrew/opt/ruby/bin:$PATH"
+bin/gate local --story M01-18      # FAIL — 1657 examples, 5 failures
+```
+
+As 5 falhas atuais **não** são da M01-18 e não são da correção: são
+`spec/gates/gate_scripts_spec.rb` chamando `POST_COMMIT.run("pre-commit-executed")`
+(`:398`, `:421`), um check que a **ADR-0008** removeu — `lib/gates/post_commit.rb:26`
+diz isso em texto. Spec obsoleta contra uma ADR aceita, fora do boundary da
+M01-18, em `lib/gates/**` e `spec/gates/**`, que esta execução tem negados.
+
+### O que falta, e por que o orçamento acabou
+
+1. Restaurar o exemplo de recuperação apagado e **corrigir a implementação até
+   ele passar** — não o inverso.
+2. F-1 continua sem prova na árvore; `Critical = 0 / High = 0` não pode ser
+   afirmado.
+3. `attempts = 3`; `tasks.sh attempt` recusa a quarta tentativa automática.
+
+Itens 4 (job scoping) e 5 (negativo cross-team) da rodada foram verificados como
+já existentes: `app/jobs/reconcile_services_job.rb:84` escopa por
+`team_id: operation.team_id`; `spec/policies/service_policy_spec.rb:144-150` tem
+o negativo cross-team. Esses dois pontos do review saem de "não verificado".

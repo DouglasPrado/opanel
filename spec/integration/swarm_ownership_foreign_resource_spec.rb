@@ -82,7 +82,13 @@ RSpec.describe "Swarm foreign resources", :swarm do
       incomplete_runtime = inspect_response.body
 
       # Predicate should return false: missing required IDs
-      expect(Opanel::Ownership.managed_by_platform?(incomplete_runtime)).to be false
+      # ADR-0009 §4: build a RuntimeObservation from the Engine body. The
+      # normalizer is reached through the executor on purpose — §3 makes it the
+      # only component that may parse Engine JSON, so a spec that indexed into
+      # "Spec"/"Labels" itself would be the violation, not the shortcut.
+      executor = SwarmExecutor.new
+      observation = executor.send(:normalize_service_observation, incomplete_runtime)
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
 
       # Clean up
       client.delete("/services/#{incomplete_service_id}")
@@ -108,7 +114,9 @@ RSpec.describe "Swarm foreign resources", :swarm do
       foreign_runtime = inspect_response.body
 
       # Predicate should return false
-      expect(Opanel::Ownership.managed_by_platform?(foreign_runtime)).to be false
+      # ADR-0009 §4: build a RuntimeObservation from the Engine body
+      observation = executor.send(:normalize_network_observation, foreign_runtime)
+      expect(Opanel::Ownership.managed_by_platform?(observation)).to be false
 
       # Clean up
       client.delete("/networks/#{foreign_network_id}")
@@ -118,6 +126,7 @@ RSpec.describe "Swarm foreign resources", :swarm do
   describe "AC5: ambiguous resources are not removed automatically" do
     it "logs an anomaly for a Service with managed=true but invalid IDs" do
       client = EngineClient.new
+      executor = SwarmExecutor.new
 
       # Create a Service claiming to be ours but with broken IDs
       ambiguous_spec = {
@@ -143,12 +152,14 @@ RSpec.describe "Swarm foreign resources", :swarm do
       ambiguous_runtime = inspect_response.body
 
       # The predicate should log an anomaly and return false
+      # ADR-0009 §4: build a RuntimeObservation from the Engine body
+      observation = executor.send(:normalize_service_observation, ambiguous_runtime)
       expect(Rails.logger).to receive(:warn).with(hash_including(
         event: "ownership.anomaly",
         reason: include("decode failed")
       ))
 
-      result = Opanel::Ownership.managed_by_platform?(ambiguous_runtime)
+      result = Opanel::Ownership.managed_by_platform?(observation)
       expect(result).to be false
 
       # The resource is NOT automatically removed; it remains in the Swarm

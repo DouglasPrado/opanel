@@ -32,6 +32,8 @@ RSpec.describe "the audit action names", type: :unit do
     network_created: "network.created",
     service_created: "service.created",
     service_updated: "service.updated",
+    service_deployed: "service.deployed",
+    service_reconcile_blocked: "service.reconcile.blocked",
     cluster_bootstrapped: "cluster.bootstrapped",
     cluster_adopted: "cluster.adopted",
     cluster_bootstrap_failed: "cluster.bootstrap_failed"

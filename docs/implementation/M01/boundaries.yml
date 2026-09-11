@@ -1177,6 +1177,13 @@ boundaries:
     - app/jobs/reconcile_services_job.rb
     - config/recurring.yml
     - lib/opanel/configuration.rb
+    # The mechanical twin of the line above, and another enumeration miss of the
+    # class DECISIONS.md charges to ADR-0009: `spec/unit/configuration_spec.rb`
+    # requires every key declared in `Configuration::KEYS` to appear in the
+    # versioned example file, so a cadence key cannot be registered without it.
+    # No credential is added — the value is the integer 30, and the same spec
+    # asserts that every sensitive key in this file stays empty.
+    - .env.example
     # Authorization and audit for the new mutation path, including the
     # cross-team negative every mutation needs.
     - app/policies/service_policy.rb

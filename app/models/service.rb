@@ -18,6 +18,15 @@
 # image, resources, etc.). `applied_revision` is where the reconciler got to,
 # and it starts nil — it is set by M01-18 (reconcilers).
 #
+# ## swarm_service_id is an observation, not a configuration
+#
+# It holds the Engine's own id for the Swarm Service this row converged to, and
+# it is written by `ServiceReconciler` only after a re-inspection confirmed the
+# resource (M01-18 AC10). It is never used to address the resource — ADR-0009 §5
+# addresses an owned Service by its `com.opanel.service_id` label — so a stale
+# value cannot send an operation to the wrong place. It is nil until the first
+# convergence, and the database refuses two Services claiming the same one.
+#
 # ## Technical naming
 #
 # `technical_name` is deterministic and derived from IDs (doc 09 §5.3), but the

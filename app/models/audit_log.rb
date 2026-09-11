@@ -36,6 +36,12 @@ class AuditLog < ApplicationRecord
     network_created: "network.created",
     service_created: "service.created",
     service_updated: "service.updated",
+    # M01-18. Applying a revision to the Swarm is a privileged action with no
+    # human actor: the trail records SYSTEM, the Service, the Operation that
+    # asked for it and the result, so a deploy is answerable without reproducing
+    # it (AGENT_RULES, "Audit").
+    service_deployed: "service.deployed",
+    service_reconcile_blocked: "service.reconcile.blocked",
     cluster_bootstrapped: "cluster.bootstrapped",
     cluster_adopted: "cluster.adopted",
     cluster_bootstrap_failed: "cluster.bootstrap_failed"

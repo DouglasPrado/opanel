@@ -15,10 +15,13 @@ RSpec.describe Service, "technical naming" do
   let(:service) { create(:service, environment: environment, slug: "api") }
 
   describe "deriving the technical name from IDs" do
-    it "constructs a deterministic name from project/environment/service IDs" do
-      # Format: svc_<projectId>_<environmentId>_<serviceId> (doc 08 §5, M01-16 AC3)
-      expected = "svc_#{project.external_id}_#{environment.external_id}_#{service.external_id}"
+    it "constructs a deterministic name from the service ID" do
+      # Format: svc_<serviceId>, where <serviceId> is the ADR-0002 external id
+      # (doc 09 §195; DECISIONS.md 2026-09-11, the shortening arbitration).
+      # `svc_` + `svc_` + 26 ULID characters = 34, inside the Engine's limit of 63.
+      expected = "svc_#{service.external_id}"
       expect(service.technical_name).to eq(expected)
+      expect(service.technical_name.length).to be <= 63
     end
 
     it "does not change when the service's slug changes" do
@@ -85,17 +88,19 @@ RSpec.describe Service, "technical naming" do
       expect(name1).to eq(name2)
     end
 
-    it "uses the opaque IDs, which are collision-proof by construction" do
+    it "uses the opaque ID, which is collision-proof by construction" do
       # ULIDs are unique (AC8), so the derived name is collision-proof.
       # This test documents the property; it does not prove ULIDs (that is
       # ADR-0002's responsibility).
       name = service.technical_name
 
-      # Pattern: svc_<projectId>_<environmentId>_<serviceId> where each ID is prefix_ULID
-      # Example: svc_prj_01HX...._env_01HX...._svc_01HX....
+      # Pattern: svc_<serviceId>, where serviceId is itself prefix_ULID
+      # Example: svc_svc_01HX....
+      # Maximum length: 4 + 4 + 26 = 34 characters, inside the Engine's 63.
       ulid_pattern = '[0-9A-HJKMNP-TV-Z]{26}'
-      pattern = /\Asvc_[a-z]+_#{ulid_pattern}_[a-z]+_#{ulid_pattern}_[a-z]+_#{ulid_pattern}\z/
+      pattern = /\Asvc_[a-z]+_#{ulid_pattern}\z/
       expect(name).to match(pattern)
+      expect(name.length).to be <= 63
     end
   end
 end

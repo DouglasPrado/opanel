@@ -216,6 +216,14 @@ module Opanel
         description: "How often the network reconciler runs a periodic sweep (M01-17)."
       ),
       Key.new(
+        name: "OPANEL_SERVICE_RECONCILE_CADENCE_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "30",
+        description: "How often the Service reconciler runs a periodic sweep (M01-18). The sweep is the " \
+                     "guarantee of correctness; the Operation trigger is only an accelerator (doc 07 §11.2)."
+      ),
+      Key.new(
         name: "OPANEL_WORKER_IDENTITY",
         required_in: [],
         format: :free_text,
@@ -329,6 +337,10 @@ module Opanel
 
     def self.recovery_sweep_queued_threshold
       Time.current.utc - ENV.fetch("OPANEL_RECOVERY_SWEEP_QUEUED_THRESHOLD_SECONDS", "300").to_i.seconds
+    end
+
+    def self.service_reconcile_cadence_seconds
+      ENV.fetch("OPANEL_SERVICE_RECONCILE_CADENCE_SECONDS", "30").to_i
     end
 
     def self.queue_backpressure_high_water_mark

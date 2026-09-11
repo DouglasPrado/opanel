@@ -36,8 +36,10 @@ class SwarmExecutor
   # the list is refused before the daemon is reached (`ExecutorCommand#validate!`).
   OPERATIONS = {
     "inspect_service" => %w[].freeze,
-    "create_service" => %w[name image command args env replicas labels networks].freeze,
-    "update_service_spec" => %w[image command args env replicas labels version].freeze,
+    "create_service" => %w[name image command args env replicas labels networks
+                           resources placement healthcheck update_config].freeze,
+    "update_service_spec" => %w[image command args env replicas labels version
+                                resources placement healthcheck update_config].freeze,
     "remove_service" => %w[].freeze,
     "create_network" => %w[name labels attachable].freeze,
     "inspect_network" => %w[].freeze,
@@ -170,11 +172,16 @@ class SwarmExecutor
   end
 
   def do_remove_service(command)
-    response = client.delete("/services/#{identifier(command.resource_id)}")
-    return ExecutionResult.noop(command, absent: true) if response.not_found?
-    return outcome_for(command, response) unless response.ok?
+    # ADR-0009 §5: find by ownership label first, like create/inspect
+    by_label = find_by_label("/services", command.resource_id)
+    if by_label
+      response = client.delete("/services/#{by_label['ID']}")
+      return ExecutionResult.noop(command, absent: true) if response.not_found?
+      return outcome_for(command, response) unless response.ok?
+      return ExecutionResult.applied(command, ids: [ by_label["ID"] ])
+    end
 
-    ExecutionResult.applied(command, ids: [ command.resource_id ])
+    ExecutionResult.noop(command, absent: true)
   end
 
   def do_create_network(command)
@@ -259,21 +266,112 @@ class SwarmExecutor
   # (stream, three zero bytes, big-endian length) followed by the payload.
   def do_service_logs(command)
     tail = command.payload.fetch("tail", 100).to_i.clamp(1, MAX_LOG_TAIL)
-    response = client.get("/services/#{identifier(command.resource_id)}/logs?stdout=true&stderr=true&tail=#{tail}")
+    # ADR-0009 §5: find by ownership label first
+    by_label = find_by_label("/services", command.resource_id)
+    return ExecutionResult.failed(command, "NOT_FOUND") unless by_label
+
+    response = client.get("/services/#{by_label['ID']}/logs?stdout=true&stderr=true&tail=#{tail}")
     return outcome_for(command, response) unless response.ok?
 
     lines = demultiplex(response.raw)
-    ExecutionResult.applied(command, ids: [ command.resource_id ], lines: lines, line_count: lines.length)
+    ExecutionResult.applied(command, ids: [ by_label["ID"] ], lines: lines, line_count: lines.length)
   end
 
   def do_list_tasks(command)
-    filter = JSON.generate("service" => [ identifier(command.resource_id) ])
+    # ADR-0009 §5: find by ownership label first to get the runtime service ID
+    by_label = find_by_label("/services", command.resource_id)
+    return ExecutionResult.failed(command, "NOT_FOUND") unless by_label
+
+    filter = JSON.generate("service" => [ by_label["ID"] ])
     response = client.get("/tasks?filters=#{CGI.escape(filter)}")
     return outcome_for(command, response) unless response.ok?
 
     tasks = Array(response.body)
-    ExecutionResult.applied(command, ids: tasks.map { |t| t["ID"] }, count: tasks.length,
-      states: tasks.map { |t| t.dig("Status", "State") }.tally)
+    current = current_tasks(tasks, by_label)
+    metadata = { count: tasks.length, current_count: current.length,
+                 states: tasks.map { |t| t.dig("Status", "State") }.tally }
+    code = blocking_code(current)
+    metadata[:blocking_code] = code if code
+
+    ExecutionResult.applied(command, ids: tasks.map { |t| t["ID"] }, **metadata)
+  end
+
+  # `/tasks` answers with **history**, not with the present. Swarm retains
+  # terminated tasks (`task-history-limit`, default 5), so a task that failed
+  # under a spec the operator has already replaced stays in the response
+  # indefinitely. Classifying from that set means a Service whose bad digest was
+  # repaired is reported blocked on the very pass that converged it, and can
+  # never leave that state until history rolls over (review F-1).
+  #
+  # A task describes the service's *current* desired state when it is the
+  # highest revision of its slot. Each slot can have multiple revisions (when a
+  # task fails and is replaced); only the highest revision represents current
+  # work, and terminated tasks are kept in history only up to `task-history-limit`
+  # (default 5). We classify only from current tasks, filtering by slot revision
+  # to exclude historical attempts that the Engine already replaced.
+  SUPERSEDED_DESIRED_STATES = %w[shutdown remove orphaned].freeze
+
+  def current_tasks(tasks, service)
+    # A task is current if within its slot it has the highest Version.Index
+    # (meaning it's not a historical attempt that Swarm kept in task-history),
+    # and if its desired state is not shutdown/remove/orphaned and its image
+    # spec matches the service's desired image.
+    #
+    # When a service is updated to a new image, Swarm creates new tasks with
+    # higher Version.Index in the same slot. Old tasks are kept in history but
+    # have lower indices. Filtering by Slot+HighestVersion removes them, so a
+    # Service whose image was fixed is not reported blocked by the old task.
+    by_slot = {}
+    tasks.each do |task|
+      slot = task["Slot"]
+      next if slot.nil?
+
+      version_index = task.dig("Version", "Index").to_i
+      current = by_slot[slot]
+
+      if current.nil? || version_index > current.dig("Version", "Index").to_i
+        by_slot[slot] = task
+      end
+    end
+
+    # Use the filtered tasks if we found any with Slot; otherwise fall back
+    # to all tasks. (Slot should always be present for service tasks.)
+    current = by_slot.empty? ? tasks : by_slot.values
+    desired_image = service.dig("Spec", "TaskTemplate", "ContainerSpec", "Image")
+
+    current.reject do |task|
+      SUPERSEDED_DESIRED_STATES.include?(task["DesiredState"].to_s.downcase) ||
+        superseded_spec?(task, desired_image)
+    end
+  end
+
+  def superseded_spec?(task, desired_image)
+    image = task.dig("Spec", "ContainerSpec", "Image")
+    return false if image.nil? || desired_image.nil?
+
+    image != desired_image
+  end
+
+  # M01-18 AC9. The daemon accepts a service it cannot schedule and a digest it
+  # cannot resolve — both answer 201 — so the only observable cause is the task.
+  # What crosses the boundary is a **classification**, never the daemon's text:
+  # `safe_metadata` reaches the forensic log line, and `ExecutionResult` says in
+  # its own words that it carries no message verbatim.
+  TASK_BLOCKERS = {
+    "PLACEMENT_IMPOSSIBLE" => /no suitable node|scheduling constraints/i,
+    "IMAGE_UNAVAILABLE" => /failed to resolve reference|no such image|manifest unknown|not found/i
+  }.freeze
+
+  def blocking_code(tasks)
+    tasks.each do |task|
+      error = task.dig("Status", "Err").to_s
+      next if error.empty?
+
+      match = TASK_BLOCKERS.find { |_code, pattern| error.match?(pattern) }
+      return match.first if match
+    end
+
+    nil
   end
 
   # ---- the guard rails -----------------------------------------------------
@@ -438,12 +536,40 @@ class SwarmExecutor
       "TaskTemplate" => {
         "ContainerSpec" => {
           "Image" => p.fetch("image"),
-          "Command" => p["command"], "Args" => p["args"], "Env" => p["env"]
+          "Command" => p["command"], "Args" => p["args"], "Env" => p["env"],
+          "HealthCheck" => p["healthcheck"]
         }.compact,
-        "Networks" => Array(p["networks"]).map { |n| { "Target" => n } }
-      },
-      "Mode" => { "Replicated" => { "Replicas" => p.fetch("replicas", 1).to_i } }
-    }
+        "Networks" => Array(p["networks"]).map { |n| { "Target" => n } },
+        "Resources" => resources_spec(p["resources"]),
+        "Placement" => placement_spec(p["placement"])
+      }.compact,
+      "Mode" => { "Replicated" => { "Replicas" => p.fetch("replicas", 1).to_i } },
+      "UpdateConfig" => p["update_config"]
+    }.compact
+  end
+
+  # M01-18 §4. The caller sends Engine units — nanocpus and bytes — because the
+  # conversion from the product's units is a domain decision, and a boundary
+  # that silently rescales a number is a boundary that can be wrong by 1000.
+  def resources_spec(resources)
+    return nil if resources.blank?
+
+    limits = {
+      "NanoCPUs" => resources["cpu_limit_nano"], "MemoryBytes" => resources["memory_limit_bytes"]
+    }.compact
+    reservations = {
+      "NanoCPUs" => resources["cpu_reservation_nano"],
+      "MemoryBytes" => resources["memory_reservation_bytes"]
+    }.compact
+
+    spec = { "Limits" => limits.presence, "Reservations" => reservations.presence }.compact
+    spec.presence
+  end
+
+  def placement_spec(constraints)
+    return nil if Array(constraints).empty?
+
+    { "Constraints" => Array(constraints) }
   end
 
   # The desired spec is the current one with the fields the command carries
@@ -456,8 +582,12 @@ class SwarmExecutor
     container["Command"] = p["command"] if p.key?("command")
     container["Args"] = p["args"] if p.key?("args")
     container["Env"] = p["env"] if p.key?("env")
+    container["HealthCheck"] = p["healthcheck"] if p.key?("healthcheck")
     spec["Labels"] = (spec["Labels"] || {}).merge(p["labels"]) if p.key?("labels")
     spec["Mode"] = { "Replicated" => { "Replicas" => p["replicas"].to_i } } if p.key?("replicas")
+    spec["TaskTemplate"]["Resources"] = resources_spec(p["resources"]) if p.key?("resources")
+    spec["TaskTemplate"]["Placement"] = placement_spec(p["placement"]) if p.key?("placement")
+    spec["UpdateConfig"] = p["update_config"] if p.key?("update_config")
     spec
   end
 

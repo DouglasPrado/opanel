@@ -319,8 +319,20 @@ logger: logger).execute(command("create_service", image: "img"))
     end
 
     it "treats removing an absent service as converged (AC8)" do
-      result = executor("DELETE /services/svc_1" => response(404,
-"message" => "no such service")).execute(command("remove_service"))
+      # ADR-0009 §5: find_by_label is called first, and returns nil when the service does not exist
+      result = executor("GET /services?" => response(200, [])).execute(command("remove_service"))
+
+      expect(result).to be_noop
+      expect(result.safe_metadata[:absent]).to be(true)
+    end
+
+    it "treats removing a service that no longer exists in the Swarm as converged" do
+      # If found by label but deleted via DELETE, also converged
+      # ADR-0009 §5: find_by_label returns the service, but DELETE returns 404
+      service_response = response(200,
+[ { "ID" => "s1", "Spec" => { "Labels" => { "com.opanel.service_id" => "svc_1" } } } ])
+      result = executor("GET /services?" => service_response,
+        "DELETE /services/s1" => response(404)).execute(command("remove_service"))
 
       expect(result).to be_noop
       expect(result.safe_metadata[:absent]).to be(true)
@@ -382,6 +394,168 @@ logger: logger).execute(command("update_service_spec", replicas: 3, version: 7))
       body = client.calls.find { |m, _, _| m == "POST" }.last
       expect(body.dig("TaskTemplate", "ContainerSpec", "Image")).to eq("img")
       expect(body["Name"]).to eq("web")
+    end
+  end
+
+  # M01-18, DECISIONS.md item (c): `service_logs` and `list_tasks` used to
+  # interpolate `resource_id` straight into the Engine path, so the external
+  # `svc_…` their own contract mandates (ADR-0009 §5) reached `/services/svc_…`
+  # and 404'd. They now find the runtime id by ownership label, like their
+  # create and inspect twins. M01-18 is `list_tasks`'s first production caller.
+  describe "addressing by ownership label (ADR-0009 §5)" do
+    OWNED = [ { "ID" => "s1", "Spec" => { "Labels" => { "com.opanel.service_id" => "svc_1" } } } ].freeze
+
+    def log_frame(text)
+      ([ 1, 0, 0, 0 ].pack("C4") + [ text.bytesize ].pack("N") + text).b
+    end
+
+    describe "service_logs" do
+      it "reads the logs of the runtime id the label lookup returned" do
+        client = ScriptedClient.new("GET /services?" => response(200, OWNED),
+          "GET /services/s1/logs" => response(200, nil, raw: log_frame("hello-from-lab\n")))
+        result = described_class.new(client: client, engine: engine, logger: logger)
+          .execute(command("service_logs", tail: 5))
+
+        expect(result).to be_applied
+        expect(result.safe_metadata[:lines]).to include("hello-from-lab")
+        expect(client.calls.map { |_, path, _| path }).to include(a_string_starting_with("/services/s1/logs"))
+      end
+
+      it "answers NOT_FOUND when no service carries the label, and asks the daemon for no path" do
+        client = ScriptedClient.new("GET /services?" => response(200, []))
+        result = described_class.new(client: client, engine: engine, logger: logger)
+          .execute(command("service_logs"))
+
+        expect(result).to be_failed
+        expect(result.error_code).to eq("NOT_FOUND")
+        expect(client.calls.map { |_, path, _| path }).to all(start_with("/services?"))
+      end
+    end
+
+    describe "list_tasks" do
+      it "filters tasks by the runtime id the label lookup returned, never by the external id" do
+        client = ScriptedClient.new("GET /services?" => response(200, OWNED),
+          "GET /tasks?" => response(200, [ { "ID" => "t1", "Status" => { "State" => "running" } } ]))
+        result = described_class.new(client: client, engine: engine, logger: logger)
+          .execute(command("list_tasks"))
+
+        expect(result).to be_applied
+        expect(result.safe_metadata[:count]).to eq(1)
+        filter = CGI.unescape(client.calls.last[1])
+        expect(filter).to include("s1")
+        expect(filter).not_to include("svc_1")
+      end
+
+      it "answers NOT_FOUND when no service carries the label" do
+        client = ScriptedClient.new("GET /services?" => response(200, []))
+        result = described_class.new(client: client, engine: engine, logger: logger)
+          .execute(command("list_tasks"))
+
+        expect(result).to be_failed
+        expect(result.error_code).to eq("NOT_FOUND")
+      end
+    end
+
+    # M01-18 AC9. The daemon accepts a create it cannot schedule (verified
+    # against Engine 29.7.2: an unsatisfiable constraint and a nonexistent
+    # digest both answer 201), so "BLOCKED with an observable cause" can only
+    # come from the tasks. The executor classifies; it never carries the
+    # daemon's message, because `ExecutionResult` says that bag holds no body.
+    describe "the blocking classification of tasks" do
+      def tasks_answering(state, err)
+        ScriptedClient.new("GET /services?" => response(200, OWNED),
+          "GET /tasks?" => response(200, [ { "ID" => "t1", "Status" => { "State" => state, "Err" => err } } ]))
+      end
+
+      it "classifies an unschedulable task as PLACEMENT_IMPOSSIBLE" do
+        client = tasks_answering("pending", "no suitable node (scheduling constraints not satisfied on 1 node)")
+        result = described_class.new(client: client, engine: engine, logger: logger).execute(command("list_tasks"))
+
+        expect(result.safe_metadata[:blocking_code]).to eq("PLACEMENT_IMPOSSIBLE")
+      end
+
+      it "classifies an unresolvable image as IMAGE_UNAVAILABLE" do
+        client = tasks_answering("rejected",
+          %(failed to resolve reference "docker.io/library/busybox@sha256:0000": not found))
+        result = described_class.new(client: client, engine: engine, logger: logger).execute(command("list_tasks"))
+
+        expect(result.safe_metadata[:blocking_code]).to eq("IMAGE_UNAVAILABLE")
+      end
+
+      it "carries no blocking code when the tasks are running" do
+        client = tasks_answering("running", nil)
+        result = described_class.new(client: client, engine: engine, logger: logger).execute(command("list_tasks"))
+
+        expect(result.safe_metadata).not_to have_key(:blocking_code)
+      end
+
+      it "never carries the daemon's own message into the metadata bag" do
+        planted = "no suitable node (scheduling constraints not satisfied on 1 node) do-not-log-me"
+        client = tasks_answering("pending", planted)
+        result = described_class.new(client: client, engine: engine, logger: logger).execute(command("list_tasks"))
+
+        expect(result.safe_metadata.to_s).not_to include("do-not-log-me")
+      end
+    end
+  end
+
+  # M01-18 §4 — the Service Spec the reconciler needs. Four typed keys, no
+  # free-form passthrough: what is absent from the allowlist cannot be sent.
+  describe "the Service Spec fields M01-18 adds" do
+    def created_body(**payload)
+      client = ScriptedClient.new("GET /services?" => response(200, []),
+        "POST /services/create" => response(201, "ID" => "s1"), "GET /services/s1" => response(200, SERVICE))
+      described_class.new(client: client, engine: engine, logger: logger)
+        .execute(command("create_service", image: "img", **payload))
+      client.calls.find { |m, _, _| m == "POST" }.last
+    end
+
+    it "translates resources into NanoCPUs and MemoryBytes under Limits and Reservations" do
+      body = created_body(resources: { "cpu_limit_nano" => 2_000_000_00, "memory_limit_bytes" => 536_870_912,
+        "cpu_reservation_nano" => 100_000_000, "memory_reservation_bytes" => 268_435_456 })
+
+      expect(body.dig("TaskTemplate", "Resources", "Limits"))
+        .to eq("NanoCPUs" => 2_000_000_00, "MemoryBytes" => 536_870_912)
+      expect(body.dig("TaskTemplate", "Resources", "Reservations"))
+        .to eq("NanoCPUs" => 100_000_000, "MemoryBytes" => 268_435_456)
+    end
+
+    it "translates placement constraints" do
+      body = created_body(placement: [ "node.role==worker" ])
+
+      expect(body.dig("TaskTemplate", "Placement", "Constraints")).to eq([ "node.role==worker" ])
+    end
+
+    it "translates a healthcheck" do
+      body = created_body(healthcheck: { "Test" => [ "CMD", "true" ], "Interval" => 10_000_000_000 })
+
+      expect(body.dig("TaskTemplate", "ContainerSpec", "HealthCheck", "Test")).to eq([ "CMD", "true" ])
+    end
+
+    it "carries the update policy the caller sends and never a rollback action of its own" do
+      body = created_body(update_config: { "Parallelism" => 1, "FailureAction" => "pause" })
+
+      expect(body["UpdateConfig"]).to eq("Parallelism" => 1, "FailureAction" => "pause")
+    end
+
+    it "never publishes a port, mounts a volume or grants a privilege (AC12)" do
+      body = created_body
+
+      expect(body).not_to have_key("EndpointSpec")
+      expect(body.dig("TaskTemplate", "ContainerSpec")).not_to have_key("Mounts")
+      expect(body.dig("TaskTemplate", "ContainerSpec")).not_to have_key("Privileged")
+      expect(JSON.generate(body)).not_to include("docker.sock")
+    end
+
+    it "refuses a published port, a mount and a privilege before touching the Engine" do
+      client = ScriptedClient.new
+      ex = described_class.new(client: client, engine: engine, logger: logger)
+
+      %i[ports mounts privileged].each do |key|
+        expect { ex.execute(command("create_service", image: "img", key => true)) }
+          .to raise_error(ExecutorCommand::Invalid, /#{key}/)
+      end
+      expect(client.calls).to be_empty
     end
   end
 

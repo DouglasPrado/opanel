@@ -43,29 +43,30 @@ RSpec.describe "the Swarm Executor, against a real Engine", :swarm, :integration
       expect(created.observed_runtime_version).to be_a(Integer)
       engine_id = created.runtime_resource_ids.first
 
-      inspected = executor.execute(command("inspect_service", id: engine_id))
+      inspected = executor.execute(command("inspect_service", id: resource_id))
       expect(inspected).to be_applied
-      expect(inspected.safe_metadata[:name]).to eq(service_name)
+      # ADR-0009 §2: the name is on the observation, not in the metadata bag.
+      expect(inspected.observed.name).to eq(service_name)
       version = inspected.observed_runtime_version
 
       # The revision applied with the version just observed: accepted, and the
       # observed version moves.
-      updated = executor.execute(command("update_service_spec", id: engine_id, replicas: 2, version: version))
+      updated = executor.execute(command("update_service_spec", id: resource_id, replicas: 2, version: version))
       expect(updated).to be_applied
       expect(updated.observed_runtime_version).to be > version
 
       # The same revision applied with the version that is now stale: CONFLICT,
       # and the runtime is untouched. This is the case the CLI could never give.
-      stale = executor.execute(command("update_service_spec", id: engine_id, replicas: 3, version: version))
+      stale = executor.execute(command("update_service_spec", id: resource_id, replicas: 3, version: version))
       expect(stale).to be_conflict
-      expect(executor.execute(command("inspect_service", id: engine_id)).observed_runtime_version)
+      expect(executor.execute(command("inspect_service", id: resource_id)).observed_runtime_version)
         .to eq(updated.observed_runtime_version)
 
-      removed = executor.execute(command("remove_service", id: engine_id))
+      removed = executor.execute(command("remove_service", id: resource_id))
       expect(removed).to be_applied
 
       # AC8 — already gone is converged.
-      again = executor.execute(command("remove_service", id: engine_id))
+      again = executor.execute(command("remove_service", id: resource_id))
       expect(again).to be_noop
       expect(again.safe_metadata[:absent]).to be(true)
     end
@@ -86,7 +87,7 @@ RSpec.describe "the Swarm Executor, against a real Engine", :swarm, :integration
     it "lists the service's tasks with their states" do
       created = create_service
 
-      tasks = executor.execute(command("list_tasks", id: created.runtime_resource_ids.first))
+      tasks = executor.execute(command("list_tasks", id: resource_id))
 
       expect(tasks).to be_applied
       expect(tasks.safe_metadata[:count]).to be >= 1
@@ -95,11 +96,10 @@ RSpec.describe "the Swarm Executor, against a real Engine", :swarm, :integration
 
     it "reads the service's logs, bounded" do
       created = create_service(command: [ "sh", "-c", "echo hello-from-lab; sleep 3600" ])
-      id = created.runtime_resource_ids.first
 
       lines = nil
       10.times do
-        result = executor.execute(command("service_logs", id: id, tail: 5))
+        result = executor.execute(command("service_logs", id: resource_id, tail: 5))
         lines = result.safe_metadata[:lines]
         break if lines&.any? { |l| l.include?("hello-from-lab") }
 
@@ -111,7 +111,7 @@ RSpec.describe "the Swarm Executor, against a real Engine", :swarm, :integration
   end
 
   describe "a network" do
-    let(:network_id) { "net_#{Opanel::Identifier.generate}" }
+    let(:environment_id) { "env_#{Opanel::Identifier.generate}" }
     let(:network_name) { lab_name("net") }
 
     it "creates, inspects, adopts on a second create, and removes idempotently" do
@@ -123,25 +123,27 @@ RSpec.describe "the Swarm Executor, against a real Engine", :swarm, :integration
       labels = {
         lab_label => "true",
         # Ownership labels: at minimum, environment_id to identify the network.
-        "com.opanel.environment_id" => network_id
+        # ADR-0009 §5: external form env_<environmentId>
+        "com.opanel.environment_id" => environment_id
       }
 
-      created = executor.execute(command("create_network", id: network_id, resource_type: "Network",
+      created = executor.execute(command("create_network", id: environment_id, resource_type: "Network",
         name: network_name, labels: labels))
       expect(created).to be_applied
 
-      inspected = executor.execute(command("inspect_network", id: created.runtime_resource_ids.first,
+      inspected = executor.execute(command("inspect_network", id: environment_id,
 resource_type: "Network"))
       expect(inspected).to be_applied
-      expect(inspected.safe_metadata[:driver]).to eq("overlay")
+      # ADR-0009 §2: driver is in observed.attributes, under the network allowlist.
+      expect(inspected.observed.attributes["driver"]).to eq("overlay")
 
-      adopted = executor.execute(command("create_network", id: network_id, resource_type: "Network",
+      adopted = executor.execute(command("create_network", id: environment_id, resource_type: "Network",
         name: "#{network_name}-again", labels: labels))
       expect(adopted).to be_noop
 
-      expect(executor.execute(command("remove_network", id: created.runtime_resource_ids.first,
+      expect(executor.execute(command("remove_network", id: environment_id,
 resource_type: "Network"))).to be_applied
-      expect(executor.execute(command("remove_network", id: created.runtime_resource_ids.first,
+      expect(executor.execute(command("remove_network", id: environment_id,
 resource_type: "Network"))).to be_noop
     end
   end
@@ -154,7 +156,8 @@ resource_type: "Network"))).to be_noop
 
       node = executor.execute(command("inspect_node", id: listed.runtime_resource_ids.first, resource_type: "Node"))
       expect(node).to be_applied
-      expect(node.safe_metadata[:role]).to eq("manager")
+      # ADR-0009 §2: role is in observed.attributes, under the node allowlist.
+      expect(node.observed.attributes["role"]).to eq("manager")
       expect(node.observed_runtime_version).to be_a(Integer)
     end
   end
