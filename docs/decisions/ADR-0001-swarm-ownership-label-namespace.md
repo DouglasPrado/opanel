@@ -9,7 +9,7 @@ accepted-by: "repository owner"
 
 # ADR-0001 — Namespace das labels de ownership no Swarm
 
-**Status:** `Proposed` — exige aceitação humana **antes** da Story `M01-16-swarm-ownership-labels`.
+**Status:** `Accepted` — aceito em 2026-09-08 pelo dono do repositório.
 
 ## Context
 

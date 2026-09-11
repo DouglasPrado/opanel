@@ -23,8 +23,16 @@ RSpec.describe "the Swarm Executor, against a real Engine", :swarm, :integration
 
   def create_service(**extra)
     created_resources << [ "service", service_name ]
+    # Build ownership labels for the test service.
+    # For adoption testing (AC7), the second create must pass the same labels
+    # so find_by_label can locate the existing resource.
+    labels = {
+      lab_label => "true",
+      # Ownership labels: at minimum, service_id to identify the resource.
+      "com.opanel.service_id" => resource_id
+    }
     executor.execute(command("create_service", name: service_name, image: lab_image,
-      command: %w[sleep 3600], replicas: 1, labels: { lab_label => "true" }, **extra))
+      command: %w[sleep 3600], replicas: 1, labels: labels, **extra))
   end
 
   describe "a service, end to end (AC4, AC5, AC7, AC8)" do
@@ -109,8 +117,17 @@ RSpec.describe "the Swarm Executor, against a real Engine", :swarm, :integration
     it "creates, inspects, adopts on a second create, and removes idempotently" do
       created_resources << [ "network", network_name ]
 
+      # Build ownership labels for the test network.
+      # For adoption testing (AC7), the second create must pass the same labels
+      # so find_by_label can locate the existing network.
+      labels = {
+        lab_label => "true",
+        # Ownership labels: at minimum, environment_id to identify the network.
+        "com.opanel.environment_id" => network_id
+      }
+
       created = executor.execute(command("create_network", id: network_id, resource_type: "Network",
-        name: network_name, labels: { lab_label => "true" }))
+        name: network_name, labels: labels))
       expect(created).to be_applied
 
       inspected = executor.execute(command("inspect_network", id: created.runtime_resource_ids.first,
@@ -119,7 +136,7 @@ resource_type: "Network"))
       expect(inspected.safe_metadata[:driver]).to eq("overlay")
 
       adopted = executor.execute(command("create_network", id: network_id, resource_type: "Network",
-        name: "#{network_name}-again", labels: { lab_label => "true" }))
+        name: "#{network_name}-again", labels: labels))
       expect(adopted).to be_noop
 
       expect(executor.execute(command("remove_network", id: created.runtime_resource_ids.first,

@@ -125,4 +125,12 @@ class Service < ApplicationRecord
   def can_transition_to?(target)
     TRANSITIONS.fetch(status, []).include?(target)
   end
+
+  # Derive a deterministic technical name from opaque IDs (doc 09 §5.3, AC3).
+  # The name is stable; renaming a parent Project, Environment or Service does not
+  # change it. The product never uses this as a primary identifier — it is metadata
+  # for the Swarm Service resource.
+  def technical_name
+    Opanel::Ownership.technical_name_for(self)
+  end
 end

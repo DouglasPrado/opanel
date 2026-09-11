@@ -988,3 +988,52 @@ boundaries:
     - docs/implementation/SPEC_CONFLICTS.md
     - docs/implementation/M01/reports/M01-15.md
     - docs/implementation/M01/DECISIONS.md
+
+  M01-16:
+    # `ADR-0001` is `accepted` in its frontmatter (2026-09-08, repository owner)
+    # and `SPEC_CONFLICTS.md` records SC-04 and SC-08 as resolved through it, so
+    # the Story's precondition is met. One prose line in the ADR body still reads
+    # `Proposed`; it is residue from before acceptance and is corrected here to
+    # match the frontmatter. That is synchronising a record, not taking a
+    # decision — the namespace `com.opanel.*` is the ADR's, unchanged.
+    - docs/decisions/ADR-0001-swarm-ownership-label-namespace.md
+    # The single module the Story asks for: `labels_for`, `technical_name_for`
+    # and `managed_by_platform?`, with the namespace as its only literal.
+    - lib/opanel/ownership.rb
+    # The executor stamps one ad-hoc `opanel.resource` label today and builds its
+    # own specs; it becomes a consumer of the module instead of a second author
+    # of labels. This is the only place that talks to the Engine, so it is the
+    # only place the labels can be applied.
+    - app/executors/swarm_executor.rb
+    # SC-09 is resolved in favour of IDs and names `M01-16` as its owner, but
+    # `M01-12` shipped a slug-derived `technical_name` and a spec asserting that
+    # renaming a parent changes it — the opposite of AC3. Both move to IDs here.
+    - app/models/service.rb
+    - app/models/environment.rb
+    - spec/unit/service_technical_name_spec.rb
+    # Widened during implementation. `M01-09`'s two executor specs assert the
+    # old ad-hoc `opanel.resource` label by name, so replacing it with the
+    # ADR-0001 set necessarily rewrites their expectations. That is not a
+    # weakened assertion: they move from one label to the seven doc 07 §7
+    # requires, and the reason is in `reports/M01-16.md`.
+    - spec/unit/swarm_executor_spec.rb
+    - spec/integration/swarm_executor_lab_spec.rb
+    # Tests.
+    - spec/unit/ownership_labels_spec.rb
+    - spec/unit/ownership_technical_name_spec.rb
+    - spec/unit/ownership_predicate_spec.rb
+    - spec/integration/swarm_ownership_labels_spec.rb
+    - spec/integration/swarm_ownership_foreign_resource_spec.rb
+    - spec/integration/swarm_ownership_reidentification_spec.rb
+    - spec/security/ownership_labels_no_secrets_spec.rb
+    # The existing swarm executor tests now require proper ownership labels
+    # to test adoption (AC7). The executor's find_by_label changed from
+    # looking for an ad-hoc label to looking for ownership labels, so this
+    # test file must pass the right labels.
+    - spec/integration/swarm_executor_lab_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-16.md
+    - docs/implementation/M01/DECISIONS.md

@@ -121,4 +121,11 @@ class Environment < ApplicationRecord
   def can_transition_to?(target)
     TRANSITIONS.fetch(status, []).include?(target)
   end
+
+  # Derive a deterministic technical name for the overlay network from opaque IDs.
+  # The name is stable; renaming a parent Project or Environment does not change it.
+  # Pattern: net_<projectId>_<environmentId> (doc 08 §5).
+  def technical_name
+    Opanel::Ownership.technical_name_for(self)
+  end
 end

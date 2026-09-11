@@ -32,11 +32,6 @@ require "stringio"
 # - A lost answer to a mutation is reported as unknown, never as failure, and
 #   `retry_after_observing` is the only sanctioned way to try again (AC6).
 class SwarmExecutor
-  # The label that makes a resource findable after a restart. The full ownership
-  # label set is `M01-16`; this is the minimum that makes idempotent create
-  # possible today.
-  RESOURCE_LABEL = "opanel.resource"
-
   # The whole allowlist: operation name → payload keys it accepts. A key outside
   # the list is refused before the daemon is reached (`ExecutorCommand#validate!`).
   OPERATIONS = {
@@ -283,12 +278,35 @@ class SwarmExecutor
     text
   end
 
-  # Through `identifier` like every other id, even though the value is JSON- and
-  # URL-encoded here and could not escape the query string anyway: one explicit
-  # check at every use is easier to prove than "safe by encoding" at one of them
-  # (review L-1).
+  # Find a resource by its ownership labels. The caller passes a resource_id
+  # (in ULID or external format), and we look for it in the appropriate ownership label
+  # (service_id or environment_id). The label stores the external format (e.g.,
+  # "svc_01M..."), so we must normalize the resource_id to external format to search.
+  # This is part of idempotent create: if the resource exists with our labels,
+  # adopt it rather than failing (doc 07 §6.2, AC7).
   def find_by_label(collection, resource_id)
-    filter = JSON.generate("label" => [ "#{RESOURCE_LABEL}=#{identifier(resource_id)}" ])
+    # Determine which label key to search based on collection type.
+    # Services are identified by com.opanel.service_id, Networks by environment_id.
+    label_key = collection == "/services" ? "service_id" : "environment_id"
+    label_name = "#{Opanel::Ownership::NAMESPACE}.#{label_key}"
+
+    # Normalize resource_id to external format. It may arrive as either a ULID
+    # or already in external format (e.g., "svc_01M..."). If it contains an underscore,
+    # it's probably already prefixed, so use it directly. Otherwise, try to detect
+    # the type and convert it.
+    validated_id = identifier(resource_id)
+
+    # If the resource_id contains an underscore, it's likely already in external
+    # format (prefix_ulid). Use it directly without conversion.
+    if validated_id.include?("_")
+      external_id = validated_id
+    else
+      # It's a ULID. Determine the type and convert based on collection type.
+      type = collection == "/services" ? :service : :environment
+      external_id = Opanel::Identifier.external(type, validated_id)
+    end
+
+    filter = JSON.generate("label" => [ "#{label_name}=#{external_id}" ])
     response = client.get("#{collection}?filters=#{CGI.escape(filter)}")
     return nil unless response.ok?
 
@@ -301,7 +319,9 @@ class SwarmExecutor
     p = command.payload
     {
       "Name" => p.fetch("name", command.resource_id),
-      "Labels" => (p["labels"] || {}).merge(RESOURCE_LABEL => command.resource_id),
+      # Labels come from the application layer via the payload, computed using
+      # Opanel::Ownership.labels_for(service). The executor is a consumer, not an author.
+      "Labels" => p["labels"] || {},
       "TaskTemplate" => {
         "ContainerSpec" => {
           "Image" => p.fetch("image"),
@@ -334,7 +354,9 @@ class SwarmExecutor
       "Name" => p.fetch("name", command.resource_id),
       "Driver" => "overlay",
       "Attachable" => p.fetch("attachable", true),
-      "Labels" => (p["labels"] || {}).merge(RESOURCE_LABEL => command.resource_id)
+      # Labels come from the application layer via the payload, computed using
+      # Opanel::Ownership.labels_for(environment). The executor is a consumer, not an author.
+      "Labels" => p["labels"] || {}
     }
   end
 
