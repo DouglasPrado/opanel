@@ -1,6 +1,6 @@
 {
   "milestone": "M01",
-  "status": "blocked",
+  "status": "implementing",
   "reviewAttempt": 0,
   "fixAttempt": 0,
   "maxReviewAttempts": 3,
@@ -11,8 +11,8 @@
   "highCount": null,
   "mediumCount": null,
   "lowCount": null,
-  "lastError": "ARBITER_BLOCK — M01-17 executor-observation contract needs an ADR (DECISIONS.md, 2026-09-11)",
-  "blockedReason": "ARBITER_BLOCK_NEEDS_ADR — M01-17 executor-observation contract needs an ADR (DECISIONS.md, 2026-09-11)",
+  "lastError": null,
+  "blockedReason": null,
   "acceptedAt": null,
-  "updatedAt": "2026-09-11T08:05:14Z"
+  "updatedAt": "2026-09-11T08:36:50Z"
 }

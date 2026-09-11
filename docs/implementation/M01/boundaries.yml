@@ -1056,6 +1056,22 @@ boundaries:
     - app/commands/create_environment.rb
     - app/queries/network_for_environment.rb
     - app/reconcilers/network_reconciler.rb
+    # ADR-0009 decided the contract this Story was blocked on: the executor
+    # returns observed runtime state in a dedicated `observed` field, as a
+    # normalized `Opanel::RuntimeObservation`, and addresses owned resources by
+    # ownership label. The decision was written first, by an independent agent,
+    # and names these files in its §Consequences; the boundary follows that
+    # record. `lib/opanel/network_diff.rb` was declared by no Story at all,
+    # although M01-17 is its only consumer.
+    - app/executors/execution_result.rb
+    - app/executors/swarm_executor.rb
+    - lib/opanel/runtime_observation.rb
+    - lib/opanel/ownership.rb
+    - lib/opanel/network_diff.rb
+    - spec/contracts/executor_contract_spec.rb
+    - spec/unit/swarm_executor_spec.rb
+    - spec/integration/swarm_ownership_labels_spec.rb
+    - docs/decisions/pending-documentation-updates.md
     # ADR-0002 §3: both new entities register an identifier prefix.
     - lib/opanel/identifier.rb
     - spec/unit/identifier_spec.rb

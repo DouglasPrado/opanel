@@ -337,19 +337,15 @@
     {
       "id": "M01-17",
       "file": "stories/M01-17-environment-network-reconciler.md",
-      "status": "blocked",
+      "status": "pending",
       "dependsOn": [
         "M01-14",
         "M01-15",
         "M01-16"
       ],
-      "attempts": 4,
+      "attempts": 2,
       "required": true,
-      "reason": "Fourth and last attempt, granted by the arbiter in a fresh context under ADR-0007 (DECISIONS.md, 2026-09-11, verdict FIX). tasks.sh caps automatic attempts at three and has no command for an arbitrated raise, so the counter is written here rather than reset. Bounded to three items: one expression in the reconciler, the verifying double that hid it, and a report that ticked six criteria on evidence that failed. If any of the five Swarm examples is still red, M01-17 returns as a BLOCK candidate.",
-      "blockedReason": {
-        "qualifier": "BLOCKED_FOR_PRODUCT_DECISION",
-        "diagnosis": "Arbiter BLOCK of 2026-09-11 (docs/implementation/M01/DECISIONS.md, last entry). The reconciler runs to completion and creates nothing on the daemon; the five Swarm examples proving AC1, AC2, AC3, AC4, AC5, AC6, AC8 and AC11 are red. Three causes, all on the read path: network_reconciler.rb:126,128 read result.safe_metadata.dig(:network_data), a key ExecutionResult has never carried, so the observed actual state is nil on every path; swarm_executor.rb:170 addresses the network as GET /networks/<environment ULID>, which is neither a Docker network id nor its name, so the inspect 404s whatever the daemon holds; and lib/opanel/ownership.rb:119 reads dig('Spec','Labels'), the Swarm *service* shape, while GET /networks/{id} returns Labels at the top level — so managed_by_platform? answers false for every network the platform itself created, which is the gate that would mark READY and advance applied_revision. The smallest change that closes this is not an edit but a new contract across the privileged boundary: ExecutionResult has no field for an observed resource body, and safe_metadata is the forensic log bag, which by its own contract never carries one. That is a contract change between modules and needs an ADR -- how the Swarm Executor returns an observed resource body to a reconciler. Owner decision required. M01-18 through M01-23 all depend on M01-17 and do not start."
-      }
+      "reason": "Reopened by review-state.sh adr-written on ADR-0009-executor-observed-runtime-state.md, which records the executor-observation contract the arbiter BLOCK of 2026-09-11 named as missing. Four rounds ran before that contract existed (attempts 1-4, the fourth an arbitrated raise); all four converged on a read path the ADR has now decided. The arbiter of 2026-09-11 (DECISIONS.md, entry 'M01/M01-17 - attempts', verdict FIX) set this counter to 2 rather than resetting it: tasks.sh refuses at >= 3, so one tasks.sh attempt call yields 3 and the loop's own guard re-arms the instant this round ends. If the five lab examples stay red, M01-17 returns as a BLOCK candidate, not another raise."
     },
     {
       "id": "M01-18",
