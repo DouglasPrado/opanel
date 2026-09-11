@@ -171,7 +171,15 @@ while :; do
     short_runs=$((short_runs + 1))
     say "session did no work (${elapsed}s < ${MIN_SESSION_SECONDS}s); $short_runs in a row"
     if [ "$short_runs" -ge "$MAX_SHORT_RUNS" ]; then
-      say "stopping: $MAX_SHORT_RUNS sessions in a row did nothing. This is a broken setup, not a long run — read $RUN_LOG."
+      # Say which of the two it is. The first version called every fast-exit
+      # streak "a broken setup", and the streak it actually met was an account
+      # usage limit — the run was fine, the quota was not, and the log said to go
+      # fix an installation that had nothing wrong with it.
+      if grep -qi "session limit\|usage limit\|rate limit" "$RUN_LOG" 2>/dev/null; then
+        say "stopping: the account hit its usage limit. Nothing here is broken — rerun bin/autopilot once the quota resets; the chain picks up from what is recorded."
+      else
+        say "stopping: $MAX_SHORT_RUNS sessions in a row did nothing and the log does not name a usage limit. Read $RUN_LOG before rerunning."
+      fi
       break
     fi
     sleep 30

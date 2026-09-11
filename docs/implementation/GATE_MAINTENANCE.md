@@ -106,3 +106,30 @@ Aconteceu em 2026-09-10. A saída foi remover o `.backlog-active` à mão.
 
 O arquivo deveria registrar o PID (ou o session id) do dono, e o hook sair
 silenciosamente quando quem para não é ele.
+
+### GM-07 — gates empilham quando um demora (aberto)
+
+Quando um `bin/gate local` demora, a sessão lança outro por cima. Em 2026-09-10
+houve três `bin/gate local --story M01-11` simultâneos disputando o mesmo banco.
+O watchdog do `bin/autopilot` só pega sessão **parada**, não sessão lenta.
+
+Precisa de trava por story — um lockfile em `tmp/gate/` que o segundo gate
+respeite em vez de concorrer.
+
+### GM-08 — a rodada 2 da review não sobrescreve o arquivo (aberto)
+
+Na `M01-10` a rodada 2 gravou `C=0 H=0` no `tasks.json`, mas `review/M01-10.md`
+continuou com a rodada 1 (`COUNTS 1 2 1 1`, mtime 11:21). Os dois discordaram, e
+uma verificação posterior releu o arquivo e reabriu a story já commitada.
+
+O `tasks.sh` recusa `done` sem review limpa e está certo — o artefato é a
+evidência. O defeito é a rodada de correção não persistir o que produziu.
+
+Neste caso a reabertura foi útil por acaso: o reviewer achou um defeito real
+(`466cf7a`, o job de observação não carregava). Não é argumento para manter.
+
+### GM-06 — resolvido em 2026-09-10
+
+`.backlog-active` agora carrega o session id do dono na segunda linha, e
+`stop-gate.sh` sai em silêncio quando quem para não é ele. Provado nos dois
+sentidos. As skills gravam o dono ao abrir o run.

@@ -25,6 +25,22 @@ STATE_SH="$PLUGIN_ROOT/scripts/review-state.sh"
 MDIR="$(head -n1 "$ACTIVE" | tr -d '[:space:]')"
 case "$MDIR" in /*) ;; *) MDIR="$ROOT/$MDIR" ;; esac
 
+# --- whose run is this? -----------------------------------------------------
+# Line 2 of .backlog-active is the session id of the run's owner. A session that
+# is not the owner is a bystander in the same repository, and driving it through
+# the loop is worse than useless: on 2026-09-10 an interactive session was told
+# "Story M01-11 is still open. Close it" dozens of times while the autopilot's
+# own session was writing that exact Story. Two writers, one tasks.json.
+#
+# Unowned runs — a .backlog-active written before this line existed — are left
+# alone rather than adopted, so an upgrade mid-run does not silently hand the
+# loop to whoever stops first.
+OWNER="$(sed -n '2p' "$ACTIVE" | tr -d '[:space:]')"
+ME="${CLAUDE_SESSION_ID:-${CLAUDE_CODE_SESSION_ID:-}}"
+if [ -n "$OWNER" ] && [ -n "$ME" ] && [ "$OWNER" != "$ME" ]; then
+  exit 0
+fi
+
 stop_now() { rm -f "$ACTIVE"; exit 0; }
 
 block() {

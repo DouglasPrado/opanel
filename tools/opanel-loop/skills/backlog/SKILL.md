@@ -27,10 +27,15 @@ CLAUDE.md → docs/MASTER.md → docs/AGENT_RULES.md
 Then:
 
 ```sh
-echo "<dir>" > .backlog-active
+printf '%s\n%s\n' "<dir>" "${CLAUDE_SESSION_ID:-$CLAUDE_CODE_SESSION_ID}" > .backlog-active
 tools/opanel-loop/scripts/review-state.sh <dir> init
 tools/opanel-loop/scripts/tasks.sh <dir> run-start
 ```
+
+The second line is the session id of this run's owner, and it matters: the Stop
+hook drives **only** that session. Without it, any other session open in this
+repository is told to close the Story the run is currently writing — two writers
+on the same `tasks.json`, which is how 2026-09-10 went.
 
 If `review-state.sh <dir> status` is not `implementing`, do **not** start a
 Story. Follow the phase the Stop hook names — `/review-milestone` or
