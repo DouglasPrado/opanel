@@ -868,3 +868,47 @@ reabre, **não** reclassifica e **não** edita nenhum desses exemplos — dois d
 afirmam um esquema de nomes que uma arbitragem decidiu mudar, e mexer numa
 asserção para ficar verde é exatamente o que está proibido. Sob o ADR-0007, um
 gate vermelho é arbitragem.
+
+---
+
+## Baseline de falhas do M01 — emendada de seis para catorze
+
+Passo (2) da arbitragem DEBT de 2026-09-11 sobre o post-commit da M01-17 (última
+entrada de `DECISIONS.md`). A partir daqui, **todo relatório restante do M01 diz
+"1 523 exemplos, 14 falhas"** e enumera as catorze. Uma décima quinta falha é
+regressão, e a Story que a causar é dona dela.
+
+As catorze, por classe e causa:
+
+| # | Exemplo | Classe | Causa |
+|---|---------|--------|-------|
+| 1 | `spec/gates/gate_scripts_spec.rb:390` | resíduo ADR-0008 | `bin/gate:243`, `DECISIONS.md:70` |
+| 2 | `spec/gates/gate_scripts_spec.rb:432` | resíduo ADR-0008 | idem |
+| 3 | `spec/gates/gate_scripts_spec.rb:440` | resíduo ADR-0008 | idem |
+| 4 | `spec/gates/gate_scripts_spec.rb:449` | resíduo ADR-0008 | idem |
+| 5 | `spec/gates/gate_scripts_spec.rb:458` | resíduo ADR-0008 | idem |
+| 6 | `spec/unit/service_technical_name_spec.rb:18` | esquema de nome | afirma `svc_<prj>_<env>_<svc>`; `DECISIONS.md:335` item (1) encurtou para `svc_<serviceId>` |
+| 7 | `spec/unit/service_technical_name_spec.rb:88` | esquema de nome | o mesmo padrão como regex |
+| 8 | `spec/integration/swarm_executor_lab_spec.rb:39` | endereçamento pré-ADR-0009 | passa o `engine_id` de runtime como `resource_id`, onde ADR-0009 §5 fixa o externo `svc_01…` e o executor filtra `com.opanel.service_id=<resource_id>` |
+| 9 | `spec/integration/swarm_executor_lab_spec.rb:117` | endereçamento pré-ADR-0009 | idem, no caminho de network: grava um `net_…` na label `com.opanel.environment_id`, onde o contrato pede `env_01…` |
+| 10 | `spec/integration/swarm_executor_lab_spec.rb:150` | canal de atributos | afirma `safe_metadata[:role]`, que ADR-0009 §2 moveu para `observed.attributes` |
+| 11 | `spec/integration/swarm_nodes_lab_spec.rb:33` | canal de atributos | idem |
+| 12 | `spec/integration/swarm_nodes_lab_spec.rb:58` | canal de atributos | idem |
+| 13 | `spec/integration/swarm_ownership_foreign_resource_spec.rb:119` | predicado com Hash cru | espera `ownership.anomaly` de `managed_by_platform?` sobre um corpo cru do Engine, que ADR-0009 §4 recusa no type guard antes de qualquer log; a asserção sobrevive verde em `spec/unit/ownership_predicate_spec.rb:136-211` |
+| 14 | `spec/integration/project_constraints_spec.rb:123` | planner-fragile | `DECISIONS.md:162-166`; verde isolado, vermelho pareado com `operation_indexes_spec.rb` sob `--seed 12929` |
+
+Nenhuma delas está nos dezesseis arquivos que a M01-17 declara, e por isso nem a
+quinta revisão nem o `bin/test --story` da rodada podiam vê-las: só a suíte
+inteira, no post-commit, expôs. Itens 6 a 13 vão para a **M01-18** como primeiro
+item da rodada, antes de qualquer código do Service Reconciler — itens (a) a (e)
+da arbitragem. Itens 1 a 5 e 14 continuam vermelhos por decisão anterior:
+`bin/gate` e `lib/gates/**` seguem negados a esta execução.
+
+**Passo (1) ratificado.** A correção de `acceptance-mapping` feita pelo lead é
+ratificada pela arbitragem: o título e a gramática das linhas passam a casar com
+`docs/templates/STORY_REPORT.md`, como `lib/gates/acceptance_mapping.rb:49,52`
+exige, sem mover nenhuma afirmação; e a evidência do AC7 saiu de
+`swarm_ownership_labels_spec.rb:66-101`, que prova adoção de Service e não este
+critério, para o exemplo que afirma `BLOCKED`, `error_reason` e `DEGRADED`.
+Trocar evidência que não provava um critério pelo exemplo que passa e o prova é o
+inverso do movimento que este ledger recusou seis vezes.
