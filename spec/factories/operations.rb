@@ -1,10 +1,10 @@
 FactoryBot.define do
   factory :operation do
     team { association :team }
-    sequence(:id) { |n| "op_#{n.to_s.rjust(24, '0')}" }
+    id { Opanel::Identifier.generate }
 
     resource_type { "Service" }
-    sequence(:resource_id) { |n| "svc_#{n.to_s.rjust(21, '0')}" }
+    resource_id { Opanel::Identifier.generate }
 
     type { "UPDATE_SERVICE" }
     status { Operation::PENDING }
@@ -90,10 +90,10 @@ FactoryBot.define do
   end
 
   factory :outbox_event do
-    sequence(:id) { |n| "evt_#{n.to_s.rjust(21, '0')}" }
+    id { Opanel::Identifier.generate }
 
     aggregate_type { "Service" }
-    sequence(:aggregate_id) { |n| "svc_#{n.to_s.rjust(21, '0')}" }
+    aggregate_id { Opanel::Identifier.generate }
 
     event_type { "service.desired_state.changed.v1" }
     schema_version { 1 }
@@ -112,12 +112,22 @@ FactoryBot.define do
   end
 
   factory :inbox_event do
-    sequence(:id) { |n| "ibevt_#{n.to_s.rjust(19, '0')}" }
+    id { Opanel::Identifier.generate }
 
     source { "test_source" }
     sequence(:source_event_id) { |n| "ext_#{n}" }
 
     processed_at { nil }
     result_ref { nil }
+  end
+
+  factory :resource_lock do
+    team { association :team }
+    id { Opanel::Identifier.generate }
+
+    sequence(:scope_key) { |n| "resource-lock-#{n}" }
+    owner { "test-worker-#{Kernel.rand(1000)}" }
+    lease_until { Time.current + 120.seconds }
+    fencing_token { 0 }
   end
 end

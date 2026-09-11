@@ -207,6 +207,31 @@ module Opanel
         format: :number,
         default: "60",
         description: "How long to defer operation enqueue when queue backpressure is active."
+      ),
+      Key.new(
+        name: "OPANEL_WORKER_IDENTITY",
+        required_in: [],
+        format: :free_text,
+        default: nil,
+        description: "Unique identifier for this worker process (lease owner). Auto-generated from " \
+                     "hostname and PID if not set. Override only in multi-tenant deployments where " \
+                     "the orchestrator assigns node identity."
+      ),
+      Key.new(
+        name: "OPANEL_WORKER_BOOT_ID",
+        required_in: [],
+        format: :free_text,
+        default: nil,
+        description: "Boot counter to distinguish process restarts. Used to generate OPANEL_WORKER_IDENTITY " \
+                     "when it is not explicitly set. Normally left blank."
+      ),
+      Key.new(
+        name: "OPANEL_RESOURCE_LOCK_TTL_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "120",
+        description: "Time-to-live for resource locks. After this many seconds without renewal, " \
+                     "a lock expires and another worker may assume (AC7)."
       )
     ].freeze
 

@@ -16,10 +16,18 @@ class Operation < ApplicationRecord
   class InvalidTransition < StandardError
     attr_reader :from_status, :to_status
 
-    def initialize(from_status, to_status)
-      @from_status = from_status
-      @to_status = to_status
-      super("Invalid transition from #{from_status} to #{to_status}")
+    def initialize(from_status, to_status = nil)
+      if to_status.nil?
+        # Message-only initialization
+        super(from_status)
+        @from_status = nil
+        @to_status = nil
+      else
+        # Status transition initialization
+        @from_status = from_status
+        @to_status = to_status
+        super("Invalid transition from #{from_status} to #{to_status}")
+      end
     end
   end
 
@@ -129,5 +137,55 @@ class Operation < ApplicationRecord
   # Check if this Operation is marked as stalled.
   def stalled?
     stalled_at.present?
+  end
+
+  # Fenced write: update with the fencing token from the lease (M01-15, C3, AC4).
+  #
+  # Prevents a stale worker (one that lost the lease and had its token overwritten)
+  # from persisting results after recovery. The token must match the current fencing token
+  # on this Operation, or the update fails.
+  #
+  # If the lock indicates a takeover occurred (successor after lease expiry), an
+  # observation must have been recorded before this fenced write (C2, AC6).
+  #
+  # The guard flag (_bypass_fencing_check) is set by the fenced helper itself,
+  # the only authorized path for status changes while a lease is active. A raw
+  # SQL update or a status change from elsewhere will lack the flag and trigger
+  # the before_update callback, which raises.
+  #
+  def update_with_fencing_token(fencing_token:, lock: nil, **attributes)
+    # Set the guard flag to allow the update through the callback.
+    @_fencing_token_valid = true
+
+    # Verify the fencing token matches before updating (AC4).
+    if self.fencing_token != fencing_token
+      raise InvalidTransition, "Fencing token mismatch: expected #{fencing_token}, got #{self.fencing_token}"
+    end
+
+    # If this lock involved a takeover, observation must have been recorded (C2, AC6).
+    if lock&.took_over? && !lock.observation_recorded?
+      raise InvalidTransition,
+        "Successor after lease expiry must record observation before fenced write (M01-15 AC6, C2)"
+    end
+
+    update!(**attributes)
+  ensure
+    @_fencing_token_valid = false
+  end
+
+  # Guard callback: refuse status changes without fencing validation.
+  # This is a local, deterministic check — no external effects (AGENT_RULES).
+  before_update :validate_status_change_fencing
+
+  private
+
+  def validate_status_change_fencing
+    # If status is changing and we have an active lease but the guard flag is not set,
+    # refuse the change (C3). This catches attempts to update status without fencing.
+    if status_changed? && lease_owner.present? && !@_fencing_token_valid
+      raise InvalidTransition,
+        "Status update on Operation with active lease requires fenced_update_with_fencing_token " \
+        "(M01-15 AC4, C3)"
+    end
   end
 end

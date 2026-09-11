@@ -92,7 +92,8 @@ module Opanel
       token: "tok",
       incident: "inc",
       alert: "alr",
-      session: "ses"
+      session: "ses",
+      resource_lock: "rl"
     }.freeze
 
     SEPARATOR = "_"

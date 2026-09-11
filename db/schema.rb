@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_000700) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_000800) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -234,18 +234,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000700) do
     t.string "requested_by"
     t.string "resource_id", null: false
     t.string "resource_type", null: false
-    t.datetime "started_at"
     t.datetime "stalled_at"
     t.string "stalled_reason"
+    t.datetime "started_at"
     t.string "status", null: false
     t.string "team_id", null: false
     t.string "type", null: false
     t.datetime "updated_at", null: false
     t.index ["resource_id"], name: "index_operations_on_resource_id"
-    t.index ["stalled_at"], name: "index_operations_stalled"
     t.index ["resource_type", "status", "created_at"], name: "index_operations_by_resource_status"
     t.index ["resource_type", "status", "next_attempt_at"], name: "index_operations_for_retry_dispatch"
     t.index ["resource_type"], name: "index_operations_on_resource_type"
+    t.index ["stalled_at"], name: "index_operations_stalled"
     t.index ["status"], name: "index_operations_on_status"
     t.index ["team_id", "resource_type", "resource_id", "type", "idempotency_key"], name: "index_operations_idempotency_doc_07_6_1", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["team_id"], name: "index_operations_on_team_id"
@@ -293,6 +293,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000700) do
     t.check_constraint "slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug) >= 2 AND length(slug) <= 63", name: "projects_slug_format"
     t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'ARCHIVED'::text, 'DELETING'::text])", name: "projects_status_is_known"
     t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_team_id_is_ulid"
+  end
+
+  create_table "resource_locks", id: :string, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "fencing_token", default: 0, null: false
+    t.datetime "lease_until", null: false
+    t.string "owner", null: false
+    t.text "scope_key", null: false
+    t.string "team_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["scope_key"], name: "index_resource_locks_scope_key_unique", unique: true
+    t.index ["team_id"], name: "index_resource_locks_on_team_id"
+    t.check_constraint "btrim(owner::text) <> ''::text", name: "resource_locks_owner_present"
+    t.check_constraint "btrim(scope_key) <> ''::text", name: "resource_locks_scope_key_present"
+    t.check_constraint "fencing_token >= 0", name: "resource_locks_fencing_token_non_negative"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "resource_locks_id_is_ulid"
+    t.check_constraint "team_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "resource_locks_team_id_is_ulid"
   end
 
   create_table "services", id: { type: :string, limit: 26 }, force: :cascade do |t|
@@ -575,6 +592,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000700) do
   add_foreign_key "operation_attempts", "operations"
   add_foreign_key "operations", "teams", on_delete: :restrict
   add_foreign_key "projects", "teams", on_delete: :restrict
+  add_foreign_key "resource_locks", "teams", on_delete: :restrict
   add_foreign_key "services", "environments", on_delete: :restrict
   add_foreign_key "services", "teams", on_delete: :restrict
   add_foreign_key "sessions", "users", on_delete: :cascade

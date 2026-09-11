@@ -933,3 +933,58 @@ boundaries:
     - docs/implementation/SPEC_CONFLICTS.md
     - docs/implementation/M01/reports/M01-14.md
     - docs/implementation/M01/DECISIONS.md
+
+  M01-15:
+    # `M01-14` made an Operation recoverable; this is what makes recovery safe.
+    # The sweep re-enqueues what has no valid lease, so the lease has to exist
+    # and the fencing token has to be the thing that refuses a worker who came
+    # back after losing it. The guarantee is the database's — a unique index and
+    # a TTL — never coordination held in a process.
+    - db/migrate/*.rb
+    - db/schema.rb
+    # Domain: the lock row, and the Operation columns `M01-13` created for the
+    # lease (`lease_owner`, `lease_until`, `fencing_token`) which nothing has
+    # written until now.
+    - app/models/resource_lock.rb
+    - app/models/operation.rb
+    # Application layer: acquire, renew, release, and the fenced write.
+    - app/commands/acquire_resource_lock.rb
+    - app/commands/renew_resource_lock.rb
+    - app/commands/release_resource_lock.rb
+    - app/queries/resource_lock_state.rb
+    # The worker identity that owns a lease. It is derived from the process, not
+    # accepted from a caller (AC10).
+    - lib/opanel/worker_identity.rb
+    - lib/opanel/configuration.rb
+    - .env.example
+    # The sweep of `M01-14` is what reports an orphaned lock, so it learns to.
+    - app/commands/recover_stalled_operations.rb
+    - app/jobs/recover_stalled_operations_job.rb
+    # ADR-0002 §3: a new addressable entity registers its identifier prefix.
+    - lib/opanel/identifier.rb
+    - spec/unit/identifier_spec.rb
+    # Audit and the allowlist of what a privileged acquisition may record.
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    # Declared during planning. `spec/gates/unscoped_tenant_query_spec.rb`
+    # requires every model with `belongs_to :team` to be listed in
+    # `TENANT_SCOPED`, and `ResourceLock` will have one — the same maintenance
+    # `M01-04`, `M01-07`, `M01-08`, `M01-10` and `M01-14` each performed for
+    # their own model. Adding `ResourceLock` is the whole change.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # Tests. The concurrency examples use the barriers of `spec/support/
+    # concurrency.rb`; Annex D §18 forbids "run it until it happens".
+    - spec/unit/fencing_token_spec.rb
+    - spec/unit/resource_lock_ttl_spec.rb
+    - spec/integration/resource_lock_serialization_spec.rb
+    - spec/integration/resource_lock_fencing_spec.rb
+    - spec/integration/resource_lock_ttl_expiry_spec.rb
+    - spec/integration/resource_lock_successor_revalidation_spec.rb
+    - spec/integration/resource_lock_concurrent_reads_spec.rb
+    - spec/security/resource_lock_owner_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-15.md
+    - docs/implementation/M01/DECISIONS.md

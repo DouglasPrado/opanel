@@ -32,6 +32,9 @@ class RecoverStalledOperations
       reason = determine_stalled_reason(operation)
       operation.mark_stalled!(reason)
 
+      # Release any lock held by this operation (M01-15, AC7: TTL guarantees release).
+      release_orphaned_lock(operation) if operation.lease_owner.present?
+
       # Re-enqueue by pushing next_attempt_at into the future.
       # The operation status remains QUEUED/RUNNING; only the timing changes.
       # This allows the dispatcher to pick it up again after the deferral window.
@@ -50,6 +53,41 @@ class RecoverStalledOperations
   end
 
   private
+
+  # Release any orphaned lock held by a stalled operation (M01-15, AC7).
+  # When a worker dies, the TTL guarantees the lock expires eventually.
+  # The recovery sweep logs the detection for observability.
+  def release_orphaned_lock(operation)
+    # The lock scope key is typically the resource_id (serviceId, nodeId, etc.).
+    # In M01-15, locks are per-scope per-team, and the lock row outlives operations.
+    # If the lock expired or was taken over, nothing to do. If still active, mark expired.
+    lock = ResourceLock.where(
+      team_id: operation.team_id,
+      owner: operation.lease_owner
+    ).first
+
+    return unless lock&.lease_until&.present?
+
+    # Set lease_until to the past to release immediately, allowing new acquisition.
+    lock.update!(lease_until: Time.current - 1.second)
+
+    log_event(
+      event: "recovery.lock_released_orphaned",
+      result: "ok",
+      operation_id: operation.id,
+      team_id: operation.team_id,
+      scope_key: lock.scope_key,
+      fencing_token: lock.fencing_token
+    )
+  rescue StandardError => e
+    log_event(
+      event: "recovery.lock_release_failed",
+      result: "error",
+      operation_id: operation.id,
+      team_id: operation.team_id,
+      reason: e.message
+    )
+  end
 
   # Determine why an operation is stalled.
   # @param operation [Operation] the operation to evaluate
