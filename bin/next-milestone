@@ -30,6 +30,19 @@ for dir in docs/implementation/M[0-9][0-9]; do
 
   case "$status" in
     accepted|human_acceptance)
+      # Accepted, but not yet integrated. ADR-0010 has each Milestone start from
+      # a merged `main`, so an open Pull Request is where the chain waits — and
+      # waiting is the whole point: without this the next Milestone branches from
+      # the previous one's unmerged work and the sequence is a stack again,
+      # wearing a different name.
+      if command -v gh >/dev/null 2>&1; then
+        open_pr="$(gh pr list --head "milestone/m$(printf '%02d' "$((10#${milestone#M}))")" \
+                     --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+        if [ -n "$open_pr" ]; then
+          echo "chain waiting: $milestone is accepted and its PR #$open_pr is open. Merge it, then rerun — ADR-0010." >&2
+          exit 3
+        fi
+      fi
       continue
       ;;
     blocked)
