@@ -197,6 +197,41 @@ cmd_fix_done() {
   printf 'ready_for_review\n'
 }
 
+# The way out of ARBITER_BLOCK_NEEDS_ADR: the decision now exists, so the reason
+# the Milestone stopped no longer does.
+#
+# It takes the ADR's path and refuses a path that is not there. A block lifted by
+# asserting that a decision was written, with no file to read, is the same defect
+# as a Story marked done with no review — the artifact is the evidence, and a
+# command that trusts its caller about the artifact protects nothing.
+cmd_adr_written() {
+  need_state
+  local adr="$1" status
+  [ -n "$adr" ] || die "usage: adr-written <path-to-ADR>"
+
+  status="$(current)"
+  [ "$status" = "blocked" ] || die "adr-written applies to a blocked Milestone, not '$status'"
+
+  local reason
+  reason="$(jq -r '.blockedReason // ""' "$STATE")"
+  case "$reason" in
+    ARBITER_BLOCK_NEEDS_ADR*) ;;
+    *) die "this Milestone is blocked on '$reason', which is not a missing decision" ;;
+  esac
+
+  local root
+  root="$(cd "$(dirname "$MDIR")/../.." && pwd)"
+  case "$adr" in /*) ;; *) adr="$root/$adr" ;; esac
+  [ -f "$adr" ] || die "no such ADR: $adr
+The adr-author returns the text; the lead writes the file. Write it before lifting the block."
+  grep -q '^# ADR-' "$adr" || die "$adr does not start with an '# ADR-<NNNN>' heading"
+
+  with_lock "$LOCK" write_json "$STATE" \
+    '.status = "implementing" | .blockedReason = null | .lastError = null
+     | .updatedAt = $now' --arg now "$(touch_now)"
+  printf 'implementing (unblocked by %s)\n' "$(basename "$adr")"
+}
+
 # The budgets are governance, not bookkeeping: they decide when a Milestone stops
 # being the loop's problem and becomes a human's. During M00 they were raised
 # three times by hand, because the script wrote them once in `init` and offered no
@@ -286,11 +321,23 @@ The arbiter's output is recorded verbatim, not summarised."
       printf 'accepted (arbiter: %s)\n' "$verdict"
       ;;
     BLOCK)
+      # `Blocks-On` decides which kind of stop this is, and they are not the
+      # same stop: a missing decision is work the adr-author does and the chain
+      # continues; anything else waits for a person. The line is read from the
+      # ledger the arbiter just wrote, so the distinction cannot be asserted by
+      # whoever calls this script.
+      local blocks_on code
+      blocks_on="$(grep -i '^Blocks-On:' "$decision_file" | tail -n1 | awk '{print toupper($2)}')"
+      if [ "$blocks_on" = "ADR" ]; then
+        code="ARBITER_BLOCK_NEEDS_ADR — $(grep -i '^Situation:' "$decision_file" | tail -n1 | cut -c12- | cut -c1-160)"
+      else
+        code="ARBITER_BLOCK — $(grep -i '^Situation:' "$decision_file" | tail -n1 | cut -c12- | cut -c1-160)"
+      fi
       with_lock "$LOCK" write_json "$STATE" \
-        '.status = "blocked" | .blockedReason = "ARBITER_BLOCK"
+        '.status = "blocked" | .blockedReason = $r
          | .lastReviewer = "arbiter" | .updatedAt = $now' \
-        --arg now "$(touch_now)"
-      printf 'blocked (arbiter: BLOCK)\n' >&2
+        --arg r "$code" --arg now "$(touch_now)"
+      printf 'blocked (arbiter: BLOCK, blocks-on: %s)\n' "${blocks_on:-HUMAN}" >&2
       exit 2
       ;;
     *) die "unrecognised arbiter verdict in $decision_file: '$verdict'" ;;
@@ -316,7 +363,8 @@ case "$COMMAND" in
   block)          [ $# -ge 1 ] || die "usage: block <reason>"; cmd_block "$1" ;;
   error)          [ $# -ge 1 ] || die "usage: error <code>"; cmd_error "$1" ;;
   arbitrate)      cmd_arbitrate ;;
+  adr-written)    [ $# -ge 1 ] || die "usage: adr-written <path-to-ADR>"; cmd_adr_written "$1" ;;
   attempt-number) cmd_attempt_number ;;
   *) die "unknown command: ${COMMAND:-<none>}
-usage: review-state.sh <milestone-dir> {init|status|set|review-start|verdict|fix-start|fix-done|budget|block|error|arbitrate|attempt-number}" ;;
+usage: review-state.sh <milestone-dir> {init|status|set|review-start|verdict|fix-start|fix-done|budget|block|error|arbitrate|adr-written|attempt-number}" ;;
 esac

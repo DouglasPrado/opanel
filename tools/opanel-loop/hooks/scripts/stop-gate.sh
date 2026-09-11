@@ -79,9 +79,18 @@ case "$STATUS" in
   # script exists to prevent.
   blocked)
     # Prefix, not equality: the arbiter records why it blocked, so the reason
-    # reads "ARBITER_BLOCK — <what needs a human>" and never equals the code.
+    # reads "ARBITER_BLOCK — <what is missing>" and never equals the code.
     case "$BLOCK_REASON" in
-      ARBITER_BLOCK*) stop_now ;;
+      ARBITER_BLOCK_NEEDS_ADR*)
+        # Blocked on a decision nobody has written down. That is work an agent
+        # can do, so the chain does not end here: the adr-author writes it, and
+        # the human reads it in the Milestone's Pull Request like every other
+        # autonomous decision.
+        block "$MILESTONE is blocked on a decision that does not exist yet ($BLOCK_REASON). Dispatch the adr-author agent in a fresh context with the arbiter's entry in $MDIR/DECISIONS.md and the evidence it cites. Write what it returns to docs/decisions/ADR-<NNNN>-<slug>.md with the next free number, then run review-state.sh $MDIR adr-written docs/decisions/<file>. If it returns ALREADY DECIDED or NEEDS HUMAN, record that in DECISIONS.md and do not write an ADR."
+        ;;
+      ARBITER_BLOCK*)
+        stop_now
+        ;;
     esac
     block "The Milestone is blocked ($BLOCK_REASON). Under ADR-0007 that is an arbitration, not a stop: dispatch the arbiter agent in a fresh context with the recorded reason and the evidence behind it, append its decision verbatim to $MDIR/DECISIONS.md, then run review-state.sh $MDIR arbitrate."
     ;;

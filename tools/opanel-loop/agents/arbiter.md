@@ -82,10 +82,30 @@ Return this and nothing else. The lead appends it to `DECISIONS.md`.
 Situation: <one sentence: what the run was about to stop for>
 Evidence:  <the files and lines you actually read>
 Verdict:   FIX | DEBT | BLOCK
+Blocks-On: ADR | HUMAN | -
 Action:    <the concrete next step the lead takes; for FIX, the smallest change>
 Reason:    <why this verdict and not the other two>
 Inherits:  <milestone that inherits deferred work, or "-">
 ```
+
+`Blocks-On` is read by the loop, so be exact. It is `-` for every `FIX` and every
+`DEBT`. On a `BLOCK` it says what would unblock the work:
+
+- **`ADR`** — a decision has to be *recorded* before code can be written against
+  it: a contract between modules, a consistency or concurrency rule, a security
+  boundary, a permanent exception to an invariant. The `adr-author` agent is
+  dispatched to write it, and the Milestone continues once it exists. Choose this
+  when you can state the question precisely, even if you would answer it
+  differently than someone else might.
+- **`HUMAN`** — nothing an agent may decide: a product trade-off, a cost,
+  something destructive or production-facing, or a case where the approved
+  architecture genuinely does not say and guessing would be inventing product.
+  The chain stops and waits.
+
+Preferring `HUMAN` because a decision feels weighty is how an autonomous run
+becomes a queue of questions nobody answers. Preferring `ADR` because it keeps
+the run moving is how a product decision gets made by a machine. Say which one it
+is and why, in `Reason`.
 
 One decision per dispatch. Do not bundle, do not hedge, do not return two
 verdicts and let the lead pick.

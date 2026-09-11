@@ -67,7 +67,31 @@ then act on the verdict:
 |---|---|
 | `FIX` | One bounded round on exactly the change the arbiter named. Then proceed whatever the outcome — do not open a second round on the same finding. |
 | `DEBT` | Record it and carry on. The debt reaches the Pull Request through `bin/milestone-pr`. If it names an inheriting Milestone, add the Story to that Milestone's `tasks.json`. |
-| `BLOCK` | `review-state.sh <dir> arbitrate` writes the block. The chain stops there. |
+| `BLOCK` | `review-state.sh <dir> arbitrate` writes the block. Where it stops depends on `Blocks-On` — see below. |
+
+A `BLOCK` is two different stops, and the arbiter's `Blocks-On` line says which:
+
+- **`Blocks-On: HUMAN`** — the chain ends. Nothing an agent may decide.
+- **`Blocks-On: ADR`** — the work is blocked on a decision nobody has written
+  down, which is work an agent can do. Dispatch the `adr-author` agent in a fresh
+  context with the arbiter's ledger entry and the evidence it cites. Write what it
+  returns to `docs/decisions/ADR-<NNNN>-<slug>.md` with the next free number, then:
+
+  ```sh
+  tools/opanel-loop/scripts/review-state.sh <dir> adr-written docs/decisions/<file>
+  ```
+
+  That refuses a path that is not on disk, so the block cannot be lifted by
+  asserting a decision was made. The Milestone returns to `implementing` and the
+  Story that needed the decision is reopened.
+
+  Two other answers come back from `adr-author` and neither is a failure:
+  `ALREADY DECIDED` means an approved document settles it and the implementation
+  disagrees — record it in `DECISIONS.md`, fix the code, write no ADR.
+  `NEEDS HUMAN` means it refused; treat it as `Blocks-On: HUMAN` and stop.
+
+  You do not write the ADR yourself, and you do not implement against a decision
+  in the same context that made it.
 
 You do not argue with the arbiter, you do not re-dispatch it hoping for a
 different verdict, and you do not decide any of this yourself. An arbitration you
