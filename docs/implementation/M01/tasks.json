@@ -357,11 +357,11 @@
     {
       "id": "M01-18",
       "file": "stories/M01-18-service-reconciler.md",
-      "status": "pending",
+      "status": "in_progress",
       "dependsOn": [
         "M01-17"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "required": true
     },
     {

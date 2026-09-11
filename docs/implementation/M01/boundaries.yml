@@ -1129,3 +1129,87 @@ boundaries:
     - docs/implementation/SPEC_CONFLICTS.md
     - docs/implementation/M01/reports/M01-17.md
     - docs/implementation/M01/DECISIONS.md
+
+  M01-18:
+    # The same algorithm as M01-17 — lease, read desired, observe actual, diff
+    # with no side effect, apply the smallest safe change, re-inspect, persist,
+    # release — now on the central resource, where the diff has real classes and
+    # a lost Docker response has real cost.
+    #
+    # First item of the round, before any reconciler code: the five migrations
+    # the DEBT arbitration of 2026-09-11 on M01-17's post-commit assigned here
+    # (DECISIONS.md, last entry, items (a)-(e)). Eight of the suite's fourteen
+    # known failures live in four files no Story declares — two assert the
+    # `svc_<prj>_<env>_<svc>` scheme an arbitration replaced, four pass runtime
+    # ids where ADR-0009 §5 fixes the external form, and three read node
+    # attributes from a bag ADR-0009 §2 emptied. This Story must open the
+    # executor anyway to close the create/remove asymmetry it already inherits,
+    # so the work costs no budget and reopens no done Story.
+    - spec/unit/service_technical_name_spec.rb
+    - spec/integration/swarm_executor_lab_spec.rb
+    - spec/integration/swarm_nodes_lab_spec.rb
+    - spec/integration/swarm_ownership_foreign_resource_spec.rb
+    # `services` already carries applied_revision and desired_revision from
+    # M01-12; what is missing is the runtime id, so the migration is one column
+    # and expand-only.
+    - db/migrate/*.rb
+    - db/schema.rb
+    - app/models/service.rb
+    # The reconciler and its diff. NOOP, CREATE, UPDATE_SAFE, ROLLOUT, BLOCKED —
+    # DELETE is M02-09 and DRIFT is M02-06, and neither is implemented here.
+    # network_diff.rb:53-58 is the warning: a BLOCKED branch reachable only at
+    # create time must not be re-implemented as a diff class that cannot fire.
+    - app/reconcilers/service_reconciler.rb
+    - lib/opanel/service_diff.rb
+    # ADR-0009: this Story is the first to add a `service` kind to the
+    # normalizer under real pressure, and item (c) fixes remove_service,
+    # service_logs and list_tasks to address by label like their create and
+    # inspect twins.
+    - app/executors/swarm_executor.rb
+    - app/executors/execution_result.rb
+    - lib/opanel/runtime_observation.rb
+    - lib/opanel/ownership.rb
+    - spec/contracts/executor_contract_spec.rb
+    - spec/unit/swarm_executor_spec.rb
+    - spec/unit/runtime_observation_spec.rb
+    # Cadence: trigger by Operation, plus the periodic sweep that is the actual
+    # guarantee (doc 07 §23).
+    - app/jobs/reconcile_services_job.rb
+    - config/recurring.yml
+    - lib/opanel/configuration.rb
+    # Authorization and audit for the new mutation path, including the
+    # cross-team negative every mutation needs.
+    - app/policies/service_policy.rb
+    - app/queries/tenant_scope.rb
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    - spec/policies/service_policy_spec.rb
+    # The cop that polices tenancy has to know what reaches a Team.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # AF-03 already lists every services intent column (fitness.yml:19-23), so
+    # this Story adds no fitness function and invents no AF-04. The file is
+    # declared only in case the Service reconciler's own columns need adding.
+    - config/architecture/fitness.yml
+    # Tests.
+    - spec/unit/service_diff_spec.rb
+    - spec/unit/service_spec_translation_spec.rb
+    - spec/unit/service_supersession_spec.rb
+    - spec/unit/service_state_machine_spec.rb
+    - spec/unit/service_revision_spec.rb
+    - spec/integration/service_reconciler_spec.rb
+    - spec/integration/service_reconciliation_run_spec.rb
+    - spec/integration/service_applied_revision_spec.rb
+    - spec/integration/service_reconciler_lab_spec.rb
+    - spec/integration/service_idempotent_lab_spec.rb
+    - spec/integration/service_version_conflict_lab_spec.rb
+    - spec/integration/service_lost_response_lab_spec.rb
+    - spec/integration/service_restart_lab_spec.rb
+    - spec/integration/service_blocked_lab_spec.rb
+    - spec/security/reconciler_user_intent_spec.rb
+    - spec/security/service_workload_hardening_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-18.md
+    - docs/implementation/M01/DECISIONS.md
