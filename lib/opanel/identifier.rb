@@ -93,7 +93,9 @@ module Opanel
       incident: "inc",
       alert: "alr",
       session: "ses",
-      resource_lock: "rl"
+      resource_lock: "rl",
+      network: "net",
+      reconciliation_run: "rr"
     }.freeze
 
     SEPARATOR = "_"

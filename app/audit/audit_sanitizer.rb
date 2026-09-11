@@ -65,6 +65,10 @@ class AuditSanitizer
     # itself captures the intent and outcome without exposing secrets.
     "Operation" => %w[team_id resource_type resource_id type status
       desired_revision attempt_count error_code].freeze,
+    # Network: the overlay network for an Environment (M01-17). Records the
+    # state and revision as it converges.
+    "Network" => %w[name driver encrypted status environment_id cluster_id team_id
+      desired_revision applied_revision swarm_network_id].freeze,
     "TeamMember" => %w[role status joined_at].freeze,
     "User" => %w[display_name status email_verified_at].freeze,
     "Session" => %w[expires_at revoked_at last_seen_at mfa_level].freeze,

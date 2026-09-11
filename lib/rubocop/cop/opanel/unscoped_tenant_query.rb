@@ -43,8 +43,9 @@ module RuboCop
               "returns rows from other Teams (Annex C §7.3)."
 
         # Grows with the domain. M01-07 adds Project, M01-11 Environment,
-        # M01-12 Service, M01-13 Operation, M01-15 ResourceLock.
-        TENANT_SCOPED = %i[Team TeamMember Project Cluster Environment Service Operation ResourceLock].freeze
+        # M01-12 Service, M01-13 Operation, M01-15 ResourceLock, M01-17 Network and ReconciliationRun.
+        TENANT_SCOPED = %i[Team TeamMember Project Cluster Environment Service Operation ResourceLock Network
+ReconciliationRun].freeze
 
         # Lookups that are by primary key whatever their arguments.
         BY_KEY = %i[find find_by_id find_by_id!].freeze

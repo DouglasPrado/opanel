@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_000800) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_11_001000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -157,6 +157,37 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000800) do
     t.check_constraint "user_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "instance_roles_user_id_is_ulid"
   end
 
+  create_table "networks", id: :string, force: :cascade do |t|
+    t.bigint "applied_revision"
+    t.string "cluster_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "deleted_at"
+    t.bigint "desired_revision", default: 1, null: false
+    t.string "driver", default: "overlay", null: false
+    t.boolean "encrypted", default: false, null: false
+    t.string "environment_id", null: false
+    t.text "name", null: false
+    t.string "status", default: "PROVISIONING", null: false
+    t.string "swarm_network_id"
+    t.string "team_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["cluster_id", "status"], name: "index_networks_on_cluster_id_and_status"
+    t.index ["cluster_id"], name: "index_networks_on_cluster_id"
+    t.index ["environment_id"], name: "index_networks_on_environment_id"
+    t.index ["environment_id"], name: "index_networks_unique_per_environment", unique: true, where: "(deleted_at IS NULL)"
+    t.index ["status"], name: "index_networks_on_status"
+    t.index ["team_id", "status"], name: "index_networks_on_team_id_and_status"
+    t.index ["team_id"], name: "index_networks_on_team_id"
+    t.check_constraint "applied_revision IS NULL OR applied_revision <= desired_revision", name: "networks_applied_revision_not_ahead"
+    t.check_constraint "btrim(name) <> ''::text", name: "networks_name_present"
+    t.check_constraint "cluster_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "networks_cluster_id_is_ulid"
+    t.check_constraint "environment_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "networks_environment_id_is_ulid"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "networks_id_is_ulid"
+    t.check_constraint "status::text = ANY (ARRAY['PROVISIONING'::character varying, 'READY'::character varying, 'DEGRADED'::character varying, 'DELETING'::character varying]::text[])", name: "networks_status_is_known"
+    t.check_constraint "swarm_network_id IS NULL OR swarm_network_id::text ~ '^[a-z0-9]+$'::text", name: "networks_swarm_network_id_valid"
+    t.check_constraint "team_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "networks_team_id_is_ulid"
+  end
+
   create_table "node_observations", id: { type: :string, limit: 26 }, force: :cascade do |t|
     t.text "availability"
     t.timestamptz "created_at", null: false
@@ -293,6 +324,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000800) do
     t.check_constraint "slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug) >= 2 AND length(slug) <= 63", name: "projects_slug_format"
     t.check_constraint "status = ANY (ARRAY['ACTIVE'::text, 'ARCHIVED'::text, 'DELETING'::text])", name: "projects_status_is_known"
     t.check_constraint "team_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "projects_team_id_is_ulid"
+  end
+
+  create_table "reconciliation_runs", id: :string, force: :cascade do |t|
+    t.jsonb "actions_applied", default: [], null: false
+    t.datetime "created_at", null: false
+    t.string "diff_class", null: false
+    t.text "error_reason"
+    t.datetime "observed_at"
+    t.string "resource_id", null: false
+    t.string "resource_type", null: false
+    t.string "result", null: false
+    t.string "team_id", null: false
+    t.string "trigger", null: false
+    t.datetime "updated_at", null: false
+    t.index ["resource_id"], name: "index_reconciliation_runs_on_resource_id"
+    t.index ["resource_type", "resource_id", "created_at"], name: "index_reconciliation_runs_on_resource_and_created", order: { created_at: :desc }
+    t.index ["resource_type"], name: "index_reconciliation_runs_on_resource_type"
+    t.index ["team_id", "created_at"], name: "index_reconciliation_runs_on_team_and_created", order: { created_at: :desc }
+    t.index ["team_id"], name: "index_reconciliation_runs_on_team_id"
+    t.check_constraint "diff_class::text = ANY (ARRAY['NOOP'::character varying, 'CREATE'::character varying, 'UPDATE_SAFE'::character varying, 'ROLLOUT'::character varying, 'DELETE'::character varying, 'BLOCKED'::character varying, 'DRIFT'::character varying]::text[])", name: "reconciliation_runs_diff_class_is_known"
+    t.check_constraint "id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "reconciliation_runs_id_is_ulid"
+    t.check_constraint "result::text = 'SUCCESS'::text OR error_reason IS NOT NULL", name: "reconciliation_runs_failed_requires_reason"
+    t.check_constraint "result::text = ANY (ARRAY['SUCCESS'::character varying, 'BLOCKED'::character varying, 'FAILED'::character varying]::text[])", name: "reconciliation_runs_result_is_known"
+    t.check_constraint "team_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "reconciliation_runs_team_id_is_ulid"
+    t.check_constraint "trigger::text = ANY (ARRAY['OPERATION'::character varying, 'PERIODIC'::character varying, 'MANUAL'::character varying]::text[])", name: "reconciliation_runs_trigger_is_known"
   end
 
   create_table "resource_locks", id: :string, force: :cascade do |t|
@@ -587,11 +643,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000800) do
   add_foreign_key "environments", "projects", on_delete: :restrict
   add_foreign_key "environments", "teams", on_delete: :restrict
   add_foreign_key "instance_roles", "users", on_delete: :restrict
+  add_foreign_key "networks", "clusters", on_delete: :restrict
+  add_foreign_key "networks", "environments", on_delete: :restrict
+  add_foreign_key "networks", "teams", on_delete: :restrict
   add_foreign_key "node_observations", "nodes", on_delete: :cascade
   add_foreign_key "nodes", "clusters", on_delete: :restrict
   add_foreign_key "operation_attempts", "operations"
   add_foreign_key "operations", "teams", on_delete: :restrict
   add_foreign_key "projects", "teams", on_delete: :restrict
+  add_foreign_key "reconciliation_runs", "teams", on_delete: :restrict
   add_foreign_key "resource_locks", "teams", on_delete: :restrict
   add_foreign_key "services", "environments", on_delete: :restrict
   add_foreign_key "services", "teams", on_delete: :restrict

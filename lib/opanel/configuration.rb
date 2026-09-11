@@ -209,6 +209,13 @@ module Opanel
         description: "How long to defer operation enqueue when queue backpressure is active."
       ),
       Key.new(
+        name: "OPANEL_NETWORK_RECONCILE_CADENCE_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "60",
+        description: "How often the network reconciler runs a periodic sweep (M01-17)."
+      ),
+      Key.new(
         name: "OPANEL_WORKER_IDENTITY",
         required_in: [],
         format: :free_text,

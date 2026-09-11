@@ -29,6 +29,7 @@ RSpec.describe "the audit action names", type: :unit do
     project_archived: "project.archived",
     environment_created: "environment.created",
     environment_updated: "environment.updated",
+    network_created: "network.created",
     service_created: "service.created",
     service_updated: "service.updated",
     cluster_bootstrapped: "cluster.bootstrapped",

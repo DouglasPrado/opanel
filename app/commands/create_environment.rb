@@ -60,7 +60,16 @@ auto_promote_secrets: nil)
     return failure("VALIDATION_ERROR", slug_error, field: "slug") if slug.nil?
     return slug_taken(slug) if taken?(slug)
 
-    persist(slug)
+    result = persist(slug)
+    return result if result.failure?
+
+    # AC1: Creating an Environment generates an Operation that creates the network (M01-17).
+    # This follows the M01-13 pattern: Desired State + Operation + OutboxEvent in one transaction.
+    env = result.value[:environment]
+    network_result = EnsureEnvironmentNetwork.call(actor: actor, environment: env)
+    return network_result if network_result.failure?
+
+    result
   rescue ActiveRecord::RecordNotUnique
     slug_taken(resolved_slug)
   end

@@ -52,7 +52,10 @@ module Opanel
       "Service" => "ServicePolicy",
       # An Operation belongs to a Team directly and records infrastructure work.
       # The Policy resolves the actor's membership from the Operation's Team.
-      "Operation" => "OperationPolicy"
+      "Operation" => "OperationPolicy",
+      # A Network belongs to an Environment which belongs to a Project which belongs
+      # to a Team; the Policy resolves the actor's membership from the Network's Team.
+      "Network" => "NetworkPolicy"
     }.freeze
 
     module_function

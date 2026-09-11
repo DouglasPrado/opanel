@@ -1037,3 +1037,61 @@ boundaries:
     - docs/implementation/SPEC_CONFLICTS.md
     - docs/implementation/M01/reports/M01-16.md
     - docs/implementation/M01/DECISIONS.md
+
+  M01-17:
+    # The first real reconciler, and deliberately the simplest resource: a
+    # network has no rollout, no health policy and no replicas, so what is being
+    # proved here is the algorithm of doc 07 §11.3 — lease, read desired, observe
+    # actual, diff with no side effect, apply the smallest safe change,
+    # **re-inspect**, persist, release — and not the resource.
+    - db/migrate/*.rb
+    - db/schema.rb
+    # Domain: the network, and the per-run record that makes a reconcile
+    # auditable without reproducing it.
+    - app/models/network.rb
+    - app/models/reconciliation_run.rb
+    - app/models/environment.rb
+    # Application layer and the reconciler itself.
+    - app/commands/ensure_environment_network.rb
+    - app/commands/create_environment.rb
+    - app/queries/network_for_environment.rb
+    - app/reconcilers/network_reconciler.rb
+    # ADR-0002 §3: both new entities register an identifier prefix.
+    - lib/opanel/identifier.rb
+    - spec/unit/identifier_spec.rb
+    # AF-03 is the fitness function this Story exists to make real: it is
+    # configured with an empty `user_intent_columns`, so today it passes over
+    # nothing. AC9 requires it to evaluate real code. Configuration only — the
+    # checker in `lib/gates/**` is not touched.
+    - config/architecture/fitness.yml
+    # `Network` and `ReconciliationRun` reach a Team, so the cop that polices
+    # tenancy has to know them — the same maintenance every model Story has done.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # Authorization and audit for the new resource.
+    - app/policies/network_policy.rb
+    - lib/opanel/authorization.rb
+    - app/queries/tenant_scope.rb
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    # Cadence: the reconciler needs a periodic sweep as well as its trigger.
+    - app/jobs/reconcile_networks_job.rb
+    - config/recurring.yml
+    - lib/opanel/configuration.rb
+    - .env.example
+    # Tests.
+    - spec/unit/network_diff_spec.rb
+    - spec/unit/network_reconciler_spec.rb
+    - spec/integration/environment_network_operation_spec.rb
+    - spec/integration/network_applied_revision_spec.rb
+    - spec/integration/reconciliation_run_spec.rb
+    - spec/integration/network_reconciler_lab_spec.rb
+    - spec/integration/network_isolation_lab_spec.rb
+    - spec/integration/network_unowned_blocked_lab_spec.rb
+    - spec/security/reconciler_user_intent_spec.rb
+    - spec/policies/network_policy_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-17.md
+    - docs/implementation/M01/DECISIONS.md
