@@ -22,8 +22,13 @@ While acting as the implementer, Claude must not:
   counts. Correcting a verdict is writing it;
 - set `review-state.json` outside the scripts. `tools/opanel-loop/scripts/review-state.sh`
   owns those transitions and refuses `ACCEPTED` with any blocking finding;
-- declare `human_acceptance`, or start the next Milestone. Only a human does;
-- substitute the independent review with its own self-review;
+- release an accepted Milestone or start the next one **on its own judgment**.
+  Per [`ADR-0007`](docs/decisions/ADR-0007-autonomous-milestone-chain.md) that
+  decision belongs to the `arbiter` agent, in a fresh context, recorded in
+  `<milestone>/DECISIONS.md` — and `review-state.sh arbitrate` refuses to run
+  without it. What changed is *who* decides, not that the implementer may;
+- substitute the independent review with its own self-review, or perform its own
+  arbitration. Dispatching the arbiter and then overriding it is the same defect;
 - modify the loop — its scripts, schemas, hooks, agents or skills — while
   executing a Milestone or fixing review findings. Outside a run, and on human
   instruction, that change is ordinary work and belongs in its own commit.
@@ -121,14 +126,20 @@ When running under `/goal`:
 - Never report success you have not demonstrated. Produce evidence: commands run, exit codes, tests, acceptance criteria mapped.
 - Finish initial implementation by generating `MILESTONE_REPORT.md` with
   `Status: READY_FOR_REVIEW`, setting `review-state.json.status` to
-  `ready_for_review`, and stopping. Do not start the next Milestone.
+  `ready_for_review`, and handing over to the review phase.
 - In `fixing`, read the latest `CODEX_REVIEW_<NN>.md`, follow
   `docs/goals/FIX_REVIEW_FINDINGS.md`, correct only blocking findings, generate
   `FIX_REPORT_<NN>.md`, run the required tests and gates, set
   `review-state.json.status` to `ready_for_review`, and stop.
-- Never declare human acceptance. Only the orchestrator may move an accepted
-  Codex verdict to `human_acceptance`, and only a human may release the next
-  Milestone.
+- Under `/autopilot` ([`ADR-0007`](docs/decisions/ADR-0007-autonomous-milestone-chain.md))
+  the chain does not stop for a person. Every point where it used to — an
+  accepted verdict, a block, an exhausted budget, a red gate with no path, a
+  specification conflict — is an **arbitration**: dispatch the `arbiter` agent in
+  a fresh context, append its decision verbatim to `<milestone>/DECISIONS.md`,
+  and act on the verdict. You never arbitrate in your own context.
+- An accepted Milestone ships a **stacked Pull Request** (`bin/milestone-pr`) and
+  the chain continues. Nothing is merged to `main` autonomously — the open stack
+  is where the human enters, and it is the only place one is still required.
 
 Do not finish a Story until: implementation complete, tests green, quality gates green, self-review complete, acceptance criteria satisfied.
 

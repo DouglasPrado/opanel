@@ -14,6 +14,8 @@ Um Project tem Environments tipados (`PRODUCTION`, `HOMOLOGATION`, ...), cada um
 ## Preconditions
 `M01-07` e `M01-08` done.
 
+Esta Story herda o `AC5` da `M01-07` (`SC-18`): a dependência entre as duas é circular no pack — a `M01-07` precisa de Environments para provar o bloqueio de arquivamento e declara Environment fora de escopo; esta cria a entidade e exige a `M01-07` fechada. O critério migrou para cá, onde pode ser provado.
+
 ## Scope
 - `Environment`: id, projectId, clusterId, name, slug, type (`PRODUCTION`, `HOMOLOGATION`, `DEVELOPMENT`, `PREVIEW`, `CUSTOM`), desiredRevision, appliedRevision, networkId?, autoPromoteSecrets (default `false` em Production), status (`PROVISIONING`, `READY`, `DEGRADED`, `PAUSED`, `DELETING`), timestamps.
 - Constraint `UNIQUE(projectId, slug) WHERE deletedAt IS NULL`.
@@ -74,6 +76,7 @@ Logs com `team_id`, `project_id`, `environment_id`, `cluster_id`, `actor_id` e `
 8. `PRODUCTION` tem badge visual persistente na UI.
 9. Cluster `DEGRADED` produz warning ou bloqueio conforme policy, com mensagem explícita.
 10. Criação e alteração geram AuditLog e passam por Policy, com negativo cross-team.
+11. Arquivar um Project que tenha Environment ativo é bloqueado com erro explicativo, provado com o caso negativo plantado — o `AC5` da `M01-07`, que não podia ser provado antes desta Story existir (`SC-18`).
 
 ## Required Tests
 - **unit**: transições de status; incremento de revisão; default de `autoPromoteSecrets`.

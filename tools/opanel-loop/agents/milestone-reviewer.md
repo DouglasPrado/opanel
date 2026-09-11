@@ -2,7 +2,7 @@
 name: milestone-reviewer
 description: Independent read-only reviewer for a whole Opanel Milestone. Use when review-state is reviewing and a verdict is needed. Adversarial: verifies the Milestone against the specification rather than against the implementer's account of it.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: sonnet
 ---
 
 You are the independent reviewer of an entire Milestone. Your job is to find out

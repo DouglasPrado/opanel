@@ -4,6 +4,7 @@ require "open3"
 require "tmpdir"
 require "yaml"
 require_relative "../../lib/gates/ci_pipeline"
+require_relative "../support/gate_repository"
 
 # The pipeline, proved rather than described.
 #
@@ -17,11 +18,11 @@ require_relative "../../lib/gates/ci_pipeline"
 # planted and must block. A gate nobody proved can fail is a gate that passes
 # forever.
 RSpec.describe "The CI pipeline", :slow do
-  PIPELINE_ROOT = File.expand_path("../..", __dir__)
+  def pipeline_root = @pipeline_root || File.expand_path("../..", __dir__)
   PIPELINE = Opanel::Gates::CiPipeline
 
   def run(*command, **options)
-    Open3.capture2e(*command, chdir: PIPELINE_ROOT, **options)
+    Open3.capture2e(*command, chdir: pipeline_root, **options)
   end
 
   # A file placed in the working tree, removed however the example ends.
@@ -31,17 +32,26 @@ RSpec.describe "The CI pipeline", :slow do
   # They are also registered with `git add -N`, because the gates scope
   # themselves to tracked files: CI always lints a checked-out commit, so an
   # untracked probe would be quietly skipped and prove nothing.
+  # Held under RepositoryLock: this writes into the real working tree of
+  # pipeline_root via `git add`/`git rm --cached`, which take
+  # `.git/index.lock` and do not retry on contention — two workers racing
+  # there can make one silently no-op. And under `bin/test --parallel` a
+  # full-tree scan running in another worker
+  # (spec/security/security_scan_spec.rb) would otherwise see the probe
+  # mid-flight and report a leak nobody here planted for it.
   def with_probe(path, contents)
-    full = File.join(PIPELINE_ROOT, path)
-    FileUtils.mkdir_p(File.dirname(full))
-    File.write(full, contents)
-    run("git", "add", "--intent-to-add", path)
-    yield full
-  ensure
-    run("git", "rm", "--cached", "--force", "--quiet", path)
-    FileUtils.rm_f(full)
-    directory = File.dirname(full)
-    FileUtils.rmdir(directory) if Dir.exist?(directory) && Dir.empty?(directory)
+    Opanel::Gates::GateRepository.with(pipeline_root) do |directory|
+      @pipeline_root = directory
+      full = File.join(directory, path)
+      FileUtils.mkdir_p(File.dirname(full))
+      File.write(full, contents)
+      _output, status = run("git", "add", "--intent-to-add", path)
+      raise "could not register probe" unless status.success?
+
+      yield full
+    ensure
+      @pipeline_root = nil
+    end
   end
 
   describe "the job list" do
@@ -50,7 +60,7 @@ RSpec.describe "The CI pipeline", :slow do
 
       expect(PIPELINE.names).to include(*required)
 
-      scheduled = Dir.glob(File.join(PIPELINE_ROOT, ".github/workflows/*.yml"))
+      scheduled = Dir.glob(File.join(pipeline_root, ".github/workflows/*.yml"))
                      .map { |path| File.read(path) }.join
 
       required.each do |job|
@@ -88,7 +98,7 @@ RSpec.describe "The CI pipeline", :slow do
     it "refuses to report a result for checks it did not run" do
       script = <<~SH
         set -uo pipefail
-        cd "#{PIPELINE_ROOT}"
+        cd "#{pipeline_root}"
         source bin/_gate_lib.sh
         gate_begin "probe" "text"
         gate_run "ran" true
@@ -98,7 +108,7 @@ RSpec.describe "The CI pipeline", :slow do
         gate_finish
       SH
 
-      output, status = Open3.capture2e("bash", "-c", script, chdir: PIPELINE_ROOT)
+      output, status = Open3.capture2e("bash", "-c", script, chdir: pipeline_root)
 
       expect(status).not_to be_success, "an interrupted gate must not report PASS"
       expect(output).to include("recorded 1 of 3")
@@ -134,7 +144,7 @@ RSpec.describe "The CI pipeline", :slow do
 
       Opanel::Gates::SuiteTypes::TYPES.each do |type, paths|
         paths.each do |path|
-          expect(Dir.exist?(File.join(PIPELINE_ROOT, path))).to be(true),
+          expect(Dir.exist?(File.join(pipeline_root, path))).to be(true),
             "#{path} is declared as the home of `#{type}` specs but does not exist; " \
             "RSpec raises LoadError rather than running nothing"
         end
@@ -324,11 +334,11 @@ RSpec.describe "The CI pipeline", :slow do
       end
 
       it "reads the report path the pipeline actually writes" do
-        jobs = YAML.safe_load_file(File.join(PIPELINE_ROOT, "config/ci/jobs.yml"))
+        jobs = YAML.safe_load_file(File.join(pipeline_root, "config/ci/jobs.yml"))
         written = jobs.dig("jobs", "security-fast", "commands").map(&:last)
           .find { |command| command.include?("--out") }[/--out\s+(\S+)/, 1]
 
-        expect(File.read(File.join(PIPELINE_ROOT, "bin/merge-gate"))).to include(written)
+        expect(File.read(File.join(pipeline_root, "bin/merge-gate"))).to include(written)
       end
 
       it "blocks when the scan never ran, rather than counting zero" do
@@ -412,7 +422,7 @@ RSpec.describe "The CI pipeline", :slow do
   # AC11. A gate that any Story may quietly edit is not a gate.
   describe "a change to the pipeline" do
     it "is refused unless a commit names the Story or ADR that authorises it" do
-      source = File.read(File.join(PIPELINE_ROOT, "bin/merge-gate"))
+      source = File.read(File.join(pipeline_root, "bin/merge-gate"))
 
       expect(source).to include("PIPELINE_PATHS")
       expect(source).to match(%r{\.github/workflows/})
@@ -421,7 +431,7 @@ RSpec.describe "The CI pipeline", :slow do
     end
 
     it "is owned, so GitHub also demands a human review of it" do
-      codeowners = File.read(File.join(PIPELINE_ROOT, ".github/CODEOWNERS"))
+      codeowners = File.read(File.join(pipeline_root, ".github/CODEOWNERS"))
 
       %w[/.github/ /config/ci/ /lib/gates/ /bin/merge-gate].each do |path|
         expect(codeowners).to include(path)
@@ -431,7 +441,7 @@ RSpec.describe "The CI pipeline", :slow do
 
   describe "evidence" do
     it "is archived per run, by job, and redacted before it is uploaded" do
-      archive = YAML.safe_load_file(File.join(PIPELINE_ROOT, ".github/actions/archive/action.yml"))
+      archive = YAML.safe_load_file(File.join(pipeline_root, ".github/actions/archive/action.yml"))
       steps = archive.dig("runs", "steps")
 
       redact = steps.find { |step| step["run"].to_s.include?("bin/redact-artifacts") }
@@ -444,7 +454,7 @@ RSpec.describe "The CI pipeline", :slow do
     end
 
     it "is uploaded even when the job failed, because a red run is the one worth reading" do
-      workflow = YAML.safe_load_file(File.join(PIPELINE_ROOT, ".github/workflows/ci.yml"))
+      workflow = YAML.safe_load_file(File.join(pipeline_root, ".github/workflows/ci.yml"))
 
       workflow.fetch("jobs").each_value do |job|
         archive = job.fetch("steps", []).find { |step| step["uses"].to_s.include?("actions/archive") }
@@ -505,10 +515,10 @@ RSpec.describe "The CI pipeline", :slow do
     end
 
     it "does not retry a failing test to make it green" do
-      source = File.read(File.join(PIPELINE_ROOT, "bin/flaky-rate"))
+      source = File.read(File.join(pipeline_root, "bin/flaky-rate"))
 
       expect(source).to include("It measures; it does not retry")
-      expect(File.read(File.join(PIPELINE_ROOT, ".rspec"))).not_to match(/retry/i)
+      expect(File.read(File.join(pipeline_root, ".rspec"))).not_to match(/retry/i)
     end
   end
 
@@ -518,17 +528,17 @@ RSpec.describe "The CI pipeline", :slow do
     # a single check — and nothing in the repository said so, because a workflow
     # is otherwise only exercised by pushing.
     it "points only at files that exist" do
-      Dir.glob(File.join(PIPELINE_ROOT, ".github/{workflows,actions}/**/*.yml")).each do |path|
+      Dir.glob(File.join(pipeline_root, ".github/{workflows,actions}/**/*.yml")).each do |path|
         contents = File.read(path)
-        name = path.delete_prefix("#{PIPELINE_ROOT}/")
+        name = path.delete_prefix("#{pipeline_root}/")
 
         contents.scan(/^\s*[\w-]*version-file:\s*(\S+)/).flatten.each do |referenced|
-          expect(File.exist?(File.join(PIPELINE_ROOT, referenced))).to be(true),
+          expect(File.exist?(File.join(pipeline_root, referenced))).to be(true),
             "#{name} reads #{referenced}, which is not in this repository"
         end
 
         contents.scan(%r{uses:\s*(\./[\w./-]+)}).flatten.each do |referenced|
-          expect(File.exist?(File.join(PIPELINE_ROOT, referenced, "action.yml"))).to be(true),
+          expect(File.exist?(File.join(pipeline_root, referenced, "action.yml"))).to be(true),
             "#{name} uses #{referenced}, which has no action.yml"
         end
       end
@@ -537,16 +547,16 @@ RSpec.describe "The CI pipeline", :slow do
     # One declaration of the Node contract. Two is how CI and a developer machine
     # end up on different majors.
     it "reads the Node version from the file bin/setup reads" do
-      declared = JSON.parse(File.read(File.join(PIPELINE_ROOT, "package.json"))).dig("engines", "node")
+      declared = JSON.parse(File.read(File.join(pipeline_root, "package.json"))).dig("engines", "node")
 
       expect(declared).not_to be_nil, "package.json declares no engines.node"
-      expect(File.read(File.join(PIPELINE_ROOT, "bin/setup"))).to include("engines", "node")
-      expect(File.read(File.join(PIPELINE_ROOT, ".github/actions/setup/action.yml")))
+      expect(File.read(File.join(pipeline_root, "bin/setup"))).to include("engines", "node")
+      expect(File.read(File.join(pipeline_root, ".github/actions/setup/action.yml")))
         .to include("node-version-file: package.json")
     end
 
     it "carries no production credential" do
-      workflows = Dir.glob(File.join(PIPELINE_ROOT, ".github/workflows/*.yml"))
+      workflows = Dir.glob(File.join(pipeline_root, ".github/workflows/*.yml"))
 
       workflows.each do |path|
         contents = File.read(path)
@@ -556,7 +566,7 @@ RSpec.describe "The CI pipeline", :slow do
     end
 
     it "runs the same commands locally as in CI" do
-      workflows = Dir.glob(File.join(PIPELINE_ROOT, ".github/workflows/*.yml")).map { |p| File.read(p) }
+      workflows = Dir.glob(File.join(pipeline_root, ".github/workflows/*.yml")).map { |p| File.read(p) }
 
       # Every job step that runs a suite goes through bin/ci-job. A workflow
       # that inlined `bundle exec rspec` could differ from what anyone can run.

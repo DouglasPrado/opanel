@@ -24,7 +24,11 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 
 MDIR="$TMP/M01"
 mkdir -p "$MDIR/stories" "$MDIR/review"
-cp "$REPO_ROOT/docs/implementation/M01/tasks.json" "$MDIR/tasks.json"
+# The shape comes from a real milestone; the progress does not. Statuses are
+# reset so the fixture does not depend on how far M01 happens to have got — a
+# test that breaks because the repository advanced is testing the repository.
+jq '.stories |= map(.status = "pending" | del(.commit) | del(.review) | .attempts = 0)' \
+  "$REPO_ROOT/docs/implementation/M01/tasks.json" > "$MDIR/tasks.json"
 FIRST="$(jq -r '.stories[0].id' "$MDIR/tasks.json")"
 touch "$MDIR/stories/$(jq -r '.stories[0].file' "$MDIR/tasks.json" | sed 's#^stories/##')"
 
@@ -90,6 +94,19 @@ if bash "$TASKS" "$MDIR" set "$FIRST" nonsense >/dev/null 2>&1; then
 fi
 ok "an invalid state is refused"
 
+# Two stop gates the tests drive: one that says ok, one that does not. fix-done
+# now runs the gate, so the fixture needs one it controls.
+GREEN_GATE="$TMP/stop-gate-green"; RED_GATE="$TMP/stop-gate-red"
+cat > "$GREEN_GATE" <<'GATE'
+#!/usr/bin/env bash
+echo '{"ok":true,"checks":[]}'
+GATE
+cat > "$RED_GATE" <<'GATE'
+#!/usr/bin/env bash
+echo '{"ok":false,"checks":[{"name":"milestone-report","result":"fail","reason":"no Findings section"}]}'
+GATE
+chmod +x "$GREEN_GATE" "$RED_GATE"
+
 printf '== review-state.sh\n'
 
 bash "$STATE" "$MDIR" init >/dev/null || fail "init"
@@ -126,7 +143,18 @@ ok "NOT_ACCEPTED reaches fix_required"
 
 [ "$(bash "$STATE" "$MDIR" fix-start)" = "1" ] || fail "fix-start should return attempt 1"
 [ "$(bash "$STATE" "$MDIR" status)" = "fixing" ] || fail "fix-start should set fixing"
-bash "$STATE" "$MDIR" fix-done >/dev/null
+if OPANEL_STOP_GATE="$RED_GATE" bash "$STATE" "$MDIR" fix-done >/dev/null 2>&1; then
+  fail "fix-done was allowed with a red Stop Gate"
+fi
+[ "$(bash "$STATE" "$MDIR" status)" = "fixing" ] || fail "a refused fix-done must leave the state at fixing"
+ok "fix-done is refused when the Stop Gate is red"
+
+if OPANEL_STOP_GATE="$TMP/no-such-gate" bash "$STATE" "$MDIR" fix-done >/dev/null 2>&1; then
+  fail "fix-done was allowed with a Stop Gate that cannot run"
+fi
+ok "a Stop Gate that cannot run counts as failing"
+
+OPANEL_STOP_GATE="$GREEN_GATE" bash "$STATE" "$MDIR" fix-done >/dev/null
 [ "$(bash "$STATE" "$MDIR" status)" = "ready_for_review" ] || fail "fix-done should set ready_for_review"
 [ "$(jq -r '.verdict' "$MDIR/review-state.json")" = "null" ] || fail "fix-done should clear the verdict"
 ok "the fix cycle returns to ready_for_review and clears the verdict"
@@ -137,6 +165,38 @@ bash "$STATE" "$MDIR" verdict ACCEPTED 0 0 1 2 >/dev/null || fail "verdict ACCEP
 [ "$(jq -r '.acceptedAt' "$MDIR/review-state.json")" != "null" ] || fail "acceptedAt should be stamped"
 ok "ACCEPTED reaches human_acceptance and stamps acceptedAt"
 
+# The status that hands work to a reviewer is not one a caller may assert. M00
+# reached its sixth review by writing this directly, in a state its own gate
+# rejected.
+if bash "$STATE" "$MDIR" set ready_for_review >/dev/null 2>&1; then
+  fail "set ready_for_review was allowed"
+fi
+ok "set refuses ready_for_review"
+
+if bash "$STATE" "$MDIR" budget maxReviewAttempts 9 >/dev/null 2>&1; then
+  fail "budget was allowed with no reason"
+fi
+if bash "$STATE" "$MDIR" budget nonsense 9 "why" >/dev/null 2>&1; then
+  fail "budget was allowed on an unknown field"
+fi
+bash "$STATE" "$MDIR" budget maxReviewAttempts 9 "smoke test" >/dev/null || fail "budget with a reason should work"
+[ "$(jq -r '.maxReviewAttempts' "$MDIR/review-state.json")" = "9" ] || fail "budget did not write the value"
+[ "$(jq -r '.budgetChanges[-1].reason' "$MDIR/review-state.json")" = "smoke test" ] \
+  || fail "budget did not record the reason"
+ok "budget requires a reason and records it"
+
+# Criterion 8: M00 round 06 replayed. Its MILESTONE_REPORT.md was missing the
+# sections bin/stop-gate requires, so the handoff must be refused.
+REPLAY="$TMP/replay"; mkdir -p "$REPLAY/M00"
+cp "$MDIR/review-state.json" "$REPLAY/M00/review-state.json"
+jq '.milestone = "M00" | .status = "fixing"' "$REPLAY/M00/review-state.json" > "$REPLAY/M00/rs.tmp" \
+  && mv "$REPLAY/M00/rs.tmp" "$REPLAY/M00/review-state.json"
+if OPANEL_STOP_GATE="$RED_GATE" bash "$STATE" "$REPLAY/M00" fix-done >/dev/null 2>&1; then
+  fail "M00 round 06 would still have been handed to a reviewer"
+fi
+[ "$(bash "$STATE" "$REPLAY/M00" status)" = "fixing" ] || fail "the replay should stay at fixing"
+ok "M00 round 06 replayed: the handoff is refused"
+
 BEFORE="$(jq -r '.reviewAttempt' "$MDIR/review-state.json")"
 bash "$STATE" "$MDIR" error CLI_DIED >/dev/null
 [ "$(jq -r '.reviewAttempt' "$MDIR/review-state.json")" = "$BEFORE" ] \
@@ -144,6 +204,9 @@ bash "$STATE" "$MDIR" error CLI_DIED >/dev/null
 [ "$(jq -r '.executionFailures' "$MDIR/review-state.json")" = "1" ] || fail "executionFailures should count"
 ok "an execution failure is counted without spending an attempt"
 
+# The budget case above raised this to 9; put it back so the exhaustion case
+# tests the cap rather than the leftovers of an earlier test.
+bash "$STATE" "$MDIR" budget maxReviewAttempts 3 "restore the default for the exhaustion case" >/dev/null
 bash "$STATE" "$MDIR" set reviewing >/dev/null
 bash "$STATE" "$MDIR" review-start >/dev/null 2>&1 || true
 bash "$STATE" "$MDIR" review-start >/dev/null 2>&1 || true
@@ -164,7 +227,11 @@ cp -R "$MDIR" "$FAKE_ROOT/docs/implementation/M01"
 printf 'docs/implementation/M01\n' > "$FAKE_ROOT/.backlog-active"
 
 stop_decision() {
-  bash "$PLUGIN_ROOT/scripts/review-state.sh" "$FAKE_ROOT/docs/implementation/M01" set "$1" >/dev/null
+  # Written directly rather than through `set`, which now refuses
+  # ready_for_review: this is test scaffolding placing the machine in a state,
+  # not the loop reaching it.
+  local f="$FAKE_ROOT/docs/implementation/M01/review-state.json"
+  jq --arg s "$1" '.status = $s' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
   CLAUDE_PROJECT_DIR="$FAKE_ROOT" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$STOP" 2>/dev/null
 }
 
@@ -229,8 +296,8 @@ decision_of() {
 }
 
 guard_edit() {
-  decision_of "$(printf '{"tool_input":{"file_path":"%s/%s"}}' "$REPO_ROOT" "$1" \
-    | CLAUDE_PROJECT_DIR="$REPO_ROOT" bash "$EDIT" 2>/dev/null)"
+  decision_of "$(printf '{"tool_input":{"file_path":"%s/%s"}}' "$FAKE_ROOT" "$1" \
+    | CLAUDE_PROJECT_DIR="$FAKE_ROOT" bash "$EDIT" 2>/dev/null)"
 }
 
 [ "$(guard_edit bin/stop-gate)" = "deny" ] || fail "bin/stop-gate must be denied"

@@ -27,10 +27,15 @@ CLAUDE.md → docs/MASTER.md → docs/AGENT_RULES.md
 Then:
 
 ```sh
-echo "<dir>" > .backlog-active
+printf '%s\n%s\n' "<dir>" "${CLAUDE_SESSION_ID:-$CLAUDE_CODE_SESSION_ID}" > .backlog-active
 tools/opanel-loop/scripts/review-state.sh <dir> init
 tools/opanel-loop/scripts/tasks.sh <dir> run-start
 ```
+
+The second line is the session id of this run's owner, and it matters: the Stop
+hook drives **only** that session. Without it, any other session open in this
+repository is told to close the Story the run is currently writing — two writers
+on the same `tasks.json`, which is how 2026-09-10 went.
 
 If `review-state.sh <dir> status` is not `implementing`, do **not** start a
 Story. Follow the phase the Stop hook names — `/review-milestone` or
@@ -80,9 +85,20 @@ If it replies starting with `CONFLICT:`, record the conflict in `BLOCKERS.md`,
 tools/opanel-loop/scripts/tasks.sh <dir> set <ID> review
 ```
 
-Dispatch the `reviewer` agent in a **fresh context**. It must not see the
+Prepare its diff, including new files, before dispatch:
+
+```sh
+git add -A
+mkdir -p tmp/review
+git diff "$(bin/story-scope base <ID>)" > tmp/review/<ID>.diff
+```
+
+Pass `tmp/review/<ID>.diff`, the Story path and the evidence directory to the
+reviewer. Dispatch the `reviewer` agent in a **fresh context**. It must not see the
 builder's reasoning — an independent review of a diff you just argued for is not
-independent. It writes `review/<ID>.md` ending in `COUNTS c h m l`.
+independent. It returns the contents for `review/<ID>.md`, ending in `COUNTS c h m l`.
+Persist its response verbatim. Missing output, an expired review budget or
+unverified mandatory scope cannot be recorded as a clean review.
 
 ```sh
 tools/opanel-loop/scripts/tasks.sh <dir> review <ID> <c> <h> <m> <l>
@@ -94,16 +110,16 @@ Critical = 0 and High = 0:
 
 ```sh
 tools/opanel-loop/scripts/tasks.sh <dir> set <ID> done      # refused without a review
-git add -A && git commit                                     # COMMIT_CONVENTION, "Story: <ID>"
+OPANEL_STORY=<ID> git add -A && OPANEL_STORY=<ID> git commit                                     # COMMIT_CONVENTION, "Story: <ID>"
 tools/opanel-loop/scripts/tasks.sh <dir> commit <ID> <hash>
-git add <dir>/tasks.json && git commit --amend --no-edit
+git add <dir>/tasks.json && OPANEL_STORY=<ID> git commit --amend --no-edit
 bin/gate post-commit --story <ID>
 ```
 
 Then complete the task.
 
 Otherwise `set <ID> fix_required`, `attempt <ID>`, and send the findings back to
-the builder. Three attempts without progress: `blocked`, with a reproducible
+the builder. The script blocks a fourth automatic attempt. After three attempts: `blocked`, with a reproducible
 diagnosis in `BLOCKERS.md`.
 
 ## Closing the Milestone
@@ -119,7 +135,7 @@ and stop. The Stop hook moves the state to `ready_for_review`; the next turn is
 
 - Never weaken a test, gate, threshold, assertion or boundary to get green. Fix
   the implementation. Changing a gate needs its own Story or ADR.
-- Never edit `bin/gate*`, `bin/stop-gate`, `lib/gates/**`, `docs/architecture/**`
+- During a backlog run, never edit `bin/gate*`, `bin/stop-gate`, `lib/gates/**`, `docs/architecture/**`
   or the annexes. The hooks deny it; do not look for a way around.
 - No merge, no force push, no deploy, no production credential.
 - **Without evidence there is no success.** Report commands, exit codes and the

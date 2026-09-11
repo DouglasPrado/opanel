@@ -12,21 +12,55 @@
 # Actual State toward these; it never writes them. Platform Wins is the drift
 # policy, and adopting runtime state is an explicit admin operation.
 #
-# Empty in M00: no domain entity exists yet. M01 fills it as it creates them.
-user_intent_columns: []
-# Example, from M01:
-#   - table: services
-#     columns: [desired_replicas, image_digest, resource_limits, placement_constraints]
+user_intent_columns:
+  # M01-11: Environment fields representing user intent.
+  - table: environments
+    columns: [name, slug, type, auto_promote_secrets]
+  # M01-12: Service fields representing user intent.
+  - table: services
+    columns: [name, slug, image_ref, replicas, ports, health_check, cpu_reservation,
+              cpu_limit, memory_reservation, memory_limit, constraints]
 
-# AF-07 — mutations that must have a server-side authorization path. A Command
-# listed here without a Policy is a finding.
+# AF-07 — mutations that must reach a server-side authorization path. The check
+# has two halves: the Policy exists with the declared action, **and** the Command
+# actually invokes it. A Policy nobody calls is a file.
 #
-# Empty in M00: no domain mutation exists yet.
-critical_mutations: []
-# Example, from M01:
-#   - command: CreateService
-#     policy: ServicePolicy
-#     action: create?
+# Empty until M01-04, because there was no Policy layer to reach. A mutation is
+# added here when it becomes tenant-scoped and role-dependent; a mutation that
+# acts only on the caller's own rows (RevokeSession) is authorized by scoping the
+# query to the owner, which is a different control and is asserted by its own
+# cross-account negative test.
+critical_mutations:
+  - command: SuspendTeamMember
+    policy: TeamPolicy
+    action: manage_members?
+  # M01-08. Turning a machine into the first node of a cluster is the most
+  # privileged thing this Milestone can do: it needs INSTANCE_ADMIN on top of the
+  # Team role, and the Command is the only path to `docker swarm init`. Declaring
+  # it here makes AF-07 require that `BootstrapCluster` actually reaches
+  # `ClusterPolicy#bootstrap?` rather than merely mentioning it.
+  - command: BootstrapCluster
+    policy: ClusterPolicy
+    action: bootstrap?
+  # M01-11. Creating an Environment is a tenant-scoped, role-dependent mutation
+  # (ADMIN and DEVELOPER only). AF-07 requires it to reach the Policy.
+  - command: CreateEnvironment
+    policy: EnvironmentPolicy
+    action: create?
+  # M01-11. Updating an Environment (name, slug in M01) is also tenant-scoped
+  # and role-dependent.
+  - command: UpdateEnvironment
+    policy: EnvironmentPolicy
+    action: update?
+  # M01-12. Creating a Service is a tenant-scoped, role-dependent mutation
+  # (ADMIN and DEVELOPER only). AF-07 requires it to reach the Policy.
+  - command: CreateService
+    policy: ServicePolicy
+    action: create?
+  # M01-12. Updating Service desired state is also tenant-scoped and role-dependent.
+  - command: UpdateServiceDesiredState
+    policy: ServicePolicy
+    action: update?
 
 # AF-06 — field names that carry secret material. A serializer, a log formatter or
 # an audit payload builder that emits one of these in plaintext is a finding.
@@ -42,6 +76,10 @@ sensitive_field_names:
   - access_token
   - refresh_token
   - client_secret
+  # M01-01. The raw session token exists only in the response cookie; the column
+  # holds its SHA-256. Named consistently so this entry catches it wherever it is
+  # written.
+  - session_token
 
 # AF-02 — the single boundary allowed to reach the Docker Engine API, plus the
 # test harness that drives the disposable lab.
@@ -65,6 +103,13 @@ fitness_self_referential:
   - lib/gates/fitness_functions.rb
   - lib/gates/workspace_guardrail.rb
   - config/architecture/fitness.yml
+  # M01-93: the test-evidence ledger hashes the environment a run depended on,
+  # and `DOCKER_HOST`/`DOCKER_CONTEXT` are part of it — a `:swarm` example that
+  # passed against one daemon proves nothing about another. It reads the two
+  # variables to build a digest and makes no call: same case as the guardrail
+  # above, and deliberately **not** `docker_boundaries`, which is the Tier-0
+  # list that grants access to the Engine.
+  - lib/gates/test_evidence.rb
 
 # Waivers. Same contract as the security waivers: reason, owner, deadline, and the
 # Story that removes it. An expired waiver blocks again automatically.

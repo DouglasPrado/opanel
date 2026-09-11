@@ -21,6 +21,13 @@ gem "solid_queue"
 gem "inertia_rails", "~> 3.22"
 gem "vite_rails", "~> 3.11"
 
+# Password hashing (M01-01). Annex B §13 requires a GPU-resistant KDF,
+# preferably Argon2id with versioned parameters, and Annex C §7.1 requires the
+# parameters to be updatable. `has_secure_password` is bcrypt-only, so the Rails
+# default below stays commented out. Justified in
+# docs/implementation/M01/reports/M01-01.md.
+gem "argon2", "~> 2.3"
+
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"
 

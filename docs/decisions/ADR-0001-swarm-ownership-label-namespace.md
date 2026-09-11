@@ -1,13 +1,15 @@
 ---
 title: "ADR-0001 — Namespace das labels de ownership no Swarm"
-status: "Proposed"
+status: "accepted"
 date: "2026-09-06"
 decision-required-before: "M01-16"
+accepted-date: "2026-09-08"
+accepted-by: "repository owner"
 ---
 
 # ADR-0001 — Namespace das labels de ownership no Swarm
 
-**Status:** `Proposed` — exige aceitação humana **antes** da Story `M01-16-swarm-ownership-labels`.
+**Status:** `Accepted` — aceito em 2026-09-08 pelo dono do repositório.
 
 ## Context
 
@@ -40,7 +42,7 @@ Três fatos tornam isso uma decisão, e não um detalhe:
 
 `docs/decisions/pending-documentation-updates.md` §4 já sinalizou que a decisão é necessária e deve ocorrer **antes do M01**.
 
-## Decision (proposta)
+## Decision
 
 Adotar o namespace **`com.opanel.*`** para todas as labels de ownership de recursos gerenciados no Docker Swarm — Services, networks, secrets e configs criados pela plataforma:
 

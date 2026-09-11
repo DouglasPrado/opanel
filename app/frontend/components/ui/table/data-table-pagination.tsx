@@ -24,7 +24,7 @@ function DataTablePagination<TData extends RowData>({
   showSelection = false,
 }: DataTablePaginationProps<TData>) {
   return (
-    <div className="flex flex-col gap-4 px-2 text-lg sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-4 px-2 text-base sm:flex-row sm:items-center sm:justify-between">
       <div className="font-extralight text-muted-foreground">
         {showSelection
           ? `${table.getFilteredSelectedRowModel().rows.length} de ${table.getFilteredRowModel().rows.length} linha(s) selecionada(s).`

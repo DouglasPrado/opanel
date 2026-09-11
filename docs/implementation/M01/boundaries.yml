@@ -1,0 +1,1296 @@
+# The declared boundary of each Story in this Milestone.
+#
+# "Changes outside the declared boundary are a review finding even when the code
+# is correct" (AGENT_RULES, "Scope Discipline"). That rule needs something to
+# compare against, so a Story declares the paths it may touch **before** editing:
+# a boundary written afterwards only describes what happened.
+#
+# `bin/gate pre-commit --story <id>` and `bin/gate post-commit --story <id>` read
+# this. A Story with no entry here fails the boundary check rather than passing
+# it — a check satisfied by never declaring anything reports green over exactly
+# the scope creep it exists to catch.
+#
+# Patterns are shell globs matched against repository-relative paths (`**`
+# crosses directories). The pack's own bookkeeping — tasks.json, reports, review,
+# evidence, this file — is always allowed and does not need declaring.
+#
+# Widening a boundary is a deliberate act: do it in the commit that needs it, and
+# say why in the Story report. Widening it silently to make a gate pass is the
+# thing this prevents.
+
+boundaries:
+  # The two Stories numbered outside the Milestone's range are the ones allowed
+  # to touch the loop and the gates, because no Story may edit the machinery that
+  # judges it from inside the work being judged. G02 authorises them explicitly
+  # and requires each to be committed on its own, before any domain Story.
+
+  M01-91:
+    # A metade feita em 70c7f7e (bin/gate --only, os dois exemplos caros) e a
+    # metade que resta, medida nesta sessão: `bin/test --parallel` roda 1 733
+    # exemplos em 297 s contra ~490 s serial e cai num único spec `:swarm` —
+    # dez workers contra um daemon. O que torna os `:swarm` paralelo-seguros é
+    # um lock por daemon, no mesmo padrão do RepositoryLock que os scans já usam.
+    - bin/gate
+    - bin/security
+    - bin/test
+    - spec/gates/**
+    - spec/security/production_logging_spec.rb
+    - spec/security/security_scan_spec.rb
+    - spec/spec_helper.rb
+    - spec/support/**
+    # O spec que caiu em paralelo: a asserção passa a nomear a causa
+    # (`unreachable_reason`) em vez de só o status, para que a próxima falha
+    # diga o quê, não só que.
+    - spec/integration/swarm_bootstrap_lab_spec.rb
+    # `bin/gate` é negado pelo hook ao implementer; o flip para `--parallel` e
+    # para `bin/security --diff` vai como patch reproduzido no relatório, como
+    # na M01-92. Fica declarado porque a Story o toca — pelas mãos do operador.
+
+  M01-01:
+    # Schema: the first three domain migrations and the regenerated dump.
+    - db/migrate/*.rb
+    - db/schema.rb
+    # Domain.
+    - app/models/user.rb
+    - app/models/session.rb
+    - app/models/authentication_attempt.rb
+    - app/models/concerns/ulid_primary_key.rb
+    # Application layer.
+    - app/commands/register_user.rb
+    - app/commands/authenticate_user.rb
+    - app/commands/revoke_session.rb
+    - app/queries/user_sessions.rb
+    # Delivery. The four pre-existing controllers are here only because
+    # deny-by-default forces each to state whether it is public.
+    - app/controllers/application_controller.rb
+    - app/controllers/errors_controller.rb
+    - app/controllers/gallery_controller.rb
+    - app/controllers/home_controller.rb
+    - app/controllers/sessions_controller.rb
+    - app/controllers/registrations_controller.rb
+    - app/controllers/concerns/authentication.rb
+    - app/controllers/concerns/error_envelope.rb
+    # UI. Pages and one feature component; no primitive under ui/ is touched.
+    - app/frontend/pages/Auth/**
+    - app/frontend/pages/Account/**
+    - app/frontend/components/features/auth/**
+    # Platform library: the identifier layer ADR-0002 requires, the KDF wrapper
+    # Annex B §13 requires, and the Result shape the Commands return.
+    - lib/opanel/identifier.rb
+    - lib/opanel/password_hashing.rb
+    - lib/opanel/result.rb
+    # Configuration. fitness.yml is *widened* here (session_token joins the
+    # sensitive field names) — never narrowed.
+    - config/application.rb
+    - config/routes.rb
+    - config/initializers/session_store.rb
+    - config/architecture/fitness.yml
+    # Tests.
+    - spec/factories/users.rb
+    - spec/factories/sessions.rb
+    - spec/unit/identifier_spec.rb
+    - spec/unit/password_hashing_spec.rb
+    - spec/unit/password_policy_spec.rb
+    - spec/unit/session_expiry_spec.rb
+    - spec/unit/authentication_attempt_spec.rb
+    - spec/integration/user_registration_spec.rb
+    - spec/integration/user_authentication_spec.rb
+    - spec/integration/session_revocation_spec.rb
+    - spec/integration/login_rate_limit_spec.rb
+    - spec/requests/authentication_spec.rb
+    - spec/requests/session_cookie_spec.rb
+    - spec/requests/error_envelope_spec.rb
+    - spec/requests/account_sessions_spec.rb
+    - spec/requests/root_spec.rb
+    - spec/requests/gallery_spec.rb
+    - spec/requests/inertia_spec.rb
+    - spec/requests/csrf_and_errors_spec.rb
+    - spec/security/password_storage_spec.rb
+    - spec/security/login_response_indistinguishability_spec.rb
+    - spec/security/authentication_logging_spec.rb
+    # The Argon2id dependency (Annex B §13); justified in the Story report.
+    - Gemfile
+    - Gemfile.lock
+    # SC-17 was found by this Story and is recorded by it.
+    - docs/implementation/SPEC_CONFLICTS.md
+
+  # Team e a invariante de OWNER único. O centro da Story é o banco: a Story se
+  # resolve em duas migrations, dois models, dois Commands e uma Query. A rota e
+  # a página existem porque o AC8 exige provar que o acesso some na requisição
+  # seguinte, e não pode haver rota Inertia sem página — mas a UI de produto é
+  # de M01-22, então aqui a página é mínima e composta de primitivos existentes.
+  M01-02:
+    # Schema: as duas migrations expand e o dump regenerado.
+    - db/migrate/*_create_teams.rb
+    - db/migrate/*_create_team_members.rb
+    - db/schema.rb
+    # Registro do prefixo do novo tipo (ADR-0002 §3): team_member -> "tm".
+    - lib/opanel/identifier.rb
+    - spec/unit/identifier_spec.rb
+    # Domínio.
+    - app/models/team.rb
+    - app/models/team_member.rb
+    # Camada de aplicação.
+    - app/commands/create_team.rb
+    - app/commands/suspend_team_member.rb
+    - app/queries/teams_for_user.rb
+    # Entrega mínima: uma rota e a página que provam AC1 e AC8.
+    - app/controllers/teams_controller.rb
+    - config/routes.rb
+    - app/frontend/pages/Teams/*.tsx
+    # Testes.
+    - spec/factories/teams.rb
+    - spec/factories/team_members.rb
+    - spec/unit/team_member_spec.rb
+    - spec/integration/team_ownership_constraints_spec.rb
+    - spec/integration/team_ownership_concurrency_spec.rb
+    - spec/policies/team_membership_access_spec.rb
+    - spec/requests/teams_spec.rb
+    - spec/security/team_ownership_escalation_spec.rb
+    # Onde as divergências que a Story encontrou contra o doc 04 são registradas.
+    - docs/decisions/pending-documentation-updates.md
+
+  # InstanceRole e o bootstrap da primeira instalação. Toca `RegisterUser` porque
+  # o bootstrap acontece dentro do primeiro cadastro (doc 04 §3.1) — não é uma
+  # rota nova, é uma consequência atômica da que já existe. Sem UI: a área de
+  # administração da instância é de M11-12, e nenhum AC desta Story pede tela.
+  M01-03:
+    - db/migrate/*_create_instance_roles.rb
+    - db/schema.rb
+    - lib/opanel/identifier.rb
+    - spec/unit/identifier_spec.rb
+    # Domínio.
+    - app/models/instance_role.rb
+    # Camada de aplicação. RegisterUser passa a conter o bootstrap; CreateTeam é
+    # tocado só para provar, por teste, que um Team posterior não concede nada
+    # além de TEAM_OWNER.
+    - app/commands/register_user.rb
+    - app/commands/bootstrap_installation.rb
+    - app/commands/grant_instance_role.rb
+    - app/commands/revoke_instance_role.rb
+    - app/queries/installation_bootstrap_state.rb
+    # Testes.
+    - spec/factories/instance_roles.rb
+    - spec/unit/instance_role_spec.rb
+    - spec/integration/installation_bootstrap_spec.rb
+    - spec/integration/installation_bootstrap_concurrency_spec.rb
+    - spec/integration/instance_role_revocation_spec.rb
+    # Acrescentado na rodada de correção: o AC5 concorrente não tinha exemplo,
+    # e a revisão mostrou que o lock deadlockava em vez de recusar.
+    - spec/integration/instance_role_revocation_concurrency_spec.rb
+    - spec/policies/instance_role_grant_spec.rb
+    - spec/security/instance_admin_escalation_spec.rb
+    - spec/integration/user_registration_spec.rb
+
+  # A fundação de autorização. É a Story mais estruturante do Milestone: tudo o
+  # que vier depois passa por aqui, e por isso ela toca os Commands e Queries que
+  # já existem — para provar a fundação contra código real em vez de contra um
+  # exemplo. Só as Policies das entidades que existem hoje são criadas; Project,
+  # Environment, Service e Cluster nascem com as suas próprias Stories, usando
+  # esta base.
+  M01-04:
+    # A camada.
+    - app/policies/application_policy.rb
+    - app/policies/team_policy.rb
+    - app/queries/tenant_scope.rb
+    - lib/opanel/authorization.rb
+    # AC5 tem duas metades: o helper que facilita o certo, e o lint que torna o
+    # errado visível. A segunda exigiu um cop, acrescentado na rodada de correção.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    - .rubocop.yml
+    # Os Commands e Queries que passam a atravessá-la.
+    - app/commands/create_team.rb
+    - app/commands/suspend_team_member.rb
+    - app/queries/teams_for_user.rb
+    - app/controllers/teams_controller.rb
+    # AF-07 passa a avaliar código real; a lista de mutações críticas é dado.
+    - config/architecture/fitness.yml
+    # Testes.
+    - spec/unit/application_policy_spec.rb
+    - spec/policies/role_matrix_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    - spec/integration/tenant_scope_spec.rb
+    - spec/security/authorization_disclosure_spec.rb
+    - spec/gates/authorization_coverage_spec.rb
+    - spec/gates/unscoped_tenant_query_spec.rb
+    - spec/support/authorization.rb
+
+  # O AuditLog. Toca os Commands que já existem porque a Story pede que as ações
+  # de identidade do M01 passem a auditar — a fundação só vale provada contra as
+  # ações reais, não contra um exemplo. Sem UI: a consulta é de M11-11.
+  M01-05:
+    - db/migrate/*_create_audit_logs.rb
+    - db/schema.rb
+    - lib/opanel/identifier.rb
+    - spec/unit/identifier_spec.rb
+    # Domínio e a instrumentação que torna auditar o caminho curto.
+    - app/models/audit_log.rb
+    - app/audit/audit_trail.rb
+    - app/audit/audit_sanitizer.rb
+    - app/queries/audit_trail_for_resource.rb
+    # Os Commands que passam a auditar, e a camada de autorização que passa a
+    # registrar DENIED — que fecha também o F-7 da M01-04.
+    - app/commands/create_team.rb
+    - app/commands/suspend_team_member.rb
+    - app/commands/revoke_session.rb
+    - app/commands/register_user.rb
+    - app/commands/authenticate_user.rb
+    - app/commands/bootstrap_installation.rb
+    - lib/opanel/authorization.rb
+    - config/architecture/fitness.yml
+    # Testes.
+    - spec/factories/audit_logs.rb
+    - spec/unit/audit_sanitizer_spec.rb
+    - spec/unit/audit_actions_spec.rb
+    - spec/integration/audit_log_append_only_spec.rb
+    - spec/integration/audit_trail_spec.rb
+    - spec/policies/audit_denied_spec.rb
+    - spec/security/audit_redaction_spec.rb
+    # Não rodam em transação, e esta Story fez os fluxos deles gravarem trilha:
+    # sem limpar `audit_logs` eles passam a contaminar os arquivos seguintes.
+    - spec/integration/installation_bootstrap_concurrency_spec.rb
+    - spec/integration/instance_role_revocation_concurrency_spec.rb
+
+  # O app shell e os estados universais. A Story é de frontend e o Reuse Gate é o
+  # gate central: `app-shell`, `sidebar`, `profile` e as primitivas já existem, e
+  # o que se acrescenta são composições em `shared/` — usadas por várias features
+  # — mais as páginas e as rotas do doc 10 §3.2 que existem em M01.
+  M01-06:
+    # Estados universais, compostos sobre as primitivas do inventário.
+    - app/frontend/components/shared/states/**
+    # O seletor de Team e o badge de Environment.
+    - app/frontend/components/shared/team-switcher/**
+    - app/frontend/components/shared/environment-badge/**
+    # O layout que compõe o shell para as páginas autenticadas.
+    # Em `components/layouts/`, não numa segunda raiz `app/frontend/layouts/`:
+    # fora da árvore que o inventário e a galeria varrem, um layout escapa das
+    # próprias verificações que esta Story invoca.
+    - app/frontend/components/layouts/panel-layout/**
+    # O shell precisa de usuário e Teams em toda página autenticada, e isso é
+    # shared prop de verdade — estender o tipo existente é o Reuse Gate aplicado
+    # a tipos, não um SharedProps paralelo.
+    - app/frontend/types/inertia.d.ts
+    # Páginas e rotas.
+    - app/frontend/pages/**
+    - app/controllers/teams_controller.rb
+    - app/controllers/panel_controller.rb
+    - app/controllers/errors_controller.rb
+    - app/controllers/application_controller.rb
+    - config/routes.rb
+    # Alargamento deliberado, feito durante a implementação e registrado aqui: o
+    # AC1 diz que o usuário autenticado vê o app shell, e até esta Story o destino
+    # após autenticar era `root_path` — a página de exemplo do M00. Para onde se
+    # vai depois de entrar é parte de entregar o shell, não da autenticação.
+    #
+    # Os três abaixo vêm do mesmo alargamento: o Command que redireciona, e os dois
+    # specs cujas asserções nomeavam o destino antigo. Estavam declarados na entrada
+    # `M01-01` — errado por dois motivos que a revisão apontou: `StoryBoundary.check`
+    # lê `boundaries[story]`, então um caminho arquivado sob outra Story é invisível
+    # à checagem desta; e alargar o boundary de uma Story já `done` transforma a
+    # declaração dela em descrição do que aconteceu, que é justamente o que o
+    # mecanismo existe para impedir.
+    - app/controllers/concerns/authentication.rb
+    - app/controllers/registrations_controller.rb
+    - spec/requests/authentication_spec.rb
+    - spec/requests/session_cookie_spec.rb
+    # O inventário é atualizado quando um componente entra em shared/ ou layouts/.
+    - app/frontend/components/INVENTORY.md
+    - app/frontend/components/features/gallery/registry.tsx
+    # Testes.
+    - spec/frontend/**
+    - spec/requests/panel_spec.rb
+    - spec/security/inertia_shared_props_spec.rb
+    - e2e/**
+    # A mitigação registrada dizia que nenhuma das cores waivadas alcança página
+    # própria do Opanel; o shell desta Story tornou isso falso, e o registro tem
+    # de dizer o que é verdade.
+    - config/quality/waivers.yml
+
+  # O Project — o produto lógico do Team. A Story é de domínio: uma tabela nova
+  # com as constraints do doc 09 §18, três Commands, duas Queries, uma Policy, e
+  # duas telas — a lista com o fluxo curto do doc 10 §7.2, e a versão mínima do
+  # `ProjectOverview` do doc 09 §23 que o UC-009 passo 6 abre depois de criar.
+  #
+  # A UI rica de Projects continua sendo da `M01-22`: production status, contagem
+  # de Environments, último deploy, "attention", releases e comparação entre
+  # Environments precisam de `M01-11`, `M01-12`..`M01-18` e `M01-19` antes.
+  #
+  # A frase original desta abertura dizia "listar e criar, e nada além disso", e
+  # deixou de ser verdade quando a rodada 2 da revisão trouxe a segunda tela. Um
+  # resumo de boundary desatualizado engana quem lê o topo e não as trinta linhas
+  # abaixo — foi o finding M-1.
+  M01-07:
+    - db/migrate/*_create_projects.rb
+    - db/schema.rb
+    # Domínio.
+    - app/models/project.rb
+    # A associação inversa: `Team has_many :projects`. Sem ela a checagem de slug
+    # por Team não tem por onde partir, e a única alternativa seria consultar
+    # `Project` sem escopo — que é exatamente o que o cop proíbe.
+    - app/models/team.rb
+    # Os três Commands e as duas Queries do escopo.
+    - app/commands/create_project.rb
+    - app/commands/update_project.rb
+    - app/commands/archive_project.rb
+    - app/queries/projects_for_team.rb
+    - app/queries/project_overview.rb
+    # A Policy do recurso, e o `when "Project"` que o TenantScope ainda não tem —
+    # sem ele toda leitura de Project levanta `UnscopedRelation`.
+    - app/policies/project_policy.rb
+    - app/queries/tenant_scope.rb
+    # `Authorization::POLICIES` despacha por classe do recurso; sem a linha de
+    # `Project` toda autorização de Project levanta `ArgumentError`. O comentário
+    # do próprio arquivo já previa esta Story ("later a Project").
+    - lib/opanel/authorization.rb
+    # O cop que proíbe consulta sem escopo precisa saber que Project é
+    # tenant-scoped; caso contrário ele reporta verde sobre exatamente o que
+    # existe para pegar.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # A trilha: três ações novas e a allowlist do recurso. Sem a linha "Project"
+    # no sanitizer o `after` inteiro sai como OMITTED.
+    - app/models/audit_log.rb
+    - app/audit/audit_sanitizer.rb
+    # Rotas e a tela.
+    - app/controllers/projects_controller.rb
+    - app/controllers/panel_controller.rb
+    # Alargamento deliberado, encontrado pelo request spec: esta é a primeira
+    # Story cujos Commands autorizam, e `Authorization::Denied` não tinha
+    # tratamento — uma recusa de papel virava 500. O rescue vai no
+    # `ApplicationController` e não aqui: qualquer controller que chame um
+    # Command pode levantá-la, e a próxima Story repetiria o mesmo bloco.
+    # `CONFLICT` é código novo que esta Story produz; a lista do doc 09 §28 é
+    # explicitamente de exemplos, então especializá-la é permitido.
+    - app/controllers/application_controller.rb
+    - app/controllers/concerns/error_envelope.rb
+    - spec/requests/error_envelope_spec.rb
+    - config/routes.rb
+    - app/frontend/pages/Panel/Projects.tsx
+    # A tela do Project, e o teste dela. Acrescentadas na rodada 2 da revisão:
+    # `ProjectOverview` — Query que a Story exige em Application Layer — tinha
+    # zero callers e zero testes, e o F-2 provou isso trocando o corpo por
+    # `raise` sem nenhuma falha. O caller certo não é inventado: o UC-009 passo 6
+    # diz "UI abre Project Overview", e a versão anterior redirecionava para a
+    # lista — divergência do próprio caso de uso que a Story referencia.
+    - app/frontend/pages/Panel/Project.tsx
+    - spec/frontend/project-page.test.tsx
+    - spec/unit/project_overview_spec.rb
+    # Testes.
+    - spec/factories/projects.rb
+    - spec/unit/project_slug_spec.rb
+    # A lista transcrita de nomes de ação. Ela existe para que acrescentar uma
+    # ação custe uma mudança deliberada em dois lugares; esta Story acrescenta
+    # três, então tocá-la é a manutenção que o check pede.
+    - spec/unit/audit_actions_spec.rb
+    - spec/unit/project_lifecycle_spec.rb
+    - spec/integration/project_constraints_spec.rb
+    - spec/integration/projects_cursor_pagination_spec.rb
+    - spec/policies/project_policy_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    # O classificador de rotas do harness cross-team. O comentário dele já previa
+    # esta Story — "a route added in M01-07 shows up here without anybody deciding
+    # to add it" — e foi o que aconteceu: as três rotas novas caíram como
+    # unclassified e o gate de cobertura falhou até serem declaradas.
+    - spec/support/authorization.rb
+    - spec/requests/projects_spec.rb
+    - spec/frontend/projects-page.test.tsx
+    # O AC5 depende de `Environment`, que nasce na `M01-11` — cujo próprio
+    # precondition é `M01-07` done. A dependência é circular no pack e a decisão
+    # não é do implementer: registrar o conflito é o que `AGENT_RULES` manda
+    # fazer em vez de escolher em silêncio.
+    - docs/implementation/SPEC_CONFLICTS.md
+
+  # O Cluster e o bootstrap de um Swarm de um node. A Story é de infraestrutura e
+  # segurança: uma tabela, um preflight, o caminho mínimo até o Docker, e a tela
+  # que mostra check por check o que passou e o que falhou.
+  #
+  # O Swarm Executor completo é da `M01-09` e continua fora. O que entra em
+  # `app/executors/` aqui é só o caminho de bootstrap — e vai ali porque o AF-02
+  # só permite aquele diretório falar com o Docker Engine. Acrescentar caminho ao
+  # `docker_boundaries` é mudança Tier-0 com ADR, e não é o que esta Story faz.
+  M01-08:
+    - db/migrate/*_create_clusters.rb
+    - db/schema.rb
+    # Domínio.
+    - app/models/cluster.rb
+    - app/models/team.rb
+    # O único ponto que fala com o Docker Engine, dentro do boundary do AF-02.
+    - app/executors/swarm_bootstrap.rb
+    # O preflight do doc 06 §3.2 e a sonda do sistema operacional que ele
+    # consulta. A sonda é o adaptador que isola uma API externa (o SO), e existe
+    # por pressão concreta: sem ela nenhum ramo de FALHA dos checks pode ser
+    # exercitado, e o AC4 exige exatamente esses ramos provados.
+    - app/clusters/**
+    # Commands, Queries e Policy.
+    - app/commands/bootstrap_cluster.rb
+    - app/commands/refresh_cluster_status.rb
+    - app/queries/cluster_readiness_view.rb
+    - app/policies/cluster_policy.rb
+    - app/policies/application_policy.rb
+    - app/queries/tenant_scope.rb
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    - lib/opanel/authorization.rb
+    # `BootstrapCluster` é mutação crítica; declarar isso fortalece o AF-07, que
+    # passa a exigir que ela alcance mesmo a Policy.
+    - config/architecture/fitness.yml
+    # A trilha.
+    - app/models/audit_log.rb
+    - app/audit/audit_sanitizer.rb
+    - spec/unit/audit_actions_spec.rb
+    # Rotas e tela.
+    - app/controllers/clusters_controller.rb
+    - app/controllers/panel_controller.rb
+    - config/routes.rb
+    - app/frontend/pages/Panel/Clusters.tsx
+    - spec/support/authorization.rb
+    # Testes.
+    - spec/factories/clusters.rb
+    - spec/unit/preflight_spec.rb
+    # O gate de pre-commit exige um spec nomeado por arquivo de fonte; a sonda
+    # estava coberta só de través, e as duas regressões achadas rodando-a de
+    # verdade (relógio, volume errado) merecem teste direto.
+    - spec/unit/system_probe_spec.rb
+    # Fora do trabalho desta Story, e declarado por isso mesmo: a entrada do pack
+    # para a `M01-92` foi escrita durante a M01-08 por instrução do operador e
+    # entrou neste commit. Um boundary alargado depois do fato só descreve o que
+    # aconteceu — é exatamente isso, dito em voz alta, em vez de escondido.
+    - docs/implementation/M01/stories/M01-92-*.md
+    # A lista transcrita de motivos de negação, como a de ações de audit: existe
+    # para que acrescentar um motivo custe uma mudança deliberada em dois
+    # lugares, e esta Story acrescenta `instance_role_required`.
+    - spec/unit/application_policy_spec.rb
+    - spec/unit/cluster_status_spec.rb
+    - spec/integration/cluster_bootstrap_spec.rb
+    - spec/integration/swarm_bootstrap_lab_spec.rb
+    # A verificação do init real, fora do padrão `_spec.rb` de propósito: precisa
+    # de um daemon sem Swarm, que só um operador pode produzir, e um skip não é
+    # um pass para o post-commit.
+    - spec/integration/swarm_init_verification.rb
+    - spec/policies/cluster_policy_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    - spec/requests/clusters_spec.rb
+    - spec/security/docker_api_exposure_spec.rb
+    - spec/frontend/clusters-page.test.tsx
+
+  # Evidência de teste por árvore, e dois avisos que o loop dá tarde demais.
+  # Fora da faixa do Milestone pelo mesmo motivo da M01-91: toca a máquina que
+  # julga as Stories. Autorizada pelo operador a rodar dentro do M01.
+  #
+  # O guard-edit nega `bin/gate*` e `lib/gates/**` sem chave por Story. As partes
+  # que vivem ali (o post-commit aceitar evidência por árvore; o aviso de
+  # acceptance-mapping no gate local) são entregues como patch em `evidence/`
+  # para o operador aplicar — o humano é o gate, e o hook não é contornado.
+  # Fora da faixa do Milestone pelo mesmo motivo da M01-91: toca a máquina que
+  # julga as Stories. As duas checagens que somam 98% do gate passam a trabalhar
+  # sobre o risco (13 MB commitáveis) em vez do disco (952 MB de checkout), e os
+  # specs de gate deixam de rodar o gate contra o checkout de quem os roda.
+  M01-93:
+    - bin/security
+    # Onde a identidade de uma execução de suíte é calculada e gravada: é ali
+    # que "a mesma árvore já provada não roda de novo" tem de nascer, para a
+    # suíte rodar uma vez por Story em vez de duas.
+    - bin/test
+    - spec/security/security_scan_spec.rb
+    # Os dois specs que provam os gates plantando arquivos no checkout real, e
+    # que por isso ficam serializados pelo RepositoryLock na cauda do paralelo.
+    - spec/gates/gate_scripts_spec.rb
+    - spec/gates/ci_pipeline_spec.rb
+    # Os tetos medidos mudam quando o custo muda.
+    - spec/gates/gate_budget_spec.rb
+    # Onde a identidade de uma execução é asseverada contra um repositório
+    # fixture, ao lado do `tree` que a M01-92 introduziu.
+    - spec/gates/test_evidence_spec.rb
+    - bin/test-metadata
+    - spec/support/**
+    # Onde a seleção do gate nasce. O `--changed` comparava com `main`, então
+    # cada Story testava o Milestone acumulado — 1 047 arquivos, os 104 specs,
+    # sempre. A base passa a ser o HEAD do início da Story, gravada por
+    # `tasks.sh set <ID> in_progress`.
+    - bin/story-scope
+    - lib/gates/story_scope.rb
+    - bin/_gate_lib.sh
+    # O ledger de execuções: identidade das entradas congelada antes de rodar,
+    # um registro por execução, seleções parciais que compõem em vez de se
+    # sobrescrever.
+    - lib/gates/test_evidence.rb
+    - spec/gates/incremental_evidence_spec.rb
+    # As duas metades que o hook nega ao implementer e que o operador aplicou:
+    # o post-commit somando seleções, e o gate local usando a base da Story.
+    - bin/gate
+    - lib/gates/post_commit.rb
+    # O loop em si — prazo do reviewer no hook, recusa da quarta tentativa,
+    # e a documentação que descreve os gates que mudaram.
+    - tools/opanel-loop/**
+    - docs/engineering/quality-gates.md
+    # `fitness_self_referential`, não `docker_boundaries`: o ledger lê
+    # DOCKER_HOST para o digest de ambiente e não chama nada. A lista Tier-0
+    # fica intocada.
+    - config/architecture/fitness.yml
+    # A isenção da AF-02 isenta o arquivo inteiro; a asserção estreita que diz
+    # "estes arquivos falam sobre Docker, não falam com Docker" nasce aqui.
+    - spec/security/executor_isolation_spec.rb
+
+  M01-92:
+    - bin/test-metadata
+    - bin/test
+    # A biblioteca compartilhada dos gates. Não está na lista que o hook nega
+    # (`bin/gate|stop-gate|merge-gate`), e é onde um resultado `warn` distinto
+    # tem de nascer para o aviso do gate local não se disfarçar de `skip`.
+    - bin/_gate_lib.sh
+    - tools/opanel-loop/agents/reviewer.md
+    - spec/gates/test_evidence_spec.rb
+    - spec/gates/gate_scripts_spec.rb
+    - spec/integration/test_harness_spec.rb
+    - docs/implementation/M01/stories/M01-92-*.md
+
+  # O Swarm Executor: o único boundary autorizado a falar com a Docker Engine
+  # API (AF-02), com operações tipadas e allowlistadas e nenhuma primitive
+  # genérica. Fala HTTP pelo socket unix, porque a CLI não aceita versão
+  # esperada em `service update` e sem isso não existe CONFLICT de verdade.
+  M01-09:
+    - app/executors/**
+    # Redação de logs: o executor reusa `Opanel::Redaction`, que hoje não cobre
+    # `X-Registry-Auth` nem join tokens; acrescentar padrões fortalece, não
+    # afrouxa.
+    - lib/opanel/redaction.rb
+    # Testes.
+    - spec/unit/swarm_executor_spec.rb
+    - spec/unit/engine_client_spec.rb
+    - spec/unit/redaction_spec.rb
+    - spec/contracts/executor_contract_spec.rb
+    - spec/integration/swarm_executor_lab_spec.rb
+    - spec/security/executor_isolation_spec.rb
+    # O executor como módulo in-process contradiz o diagrama do doc 07 §2.2; a
+    # revisão (C-1) chamou de conflito de arquitetura, e é. Registrado como
+    # SC-19 em vez de resolvido por um padrão inventado.
+    - docs/implementation/SPEC_CONFLICTS.md
+
+
+  # M01-10 — Node registration and observation.
+  #
+  # A `Node` is desired state and a `NodeObservation` is actual state, and doc 09
+  # §10 requires them not to share columns; that is why two tables and two models
+  # appear here instead of a status column bolted onto `clusters`.
+  #
+  # AC11 asks for a fitness function that expires ADR-0005 on the second node.
+  # The only home for a new checker is `lib/gates/fitness_functions.rb`, which
+  # `guard-edit.sh` denies to a running backlog run — deliberately, and the
+  # refusal is correct. That path is therefore **not** declared here: the conflict
+  # is recorded rather than resolved by widening a boundary until the guard
+  # stops mattering.
+  M01-10:
+    - db/migrate/*_create_nodes.rb
+    - db/migrate/*_create_node_observations.rb
+    - db/schema.rb
+    # Domínio: desired state e actual state, separados.
+    - app/models/node.rb
+    - app/models/node_observation.rb
+    - app/models/cluster.rb
+    # Application Layer.
+    - app/commands/observe_cluster_nodes.rb
+    - app/queries/nodes_for_cluster.rb
+    - app/policies/cluster_policy.rb
+    # O job periódico que chama o executor. Não guarda estado em memória.
+    - app/jobs/observe_cluster_nodes_job.rb
+    - config/recurring.yml
+    # Entrega: a lista de nodes vive dentro da área de Cluster que já existe.
+    - app/controllers/clusters_controller.rb
+    - config/routes.rb
+    - app/frontend/pages/Panel/Clusters.tsx
+    - app/frontend/components/**
+    # Testes.
+    - spec/unit/node_status_spec.rb
+    - spec/unit/observe_cluster_nodes_spec.rb
+    - spec/integration/node_observation_spec.rb
+    - spec/integration/swarm_nodes_lab_spec.rb
+    - spec/policies/cluster_policy_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    # Alargamento deliberado: o negativo cross-team do AC9 ficou num spec
+    # próprio em vez de dentro do de Cluster, porque o sujeito é `Node` e não
+    # `Cluster`. Dito aqui em voz alta em vez de ficar como diff fora do
+    # boundary — e declarado nesta Story, não na M01-08, onde a primeira versão
+    # deste alargamento foi parar por engano.
+    - spec/policies/node_cross_team_spec.rb
+    - spec/requests/clusters_spec.rb
+    - spec/security/node_observation_redaction_spec.rb
+    - spec/frontend/clusters-page.test.tsx
+    - spec/factories/**
+    # Tightening the cop to cover Environment and Service (added in M01-11 and M01-12).
+    # The cop and its spec are declared here because M01-10 modifies the cop's
+    # TENANT_SCOPED list; the spec file itself is not edited.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    - spec/gates/unscoped_tenant_query_spec.rb
+    # O conflito do AC11, registrado onde os conflitos de especificação vivem.
+    - docs/implementation/SPEC_CONFLICTS.md
+    # Alargamento deliberado: o AC11 foi para arbitragem, e o `ADR-0007` manda a
+    # decisão ser anexada verbatim a este ledger. Ele é bookkeeping do Milestone,
+    # como tasks.json e reports/, mas é novo — o allowlist do gate foi escrito
+    # antes de ele existir e ainda não o conhece. Declarado aqui, na Story cuja
+    # arbitragem o criou, em vez de mexer no gate que julga esta execução.
+    - docs/implementation/M01/DECISIONS.md
+
+  # M01-11 — Environment entity with cluster placement.
+  #
+  # A Story with a second obligation: o AC11 é o `AC5` órfão da `M01-07`
+  # (`SC-18`). `ArchiveProject` carrega um `TODO(M01-11)` no lugar exato onde a
+  # recusa entra, e é por isso que um Command de outra Story aparece aqui — a
+  # dívida foi registrada com o número desta.
+  M01-11:
+    - db/migrate/*_create_environments.rb
+    - db/schema.rb
+    # Domínio.
+    - app/models/environment.rb
+    - app/models/project.rb
+    - app/models/cluster.rb
+    # Application Layer.
+    - app/commands/create_environment.rb
+    - app/commands/update_environment.rb
+    # O `TODO(M01-11)`: a recusa de arquivar um Project com Environment ativo.
+    - app/commands/archive_project.rb
+    - app/queries/environments_for_project.rb
+    - app/queries/environment_overview.rb
+    - app/policies/environment_policy.rb
+    - app/policies/project_policy.rb
+    # AF-07 exige que uma mutação tenant-scoped declare Policy e ação; as duas
+    # novas entram na lista de fatos que a AF consome. Acrescentar alarga o que
+    # é exigido — não afrouxa nada.
+    - config/architecture/fitness.yml
+    # Entrega.
+    - app/controllers/environments_controller.rb
+    - app/controllers/projects_controller.rb
+    - config/routes.rb
+    - app/frontend/pages/Panel/Project.tsx
+    - app/frontend/pages/Panel/Environments.tsx
+    - app/frontend/components/**
+    # Testes.
+    - spec/unit/environment_status_spec.rb
+    - spec/unit/environment_revision_spec.rb
+    - spec/unit/project_lifecycle_spec.rb
+    - spec/integration/environment_constraints_spec.rb
+    - spec/integration/environment_cross_team_cluster_spec.rb
+    - spec/integration/project_constraints_spec.rb
+    - spec/policies/environment_policy_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    - spec/requests/environments_spec.rb
+    - spec/frontend/environments-page.test.tsx
+    - spec/factories/**
+    # Alargamento deliberado, declarado no commit que precisa dele. Todas estas
+    # são listas transcritas de fatos que um registry consome, e acrescentar a
+    # elas *aperta* o que é exigido — nenhuma afrouxa uma regra:
+    #   - o dispatcher de Policy por classe de recurso ganha `Environment`;
+    #   - o TenantScope passa a escopar `Environment` pelo mesmo join de Project;
+    #   - a matriz de rotas cross-team do harness ganha as rotas de Environment,
+    #     e foi ela que pegou a `EnvironmentsController` respondendo 500 em vez
+    #     de negar — a entrada existe para isso;
+    #   - o allowlist do sanitizer e o registro de ações de audit ganham as duas
+    #     ações novas, como toda Story que audita uma mutação já fez.
+    - lib/opanel/authorization.rb
+    - app/queries/tenant_scope.rb
+    - spec/support/authorization.rb
+    - app/audit/audit_sanitizer.rb
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    # SC-18 fecha aqui: o critério órfão passa a ter onde ser provado.
+    - docs/implementation/SPEC_CONFLICTS.md
+
+  # O Service: a intenção do usuário sobre um workload, persistida e versionada.
+  # A Story é deliberadamente de persistência — imagem, réplicas, portas, recursos
+  # e health viram linha no PostgreSQL e nada mais. Nenhuma chamada ao Docker
+  # entra aqui: quem reconcilia é a `M01-18`, e o `AF-01`/`AF-02` provam a
+  # ausência. Operation e Outbox são da `M01-13`, e por isso `operationId` não
+  # aparece em nenhuma resposta desta Story.
+  M01-12:
+    - db/migrate/*_create_services.rb
+    - db/schema.rb
+    # Domínio. A associação inversa em Environment (`has_many :services`) é
+    # necessária para a checagem de slug por Environment e para o bloqueio de
+    # Environment inativo; sem ela a única alternativa seria consultar `Service`
+    # sem escopo, que é exatamente o que o cop proíbe.
+    - app/models/service.rb
+    - app/models/environment.rb
+    # Application Layer.
+    - app/commands/create_service.rb
+    - app/commands/update_service_desired_state.rb
+    - app/queries/services_for_environment.rb
+    - app/queries/service_runtime_view.rb
+    - app/policies/service_policy.rb
+    # A referência de imagem OCI é entrada não confiável que cruza a borda: o
+    # AC7 exige resolver tag mutável para digest e o requisito de segurança
+    # exige recusar referência que escape do registry pretendido. A validação
+    # mora em `lib/opanel/` junto das outras primitivas (`identifier`,
+    # `redaction`), e não dentro do Command, porque o Reconciler da `M01-18` vai
+    # ler o mesmo formato.
+    - lib/opanel/image_ref.rb
+    # `Authorization::POLICIES` despacha por classe do recurso; sem a linha de
+    # `Service` toda autorização de Service levanta `ArgumentError`. O TenantScope
+    # precisa escopar `Service` pelo join de Environment → Project → Team, pelo
+    # mesmo motivo que precisou de `Environment` na `M01-11`.
+    - lib/opanel/authorization.rb
+    - app/queries/tenant_scope.rb
+    # AF-07 exige que uma mutação tenant-scoped declare Policy e ação; as duas
+    # novas entram na lista de fatos que a AF consome. Acrescentar alarga o que é
+    # exigido — não afrouxa nada.
+    - config/architecture/fitness.yml
+    # O allowlist do sanitizer e o registro de ações de audit ganham as ações
+    # novas, como toda Story que audita uma mutação já fez. A lista transcrita
+    # de nomes de ação existe para que acrescentar uma ação custe uma mudança
+    # deliberada em dois lugares; esta Story acrescenta dois (service_created,
+    # service_updated), então tocá-la é a manutenção que o check pede.
+    - app/audit/audit_sanitizer.rb
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    # Entrega.
+    - app/controllers/services_controller.rb
+    - config/routes.rb
+    - app/frontend/pages/Panel/Services.tsx
+    - app/frontend/components/**
+    # Testes.
+    - spec/unit/service_state_machine_spec.rb
+    - spec/unit/service_revision_spec.rb
+    - spec/unit/service_technical_name_spec.rb
+    - spec/unit/image_ref_spec.rb
+    - spec/integration/service_constraints_spec.rb
+    - spec/integration/service_revision_conflict_spec.rb
+    - spec/policies/service_policy_spec.rb
+    - spec/policies/cross_team_mutations_spec.rb
+    - spec/requests/services_spec.rb
+    - spec/security/service_sensitive_fields_spec.rb
+    - spec/frontend/services-page.test.tsx
+    - spec/factories/**
+    # A matriz de rotas cross-team do harness ganha as rotas de Service. Foi ela
+    # que pegou a `EnvironmentsController` respondendo 500 em vez de negar na
+    # `M01-11`; a entrada existe para isso.
+    - spec/support/authorization.rb
+    - docs/implementation/M01/reports/M01-12.md
+    # SC-21: deferral of mutable tag resolution to M01-18.
+    - docs/implementation/SPEC_CONFLICTS.md
+    # Alargamento deliberado, pela mesma razão já registrada na `M01-10`: o AC7
+    # desta Story foi para arbitragem duas vezes, e o `ADR-0007` manda a decisão
+    # ser anexada verbatim a este ledger. É bookkeeping do Milestone, como
+    # tasks.json e reports/, mas o allowlist do gate foi escrito antes de ele
+    # existir. Declarado aqui, na Story cuja arbitragem o escreveu, em vez de
+    # mexer no gate que julga esta execução.
+    - docs/implementation/M01/DECISIONS.md
+
+  # M01-13 — Operation, OperationAttempt and the transactional Outbox.
+  #
+  # A Story that widens on purpose in two places, and it is worth saying why up
+  # front. `app/commands/update_service_desired_state.rb` and
+  # `app/commands/create_service.rb` belong to `M01-12`; this Story's whole point
+  # is that a mutation of Desired State stops being a bare `UPDATE` and starts
+  # committing an `Operation` and an `OutboxEvent` in the same transaction, so
+  # the Commands that write that state are exactly where the boundary lives.
+  # There is no way to prove AC1 without touching them.
+  #
+  # `app/controllers/concerns/error_envelope.rb` is the second. The arbitration
+  # of `DECISIONS.md` (the fourth-attempt block on `M01-12`) left it here by name:
+  # `REVISION_CONFLICT` was hand-mapped in the Services controller because
+  # `M01-12` was not allowed to edit the shared concern, and `M01-13` is "the next
+  # Story to produce that code and owns the shared concern's next legitimate
+  # edit". Lifting the code→status map back into one place is that edit.
+  #
+  # `lib/gates/**`, `bin/gate*` and `spec/gates/**` are NOT here and must not be.
+  # AF-06 is configured through `config/architecture/fitness.yml`; the checker
+  # itself belongs to `M01-91`/`M01-93` and is denied to the run it judges.
+  M01-13:
+    # Schema: three tables and the regenerated dump. Expand-only.
+    - db/migrate/*_create_operations.rb
+    - db/migrate/*_create_operation_attempts.rb
+    - db/migrate/*_create_outbox_events.rb
+    - db/schema.rb
+    # Domain.
+    - app/models/operation.rb
+    - app/models/operation_attempt.rb
+    - app/models/outbox_event.rb
+    - app/models/service.rb
+    # Payload validation by `schemaVersion`, with an allowlist per operation
+    # type. Never a generic deserializer (Anexo C §16).
+    - lib/opanel/operation_payload.rb
+    # The transaction boundary itself: the two Commands that write Desired State.
+    - app/commands/create_service.rb
+    - app/commands/update_service_desired_state.rb
+    # Reads.
+    - app/queries/operation_by_id.rb
+    - app/queries/operations_for_resource.rb
+    # Authorization, tenancy and the cop that polices it — the same maintenance
+    # `M01-04`, `M01-07`, `M01-08` and `M01-10` each performed for their model.
+    - app/policies/operation_policy.rb
+    - lib/opanel/authorization.rb
+    - app/queries/tenant_scope.rb
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # Audit: the new actions and the allowlist of what may be recorded.
+    - app/models/audit_log.rb
+    - app/audit/audit_sanitizer.rb
+    - spec/unit/audit_actions_spec.rb
+    # The response carries `operationId` (AC3) and the stable code map (AC11).
+    - app/controllers/services_controller.rb
+    - app/controllers/concerns/error_envelope.rb
+    - config/routes.rb
+    # AF-06 over Operation and OutboxEvent payloads — configuration only.
+    - config/architecture/fitness.yml
+    # Tests.
+    - spec/unit/operation_state_machine_spec.rb
+    - spec/unit/operation_payload_spec.rb
+    - spec/unit/operation_supersession_spec.rb
+    - spec/integration/operation_transaction_atomicity_spec.rb
+    - spec/integration/operation_transaction_boundary_spec.rb
+    - spec/integration/operation_outbox_crash_spec.rb
+    - spec/integration/operation_idempotency_key_spec.rb
+    - spec/integration/operation_idempotency_concurrent_spec.rb
+    - spec/integration/operation_attempt_immutability_spec.rb
+    - spec/integration/operation_indexes_spec.rb
+    - spec/contracts/operation_response_contract_spec.rb
+    - spec/security/operation_payload_redaction_spec.rb
+    - spec/policies/operation_policy_spec.rb
+    - spec/requests/services_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-13.md
+    - docs/implementation/M01/DECISIONS.md
+
+  M01-14:
+    # The dispatcher publishes what `M01-13` already commits, and the sweep is
+    # the guarantee behind doc 07 §9.2: PostgreSQL, not the broker, decides that
+    # an Operation still owes work. Two new pieces of schema — the consumer-side
+    # `inbox_events` dedup table, and the watchdog's observation on `operations`.
+    #
+    # Doc 07 §5.2 does not contain a `STALLED` status; Annex B §6 asks for the
+    # watchdog to mark one. The approved state machine outranks the Story, so the
+    # mark is an attribute of the Operation, not an eleventh status, and the
+    # existing `status_in_valid_set` CHECK stays as it is.
+    - db/migrate/*.rb
+    - db/schema.rb
+    # Domain: the dedup record, and the two models the sweep reads and marks.
+    - app/models/inbox_event.rb
+    - app/models/outbox_event.rb
+    - app/models/operation.rb
+    # Application layer: the two Commands and two Queries the Story names.
+    - app/commands/publish_pending_outbox_events.rb
+    - app/commands/recover_stalled_operations.rb
+    - app/queries/pending_outbox_events.rb
+    - app/queries/stalled_operations.rb
+    - app/queries/outbox_health.rb
+    # Jobs: the dispatcher, the recovery sweep, and the cadence that drives them.
+    - app/jobs/publish_outbox_events_job.rb
+    - app/jobs/recover_stalled_operations_job.rb
+    - app/jobs/application_job.rb
+    - config/recurring.yml
+    - config/queue.yml
+    # Routing an event to its logical queue, the thresholds and cadences that
+    # must not be magic numbers, and the backpressure signal the writers consult.
+    - lib/opanel/queues.rb
+    - lib/opanel/configuration.rb
+    - lib/opanel/queue_backpressure.rb
+    # Widened during planning: `OperationPayload::SCHEMAS` is keyed by operation
+    # type, and the dispatcher validates an OutboxEvent, which is keyed by event
+    # type. AC8 needs the event-type allowlist, and the allowlist of what a
+    # payload may contain already lives here — a second one elsewhere would be
+    # the divergence this file exists to prevent.
+    - lib/opanel/operation_payload.rb
+    # Widened during implementation: ADR-0002 §3 requires a new entity to
+    # register its identifier prefix, and `UlidPrimaryKey#external_id` raises
+    # `UnknownType` until it does — `inbox_events` cannot exist without this
+    # line. `.env.example` is versioned alongside `Configuration::KEYS`, and
+    # `spec/unit/configuration_spec.rb` fails when the two drift.
+    - lib/opanel/identifier.rb
+    - .env.example
+    # Widened during implementation, for one word. `spec/gates/unscoped_tenant_
+    # _query_spec.rb:104` requires every model with `belongs_to :team` to appear
+    # in `TENANT_SCOPED`; `M01-13` added `Operation` and did not register it, and
+    # the omission only shows now that M01-14 touches the neighbourhood. Adding
+    # `Operation` is the whole change — `OutboxEvent` and `InboxEvent` have no
+    # `team_id` and must not be listed.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # Backpressure applies where a non-essential Operation is created.
+    - app/commands/update_service_desired_state.rb
+    # Audit of a recovery, and the allowlist of what it may record.
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    # Tests.
+    - spec/unit/pending_outbox_events_spec.rb
+    - spec/unit/stalled_operations_spec.rb
+    - spec/unit/operation_watchdog_spec.rb
+    - spec/integration/outbox_dispatcher_spec.rb
+    - spec/integration/outbox_broker_unavailable_spec.rb
+    - spec/integration/operation_recovery_sweep_spec.rb
+    - spec/integration/operation_recovery_sweep_concurrent_spec.rb
+    - spec/integration/inbox_dedup_spec.rb
+    # Declared late, and the lead's omission rather than the builder's. AC4
+    # is "an event delivered twice produces one logical effect", and the
+    # first pass proved it with `find_or_create_by`, which is check-then-
+    # write and not the guarantee. The lead asked for the race against the
+    # `UNIQUE(source, source_event_id)` constraint and forgot to declare the
+    # file it would need; `bin/gate post-commit` caught it, which is what it
+    # is for. The reason is in `reports/M01-14.md`.
+    - spec/integration/inbox_dedup_concurrent_spec.rb
+    - spec/integration/queue_backpressure_spec.rb
+    - spec/security/outbox_payload_redaction_spec.rb
+    - spec/security/outbox_schema_version_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-14.md
+    - docs/implementation/M01/DECISIONS.md
+
+  M01-15:
+    # `M01-14` made an Operation recoverable; this is what makes recovery safe.
+    # The sweep re-enqueues what has no valid lease, so the lease has to exist
+    # and the fencing token has to be the thing that refuses a worker who came
+    # back after losing it. The guarantee is the database's — a unique index and
+    # a TTL — never coordination held in a process.
+    - db/migrate/*.rb
+    - db/schema.rb
+    # Domain: the lock row, and the Operation columns `M01-13` created for the
+    # lease (`lease_owner`, `lease_until`, `fencing_token`) which nothing has
+    # written until now.
+    - app/models/resource_lock.rb
+    - app/models/operation.rb
+    # Application layer: acquire, renew, release, and the fenced write.
+    - app/commands/acquire_resource_lock.rb
+    - app/commands/renew_resource_lock.rb
+    - app/commands/release_resource_lock.rb
+    - app/queries/resource_lock_state.rb
+    # The worker identity that owns a lease. It is derived from the process, not
+    # accepted from a caller (AC10).
+    - lib/opanel/worker_identity.rb
+    - lib/opanel/configuration.rb
+    - .env.example
+    # The sweep of `M01-14` is what reports an orphaned lock, so it learns to.
+    - app/commands/recover_stalled_operations.rb
+    - app/jobs/recover_stalled_operations_job.rb
+    # ADR-0002 §3: a new addressable entity registers its identifier prefix.
+    - lib/opanel/identifier.rb
+    - spec/unit/identifier_spec.rb
+    # Audit and the allowlist of what a privileged acquisition may record.
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    # Declared during planning. `spec/gates/unscoped_tenant_query_spec.rb`
+    # requires every model with `belongs_to :team` to be listed in
+    # `TENANT_SCOPED`, and `ResourceLock` will have one — the same maintenance
+    # `M01-04`, `M01-07`, `M01-08`, `M01-10` and `M01-14` each performed for
+    # their own model. Adding `ResourceLock` is the whole change.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # Tests. The concurrency examples use the barriers of `spec/support/
+    # concurrency.rb`; Annex D §18 forbids "run it until it happens".
+    - spec/unit/fencing_token_spec.rb
+    - spec/unit/resource_lock_ttl_spec.rb
+    - spec/integration/resource_lock_serialization_spec.rb
+    - spec/integration/resource_lock_fencing_spec.rb
+    - spec/integration/resource_lock_ttl_expiry_spec.rb
+    - spec/integration/resource_lock_successor_revalidation_spec.rb
+    - spec/integration/resource_lock_concurrent_reads_spec.rb
+    - spec/security/resource_lock_owner_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-15.md
+    - docs/implementation/M01/DECISIONS.md
+
+  M01-16:
+    # `ADR-0001` is `accepted` in its frontmatter (2026-09-08, repository owner)
+    # and `SPEC_CONFLICTS.md` records SC-04 and SC-08 as resolved through it, so
+    # the Story's precondition is met. One prose line in the ADR body still reads
+    # `Proposed`; it is residue from before acceptance and is corrected here to
+    # match the frontmatter. That is synchronising a record, not taking a
+    # decision — the namespace `com.opanel.*` is the ADR's, unchanged.
+    - docs/decisions/ADR-0001-swarm-ownership-label-namespace.md
+    # The single module the Story asks for: `labels_for`, `technical_name_for`
+    # and `managed_by_platform?`, with the namespace as its only literal.
+    - lib/opanel/ownership.rb
+    # The executor stamps one ad-hoc `opanel.resource` label today and builds its
+    # own specs; it becomes a consumer of the module instead of a second author
+    # of labels. This is the only place that talks to the Engine, so it is the
+    # only place the labels can be applied.
+    - app/executors/swarm_executor.rb
+    # SC-09 is resolved in favour of IDs and names `M01-16` as its owner, but
+    # `M01-12` shipped a slug-derived `technical_name` and a spec asserting that
+    # renaming a parent changes it — the opposite of AC3. Both move to IDs here.
+    - app/models/service.rb
+    - app/models/environment.rb
+    - spec/unit/service_technical_name_spec.rb
+    # Widened during implementation. `M01-09`'s two executor specs assert the
+    # old ad-hoc `opanel.resource` label by name, so replacing it with the
+    # ADR-0001 set necessarily rewrites their expectations. That is not a
+    # weakened assertion: they move from one label to the seven doc 07 §7
+    # requires, and the reason is in `reports/M01-16.md`.
+    - spec/unit/swarm_executor_spec.rb
+    - spec/integration/swarm_executor_lab_spec.rb
+    # Tests.
+    - spec/unit/ownership_labels_spec.rb
+    - spec/unit/ownership_technical_name_spec.rb
+    - spec/unit/ownership_predicate_spec.rb
+    - spec/integration/swarm_ownership_labels_spec.rb
+    - spec/integration/swarm_ownership_foreign_resource_spec.rb
+    - spec/integration/swarm_ownership_reidentification_spec.rb
+    - spec/security/ownership_labels_no_secrets_spec.rb
+    # The existing swarm executor tests now require proper ownership labels
+    # to test adoption (AC7). The executor's find_by_label changed from
+    # looking for an ad-hoc label to looking for ownership labels, so this
+    # test file must pass the right labels.
+    - spec/integration/swarm_executor_lab_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-16.md
+    - docs/implementation/M01/DECISIONS.md
+
+  M01-17:
+    # The first real reconciler, and deliberately the simplest resource: a
+    # network has no rollout, no health policy and no replicas, so what is being
+    # proved here is the algorithm of doc 07 §11.3 — lease, read desired, observe
+    # actual, diff with no side effect, apply the smallest safe change,
+    # **re-inspect**, persist, release — and not the resource.
+    - db/migrate/*.rb
+    - db/schema.rb
+    # Domain: the network, and the per-run record that makes a reconcile
+    # auditable without reproducing it.
+    - app/models/network.rb
+    - app/models/reconciliation_run.rb
+    - app/models/environment.rb
+    # Application layer and the reconciler itself.
+    - app/commands/ensure_environment_network.rb
+    - app/commands/create_environment.rb
+    - app/queries/network_for_environment.rb
+    - app/reconcilers/network_reconciler.rb
+    # ADR-0009 decided the contract this Story was blocked on: the executor
+    # returns observed runtime state in a dedicated `observed` field, as a
+    # normalized `Opanel::RuntimeObservation`, and addresses owned resources by
+    # ownership label. The decision was written first, by an independent agent,
+    # and names these files in its §Consequences; the boundary follows that
+    # record. `lib/opanel/network_diff.rb` was declared by no Story at all,
+    # although M01-17 is its only consumer.
+    - app/executors/execution_result.rb
+    - app/executors/swarm_executor.rb
+    - lib/opanel/runtime_observation.rb
+    - lib/opanel/ownership.rb
+    - lib/opanel/network_diff.rb
+    - spec/contracts/executor_contract_spec.rb
+    - spec/unit/swarm_executor_spec.rb
+    - spec/integration/swarm_ownership_labels_spec.rb
+    # ADR-0009 §4 changed `managed_by_platform?` to demand a
+    # `RuntimeObservation` rather than a raw Engine Hash. The two specs that
+    # assert that predicate were written under M01-16 against the old shape
+    # and were never migrated, so three positives that assert `true` now get
+    # `false` and the negatives pass on the type guard instead of their own
+    # reason. They are the decision's direct consequence and absent from the
+    # diff — declared here by the arbitration of 2026-09-11 so the migration
+    # happens where the contract changed, with no assertion deleted,
+    # inverted or weakened.
+    - spec/unit/ownership_predicate_spec.rb
+    - spec/integration/swarm_ownership_reidentification_spec.rb
+    - docs/decisions/pending-documentation-updates.md
+    # ADR-0002 §3: both new entities register an identifier prefix.
+    - lib/opanel/identifier.rb
+    - spec/unit/identifier_spec.rb
+    # AF-03 is the fitness function this Story exists to make real: it is
+    # configured with an empty `user_intent_columns`, so today it passes over
+    # nothing. AC9 requires it to evaluate real code. Configuration only — the
+    # checker in `lib/gates/**` is not touched.
+    - config/architecture/fitness.yml
+    # `Network` and `ReconciliationRun` reach a Team, so the cop that polices
+    # tenancy has to know them — the same maintenance every model Story has done.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # Authorization and audit for the new resource.
+    - app/policies/network_policy.rb
+    - lib/opanel/authorization.rb
+    - app/queries/tenant_scope.rb
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    # Cadence: the reconciler needs a periodic sweep as well as its trigger.
+    - app/jobs/reconcile_networks_job.rb
+    - config/recurring.yml
+    - lib/opanel/configuration.rb
+    - .env.example
+    # Tests.
+    # The arbitration of 2026-09-11 (the entry after the round-2 review) changed
+    # the technical-name scheme to `net_<environmentId>` / `svc_<serviceId>`:
+    # the previous `net_<prj>_<env>` is 65 characters and the Engine refuses
+    # above 63. This file holds the only two examples that assert the pattern,
+    # and it gains the length property it never had. Its collision,
+    # rename-stability and determinism examples are untouched.
+    - spec/unit/ownership_technical_name_spec.rb
+    - spec/unit/network_diff_spec.rb
+    - spec/unit/network_reconciler_spec.rb
+    - spec/integration/environment_network_operation_spec.rb
+    - spec/integration/network_applied_revision_spec.rb
+    - spec/integration/reconciliation_run_spec.rb
+    - spec/integration/network_reconciler_lab_spec.rb
+    - spec/integration/network_isolation_lab_spec.rb
+    - spec/integration/network_unowned_blocked_lab_spec.rb
+    - spec/security/reconciler_user_intent_spec.rb
+    - spec/policies/network_policy_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-17.md
+    - docs/implementation/M01/DECISIONS.md
+
+  M01-18:
+    # The same algorithm as M01-17 — lease, read desired, observe actual, diff
+    # with no side effect, apply the smallest safe change, re-inspect, persist,
+    # release — now on the central resource, where the diff has real classes and
+    # a lost Docker response has real cost.
+    #
+    # First item of the round, before any reconciler code: the five migrations
+    # the DEBT arbitration of 2026-09-11 on M01-17's post-commit assigned here
+    # (DECISIONS.md, last entry, items (a)-(e)). Eight of the suite's fourteen
+    # known failures live in four files no Story declares — two assert the
+    # `svc_<prj>_<env>_<svc>` scheme an arbitration replaced, four pass runtime
+    # ids where ADR-0009 §5 fixes the external form, and three read node
+    # attributes from a bag ADR-0009 §2 emptied. This Story must open the
+    # executor anyway to close the create/remove asymmetry it already inherits,
+    # so the work costs no budget and reopens no done Story.
+    - spec/unit/service_technical_name_spec.rb
+    - spec/integration/swarm_executor_lab_spec.rb
+    - spec/integration/swarm_nodes_lab_spec.rb
+    - spec/integration/swarm_ownership_foreign_resource_spec.rb
+    # `services` already carries applied_revision and desired_revision from
+    # M01-12; what is missing is the runtime id, so the migration is one column
+    # and expand-only.
+    - db/migrate/*.rb
+    - db/schema.rb
+    - app/models/service.rb
+    # The reconciler and its diff. NOOP, CREATE, UPDATE_SAFE, ROLLOUT, BLOCKED —
+    # DELETE is M02-09 and DRIFT is M02-06, and neither is implemented here.
+    # network_diff.rb:53-58 is the warning: a BLOCKED branch reachable only at
+    # create time must not be re-implemented as a diff class that cannot fire.
+    - app/reconcilers/service_reconciler.rb
+    - lib/opanel/service_diff.rb
+    # ADR-0009: this Story is the first to add a `service` kind to the
+    # normalizer under real pressure, and item (c) fixes remove_service,
+    # service_logs and list_tasks to address by label like their create and
+    # inspect twins.
+    - app/executors/swarm_executor.rb
+    - app/executors/execution_result.rb
+    - lib/opanel/runtime_observation.rb
+    - lib/opanel/ownership.rb
+    - spec/contracts/executor_contract_spec.rb
+    - spec/unit/swarm_executor_spec.rb
+    - spec/unit/runtime_observation_spec.rb
+    # Cadence: trigger by Operation, plus the periodic sweep that is the actual
+    # guarantee (doc 07 §23).
+    - app/jobs/reconcile_services_job.rb
+    - config/recurring.yml
+    - lib/opanel/configuration.rb
+    # The mechanical twin of the line above, and another enumeration miss of the
+    # class DECISIONS.md charges to ADR-0009: `spec/unit/configuration_spec.rb`
+    # requires every key declared in `Configuration::KEYS` to appear in the
+    # versioned example file, so a cadence key cannot be registered without it.
+    # No credential is added — the value is the integer 30, and the same spec
+    # asserts that every sensitive key in this file stays empty.
+    - .env.example
+    # Authorization and audit for the new mutation path, including the
+    # cross-team negative every mutation needs.
+    - app/policies/service_policy.rb
+    - app/queries/tenant_scope.rb
+    - app/models/audit_log.rb
+    - spec/unit/audit_actions_spec.rb
+    - spec/policies/service_policy_spec.rb
+    # The cop that polices tenancy has to know what reaches a Team.
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # AF-03 already lists every services intent column (fitness.yml:19-23), so
+    # this Story adds no fitness function and invents no AF-04. The file is
+    # declared only in case the Service reconciler's own columns need adding.
+    - config/architecture/fitness.yml
+    # Tests.
+    - spec/unit/service_diff_spec.rb
+    - spec/unit/service_spec_translation_spec.rb
+    - spec/unit/service_supersession_spec.rb
+    - spec/unit/service_state_machine_spec.rb
+    - spec/unit/service_revision_spec.rb
+    - spec/integration/service_reconciler_spec.rb
+    - spec/integration/service_reconciliation_run_spec.rb
+    - spec/integration/service_applied_revision_spec.rb
+    - spec/integration/service_reconciler_lab_spec.rb
+    - spec/integration/service_idempotent_lab_spec.rb
+    - spec/integration/service_version_conflict_lab_spec.rb
+    - spec/integration/service_lost_response_lab_spec.rb
+    - spec/integration/service_restart_lab_spec.rb
+    - spec/integration/service_blocked_lab_spec.rb
+    - spec/security/reconciler_user_intent_spec.rb
+    - spec/security/service_workload_hardening_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-18.md
+    - docs/implementation/M01/DECISIONS.md
+
+  M01-19:
+    # Actual State, observed and never assumed. The Story's shape is the twin of
+    # M01-10's node_observation.rb — append-only, rebuildable from the runtime,
+    # timestamped so the UI can say how old it is — now on the Service, where
+    # doc 07 §17.1 requires the presented status to be *derived* rather than a
+    # boolean somebody wrote.
+    #
+    # A conflict this Story will meet on its first read, declared here so it is
+    # not resolved silently: `Service::STATUSES` is DRAFT / PROVISIONING /
+    # RUNNING / DEGRADED / STOPPED / DELETING (app/models/service.rb:50-55,
+    # state machine at :57-63), while the Story's Scope names the doc 07 §17.1
+    # set PENDING / DEPLOYING / HEALTHY / DEGRADED / FAILED / PAUSED. Two
+    # vocabularies for one field. AC2 asks for the derived one and AC11 forbids
+    # the observation writing desired-state columns, so a decision is needed
+    # about which name the derivation returns and whether `services.status`
+    # keeps the reconciler's word. SPEC_CONFLICTS.md is declared for it.
+    - db/migrate/*.rb
+    - db/schema.rb
+    # The observation entity and the derivation seam. The derivation is a pure
+    # function of appliedRevision plus the observation, kept out of the model so
+    # the unit tests the Story requires have something to address.
+    - app/models/service_observation.rb
+    - lib/opanel/service_status.rb
+    # `Service has_many :service_observations`, plus whatever the derivation
+    # needs to read. AC2 and AC11 are the guard: nothing here writes a health
+    # boolean and nothing writes a desired-state column.
+    - app/models/service.rb
+    # Observe via the Executor, which already exposes inspect_service and
+    # list_tasks from M01-18. Declared because the Story routes observation
+    # through it and M01-18's debt — that `Version.Index` alone is never the
+    # deciding discriminator in current_tasks — is inherited here, where the
+    # tasks are read rather than filtered.
+    - app/executors/swarm_executor.rb
+    - lib/opanel/runtime_observation.rb
+    - app/commands/observe_service.rb
+    - app/queries/service_runtime_view.rb
+    - app/queries/tenant_scope.rb
+    # Cadence. The sweep is the guarantee; Docker Events are M02-12.
+    - app/jobs/observe_services_job.rb
+    - config/recurring.yml
+    - lib/opanel/configuration.rb
+    # configuration_spec requires every Configuration::KEYS entry to appear in
+    # the versioned example file, so a cadence key cannot be registered without
+    # it. No credential is added.
+    - .env.example
+    # Tenancy for a new readable resource, and the cop that polices it.
+    - app/policies/service_policy.rb
+    - lib/opanel/authorization.rb
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # AF-03 enumerates the services intent columns. Declared only in case the
+    # observation's own columns must be named there to keep AC11 mechanical.
+    - config/architecture/fitness.yml
+    # Tests.
+    - spec/unit/service_status_spec.rb
+    - spec/unit/service_observation_spec.rb
+    - spec/unit/service_observation_ordering_spec.rb
+    - spec/integration/service_observation_spec.rb
+    - spec/integration/service_observation_stale_spec.rb
+    - spec/integration/service_observation_out_of_order_spec.rb
+    - spec/integration/service_runtime_view_spec.rb
+    - spec/integration/service_observation_lab_spec.rb
+    - spec/integration/service_unhealthy_lab_spec.rb
+    - spec/integration/service_digest_divergence_lab_spec.rb
+    - spec/policies/service_observation_policy_spec.rb
+    - spec/policies/service_policy_spec.rb
+    - spec/security/service_observation_secrets_spec.rb
+    - spec/security/reconciler_user_intent_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-19.md
+    - docs/implementation/M01/DECISIONS.md

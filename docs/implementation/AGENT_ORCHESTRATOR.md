@@ -35,11 +35,20 @@ Os estados de `review-state.json` seguem `scripts/schemas/review-state.schema.js
 | `reviewing` | milestone-reviewer |
 | `fix_required` | `/fix-milestone` |
 | `fixing` | builder |
-| `human_acceptance` | **humano** |
-| `blocked` | **humano** |
+| `human_acceptance` | **arbiter** (`ADR-0007`) |
+| `accepted` | `bin/milestone-pr`, depois o próximo Milestone |
+| `blocked` | **arbiter**, exceto `ARBITER_BLOCK` |
 
-`accepted` existe no schema por compatibilidade; o caminho de sucesso vai direto
-de `verdict ACCEPTED` para `human_acceptance`.
+`verdict ACCEPTED` continua caindo em `human_acceptance` — esse estado é o ponto
+em que o Milestone acabou e alguém precisa decidir liberar o próximo. Sob o
+[`ADR-0007`](../decisions/ADR-0007-autonomous-milestone-chain.md) quem decide é o
+agente `arbiter`, em contexto novo, e `review-state.sh arbitrate` é a única saída
+desse estado — ele recusa rodar sem uma decisão gravada em `DECISIONS.md`. De
+`accepted` sai o Pull Request empilhado e o Milestone seguinte.
+
+O único `stop` que restou é `blocked` com `blockedReason = ARBITER_BLOCK`:
+perguntar de novo a mesma coisa sobre a mesma evidência é o loop infinito que
+este script existe para impedir.
 
 ## Gatilho
 

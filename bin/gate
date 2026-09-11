@@ -27,6 +27,8 @@ gate="${1:-}"
 [ $# -gt 0 ] && shift
 format="text"
 story="${OPANEL_STORY:-}"
+GATE_ONLY="${GATE_ONLY:-}"
+export GATE_ONLY
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,6 +37,11 @@ while [ $# -gt 0 ]; do
     --json) format="json" ;;
     --story) story="$2"; shift ;;
     --story=*) story="${1#--story=}" ;;
+    # Narrows the run to named checks, comma separated. For proving one check
+    # against one planted failure without paying for the other seven; the report
+    # marks the rest `skip`, so a narrowed run cannot pass for a full one.
+    --only) GATE_ONLY="$2"; shift ;;
+    --only=*) GATE_ONLY="${1#--only=}" ;;
     --*) echo "unknown option: $1" >&2; exit 2 ;;
     *) echo "unexpected argument: $1" >&2; exit 2 ;;
   esac
@@ -75,7 +82,16 @@ frontend_changed() {
 
 # The tests applicable to what changed, in every language the change touched.
 check_related_tests() {
-  bin/test --changed --fast || return 1
+  # `--parallel` as well as `--fast`, and the two are unrelated: `--fast` drops
+  # the `:slow` gate suites (CI keeps them), `--parallel` runs what is left on
+  # one database per worker. The selection, the specs and the assertions are
+  # identical either way — this buys wall clock and nothing else.
+  #
+  # It was serial until now, which `bin/gate local` never was. The measurement
+  # that made it worth changing: a selection of 105 spec files and 1 638 examples
+  # took 273 s serially in this gate, while M01-91 measured the whole
+  # 1 735-example suite at ~490 s serial against 318.5 s over 10 workers.
+  bin/test --changed --fast --parallel || return 1
   frontend_changed || return 0
   bin/test:js
 }
@@ -127,7 +143,7 @@ check_no_verify_absent() {
 record_pre_commit_evidence() {
   local tree check json_names=""
 
-  if [ "$GATE_FAILURES" -ne 0 ]; then
+  if [ "$GATE_FAILURES" -ne 0 ] || [ -n "$GATE_ONLY" ]; then
     # Only in the text form. Under `--format json` the report already says
     # `"result": "fail"`, and a line of prose on stderr is one a caller reading
     # both streams has to parse as JSON and cannot.
@@ -160,7 +176,8 @@ case "$gate" in
     gate_run "format" bin/format --check --changed
     gate_run "lint" bin/lint --changed
     gate_run "typecheck" bin/typecheck
-    gate_run "tests" bin/test --changed
+    # Independent test databases per worker; gate probes use scratch checkouts.
+    gate_run "tests" bin/test --changed --parallel
     # Reported separately from the Ruby suite, because "tests passed" that covers
     # one of the two languages in the diff is the claim this whole file exists to
     # stop being an opinion.
@@ -170,14 +187,20 @@ case "$gate" in
       gate_skip "frontend-tests" "no frontend file changed"
     fi
     gate_run "migrations" bin/migration-gate
-    if git diff --name-only "$(git merge-base HEAD "${OPANEL_GATE_BASE:-main}" 2>/dev/null || echo HEAD)" \
-        | grep -qE '^(app/contracts/|app/controllers/api/|config/ci/jobs\.yml)'; then
+    if gate_files changed '.' | grep -qE '^(app/contracts/|app/controllers/api/|config/ci/jobs\.yml)'; then
       gate_run "contracts" bin/test --type contract
     else
       gate_skip "contracts" "no contract changed"
     fi
-    gate_run "security" bin/security --fast
+    gate_run "security" bin/security --fast --diff
     gate_run "fitness" bin/fitness
+    # M01-92 — the acceptance-mapping checker runs only in post-commit, and a
+    # report it could not read surfaced five Stories late: every report since
+    # M01-05 mapped zero criteria and nobody saw it before the commit. Here it
+    # is a warning that names the template; post-commit still blocks, unchanged.
+    if [ -n "$story" ] && ! post_commit_check acceptance-mapping >/dev/null 2>&1; then
+      gate_warn "acceptance-mapping" "the Story report maps criteria the post-commit checker cannot read — one checklist item per criterion, evidence in backticks (docs/templates/STORY_REPORT.md)"
+    fi
     gate_finish
     ;;
 

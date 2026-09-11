@@ -42,7 +42,12 @@ module Opanel
       [ /-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----/m, MASK ],
       [ /-----BEGIN [A-Z ]*PRIVATE KEY-----/, MASK ],
       # Cookie header contents.
-      [ /((?:set-)?cookie"?\s*[:=]\s*"?)([^"\r\n;]{4,})/i, '\1' + MASK ]
+      [ /((?:set-)?cookie"?\s*[:=]\s*"?)([^"\r\n;]{4,})/i, '\1' + MASK ],
+      # M01-09. The two credentials the Swarm Executor's transport can meet:
+      # `X-Registry-Auth` carries a base64 registry credential on image pulls,
+      # and a Swarm join token admits a node to the cluster (doc 04 §14.2).
+      [ /(x-registry-auth"?\s*[:=]\s*"?)([A-Za-z0-9+\/=_\-]{8,})/i, '\1' + MASK ],
+      [ /\bSWMTKN-\S+/, MASK ]
     ].freeze
 
     module_function

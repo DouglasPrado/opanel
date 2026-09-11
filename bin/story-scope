@@ -1,0 +1,20 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require_relative "../lib/gates/story_scope"
+root = File.expand_path("..", __dir__)
+scope = Opanel::Gates::StoryScope
+begin
+  command, story = ARGV
+  story ||= scope.active_story(root)
+  case command
+  when "start" then puts scope.start(root, story)
+  when "base" then puts scope.base(root, story)
+  when "files" then puts scope.files(root, story)
+  when "specs" then puts scope.specs(root, story)
+  else abort "usage: bin/story-scope <start|base|files|specs> [Story ID]"
+  end
+rescue StandardError => error
+  warn error.message
+  exit 1
+end

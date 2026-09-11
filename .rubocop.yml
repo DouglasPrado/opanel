@@ -10,6 +10,7 @@ inherit_gem:
 require:
   - ./lib/rubocop/cop/opanel/silent_rescue.rb
   - ./lib/rubocop/cop/opanel/unclassified_error.rb
+  - ./lib/rubocop/cop/opanel/unscoped_tenant_query.rb
 
 AllCops:
   NewCops: enable
@@ -38,6 +39,20 @@ Opanel/UnclassifiedError:
     # the class is irrelevant there because nothing branches on it.
     - 'spec/**/*'
     - 'lib/gates/**/*'
+
+# Annex C §7.3, as a check rather than as an instruction people remember: a
+# lookup by id on a tenant-scoped model returns rows from other Teams, and it
+# does so silently — the code works and its tests pass. M01-04's `TenantScope`
+# makes obeying the rule easy; this is what makes breaking it visible.
+Opanel/UnscopedTenantQuery:
+  Enabled: true
+  Exclude:
+    # Tests reach for rows directly to arrange fixtures and to assert on state,
+    # which is not the failure mode the rule is about.
+    - 'spec/**/*'
+    # The helper is the sanctioned boundary; it necessarily performs the lookup
+    # everybody else must route through it.
+    - 'app/queries/tenant_scope.rb'
 
 # An empty rescue is the other half of SilentRescue: it swallows without even
 # pretending to answer.

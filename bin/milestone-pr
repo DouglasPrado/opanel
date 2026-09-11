@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# Opens the Pull Request for an accepted Milestone (ADR-0010).
+#
+#   bin/milestone-pr M02
+#
+# One Milestone, one Pull Request, against `main`. This script pushes and opens;
+# it never merges. The merge is the human action this whole design keeps, and
+# `guard-bash.sh` denies a push to `main` besides.
+#
+# The PR body is assembled from what the run actually recorded: the Milestone
+# Report, the arbiter's decisions, and the debt those decisions accepted. An
+# unattended run is only auditable if the thing a human opens tells the truth
+# about what it left behind.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+
+MILESTONE="${1:-}"
+case "$MILESTONE" in
+  M[0-9][0-9]) ;;
+  *) echo "usage: bin/milestone-pr M<NN>" >&2; exit 2 ;;
+esac
+
+MDIR="docs/implementation/$MILESTONE"
+[ -d "$MDIR" ] || { echo "no such milestone: $MDIR" >&2; exit 2; }
+
+command -v gh >/dev/null 2>&1 || { echo "gh is required to open a Pull Request" >&2; exit 2; }
+
+STATE="$MDIR/review-state.json"
+STATUS="$(jq -r '.status // ""' "$STATE" 2>/dev/null || true)"
+if [ "$STATUS" != "accepted" ]; then
+  echo "refusing: $MILESTONE is '$STATUS', not 'accepted'." >&2
+  echo "A Pull Request is what an accepted Milestone produces, not a way to declare one." >&2
+  exit 2
+fi
+
+# --- the base --------------------------------------------------------------
+# Always `main` (ADR-0010). ADR-0007 §4 stacked these — m02 onto m01, and so on —
+# which shows one Milestone's diff per PR and is the right structure for someone
+# who reviews the stack. Nobody did: main stayed 148 commits behind with no PR
+# open at all, and M14 would have sat on thirteen unread branches. Milestones
+# integrate through main now, one at a time.
+NUM="${MILESTONE#M}"
+NUM="$((10#$NUM))"
+HEAD_BRANCH="milestone/m$(printf '%02d' "$NUM")"
+BASE_BRANCH="main"
+
+if ! git show-ref --verify --quiet "refs/heads/$HEAD_BRANCH"; then
+  echo "no such branch: $HEAD_BRANCH" >&2
+  exit 2
+fi
+
+# --- the body --------------------------------------------------------------
+REPORT="$MDIR/MILESTONE_REPORT.md"
+DECISIONS="$MDIR/DECISIONS.md"
+BODY="$(mktemp)"
+trap 'rm -f "$BODY"' EXIT
+
+NAME="$(jq -r '.name // ""' "$MDIR/tasks.json" 2>/dev/null || true)"
+{
+  printf '## %s — %s\n\n' "$MILESTONE" "$NAME"
+  printf 'Autonomous run under `ADR-0007`, integrating through `%s` per `ADR-0010`.\n\n' "$BASE_BRANCH"
+
+  printf '### Stories\n\n'
+  jq -r '"| " + (.stories | map(select(.status == "done")) | length | tostring) + " done | "
+        + (.stories | map(select(.status == "blocked")) | length | tostring) + " blocked | "
+        + (.stories | length | tostring) + " total |"' "$MDIR/tasks.json" 2>/dev/null \
+    | sed '1i\
+| done | blocked | total |\
+|---|---|---|'
+  printf '\n'
+
+  printf '### Findings carried as debt\n\n'
+  printf 'Every finding below was ruled on by the arbiter and is open in this branch.\n\n'
+  jq -r '.stories[] | select((.review // {}) | (.critical // 0) + (.high // 0) + (.medium // 0) + (.low // 0) > 0)
+         | "- **" + .id + "** — C=" + ((.review.critical // 0)|tostring)
+           + " H=" + ((.review.high // 0)|tostring)
+           + " M=" + ((.review.medium // 0)|tostring)
+           + " L=" + ((.review.low // 0)|tostring)
+           + "  (`" + .file + "`)"' "$MDIR/tasks.json" 2>/dev/null || true
+  printf '\n'
+
+  if [ -f "$DECISIONS" ]; then
+    printf '### Arbiter decisions\n\n'
+    printf 'The full ledger is `%s`.\n\n' "$DECISIONS"
+    grep -E '^(Verdict|Situation|Reason):' "$DECISIONS" | sed 's/^/    /' || true
+    printf '\n'
+  fi
+
+  if [ -f "$REPORT" ]; then
+    printf '### Milestone Report\n\n'
+    printf 'See `%s` in this branch.\n\n' "$REPORT"
+  fi
+
+  printf -- '---\n\n'
+  printf 'No human reviewed this branch before the Pull Request was opened. That is\n'
+  printf 'what `ADR-0007` decided, and this Pull Request is where the review happens.\n\n'
+  printf '🤖 Generated with [Claude Code](https://claude.com/claude-code)\n'
+} > "$BODY"
+
+# --- push and open ---------------------------------------------------------
+git push -u origin "$HEAD_BRANCH" || { echo "push failed for $HEAD_BRANCH" >&2; exit 1; }
+
+EXISTING="$(gh pr list --head "$HEAD_BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+if [ -n "$EXISTING" ]; then
+  gh pr edit "$EXISTING" --body-file "$BODY"
+  echo "updated PR #$EXISTING ($HEAD_BRANCH -> $BASE_BRANCH)"
+  exit 0
+fi
+
+gh pr create \
+  --base "$BASE_BRANCH" \
+  --head "$HEAD_BRANCH" \
+  --title "$MILESTONE — $NAME" \
+  --body-file "$BODY" || exit 1
+
+echo "opened PR ($HEAD_BRANCH -> $BASE_BRANCH)"

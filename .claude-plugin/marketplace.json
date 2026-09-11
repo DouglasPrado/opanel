@@ -1,0 +1,14 @@
+{
+  "name": "opanel",
+  "owner": { "name": "Opanel" },
+  "metadata": {
+    "description": "Opanel's own tooling, versioned with the repository that uses it."
+  },
+  "plugins": [
+    {
+      "name": "opanel-loop",
+      "source": "./tools/opanel-loop",
+      "description": "Autonomous Milestone loop: one Story per turn, an independent reviewer in a fresh context, an arbiter in place of the human gate, and deterministic Stop Gates that decide when the loop may stop."
+    }
+  ]
+}

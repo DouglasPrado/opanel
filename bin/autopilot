@@ -1,0 +1,428 @@
+#!/usr/bin/env bash
+# The unattended runner (ADR-0007).
+#
+#   bin/autopilot                  # run the chain until it finishes
+#   bin/autopilot --max-sessions 5 # stop after five sessions
+#   bin/autopilot --dry-run        # print what it would do
+#
+# A Claude Code session ends for ordinary reasons — the turn budget trips, the
+# context fills, the process dies. None of those mean the chain is finished, and
+# a run that has to be restarted by hand is not unattended. So this loop starts a
+# fresh session, lets it rebuild state from the repository, and starts another
+# when it exits.
+#
+# It stops for exactly three things: the chain is complete, the arbiter blocked a
+# Milestone, or the session budget ran out. Everything else is a restart.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+
+MAX_SESSIONS=0          # 0 = unlimited
+DRY_RUN=0
+LOG_DIR="tmp/autopilot"
+
+# Spend caps. Both off unless asked for: a default dollar figure in a versioned
+# script is a number nobody chose, and the first run to hit it would read as a
+# bug rather than a budget.
+#
+#   --budget-usd N   per session, enforced by the CLI itself (--max-budget-usd)
+#   --total-usd M    for the whole run, enforced here
+#
+# The total is a *worst case*, not a meter. The CLI caps each session; this
+# script cannot see what a session actually spent without switching the run log
+# to JSON and parsing it, which would cost the plain-text log the quota detector
+# and every diagnosis in this file depends on. So `--total-usd` bounds the run at
+# floor(M / N) sessions and says so. It guarantees you never exceed M; it does
+# not claim you spent it.
+BUDGET_USD=""
+TOTAL_USD=""
+
+# A session shorter than this did no work. Starting the CLI, loading the plugin
+# and reading the state costs a few seconds; a Story costs minutes.
+MIN_SESSION_SECONDS=60
+MAX_SHORT_RUNS=3
+short_runs=0
+
+# Minutes without a single file written before the session counts as hung.
+HANG_MINUTES="${OPANEL_HANG_MINUTES:-20}"
+
+# The longest the runner will sleep waiting for a session limit to reset.
+#
+# A day, because a reset is never further away than that and the alternative is
+# refusing a legitimate wait: at 05:30 a 21:00 reset is 15.5 h out, and the first
+# value here — eight hours — would have stopped the run rather than waited for it,
+# which is the whole behaviour this exists to provide.
+#
+# The bound is a guard against a misread time, not a policy about how long to
+# wait. The wake time is printed before the sleep, so a wrong one is visible in
+# the log rather than discovered a day later.
+MAX_QUOTA_WAIT="${OPANEL_MAX_QUOTA_WAIT:-86400}"   # 24h
+
+# Reads "resets 9pm", "resets 9:30pm" or "resets 21:00" out of the CLI's own
+# limit message and answers the epoch second of the next such moment. Local time,
+# because that is what the CLI prints. Empty when it cannot tell — the caller
+# then stops rather than guessing at a sleep.
+quota_resets_at() {
+  local raw hour minute suffix today now
+  raw="$(tail -40 "$1" | grep -io 'resets [0-9][0-9]*\(:[0-9][0-9]\)\? *\(am\|pm\)\?' | tail -1)"
+  [ -n "$raw" ] || return 0
+
+  hour="$(printf '%s' "$raw" | sed -E 's/.*resets ([0-9]+).*/\1/')"
+  minute="$(printf '%s' "$raw" | sed -nE 's/.*resets [0-9]+:([0-9]{2}).*/\1/p')"
+  suffix="$(printf '%s' "$raw" | grep -io '[ap]m$' | tr '[:upper:]' '[:lower:]')"
+  [ -n "$minute" ] || minute="00"
+
+  case "$suffix" in
+    pm) [ "$hour" -lt 12 ] && hour=$((hour + 12)) ;;
+    am) [ "$hour" -eq 12 ] && hour=0 ;;
+  esac
+  [ "$hour" -le 23 ] 2>/dev/null || return 0
+
+  today="$(date '+%Y%m%d')"
+  # BSD date; the GNU form is tried second so this works off a Mac too.
+  when="$(date -j -f '%Y%m%d%H%M' "$(printf '%s%02d%s' "$today" "$hour" "$minute")" '+%s' 2>/dev/null \
+          || date -d "$(date '+%Y-%m-%d') $hour:$minute" '+%s' 2>/dev/null)"
+  [ -n "$when" ] || return 0
+
+  now="$(date +%s)"
+  # A reset time already past today is tomorrow's.
+  [ "$when" -gt "$now" ] || when=$((when + 86400))
+  printf '%s\n' "$when"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --max-sessions) MAX_SESSIONS="$2"; shift ;;
+    --max-sessions=*) MAX_SESSIONS="${1#--max-sessions=}" ;;
+    --budget-usd) BUDGET_USD="$2"; shift ;;
+    --budget-usd=*) BUDGET_USD="${1#--budget-usd=}" ;;
+    --total-usd) TOTAL_USD="$2"; shift ;;
+    --total-usd=*) TOTAL_USD="${1#--total-usd=}" ;;
+    --dry-run) DRY_RUN=1 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+command -v claude >/dev/null 2>&1 || { echo "the claude CLI is required" >&2; exit 2; }
+
+# --total-usd needs a per-session figure to divide by: without one there is no
+# arithmetic, only a hope that the run stops in time.
+if [ -n "$TOTAL_USD" ] && [ -z "$BUDGET_USD" ]; then
+  echo "--total-usd needs --budget-usd: the run cap is a session count derived from the two." >&2
+  exit 2
+fi
+
+# Expanded below as ${BUDGET_ARGS[@]+"${BUDGET_ARGS[@]}"}, never bare. macOS ships
+# bash 3.2, where expanding an empty array under `set -u` is an unbound-variable
+# error — which is how the spend-cap commit broke every session that did not ask
+# for a cap, sixty seconds after it was installed.
+BUDGET_ARGS=()
+if [ -n "$BUDGET_USD" ]; then
+  BUDGET_ARGS=(--max-budget-usd "$BUDGET_USD")
+fi
+
+if [ -n "$TOTAL_USD" ]; then
+  derived="$(awk -v t="$TOTAL_USD" -v b="$BUDGET_USD" 'BEGIN { printf "%d", (b > 0 ? int(t / b) : 0) }')"
+  if [ "$derived" -lt 1 ]; then
+    echo "--total-usd $TOTAL_USD does not pay for one session at --budget-usd $BUDGET_USD." >&2
+    exit 2
+  fi
+  # The tighter of the two wins; an explicit --max-sessions is never widened.
+  if [ "$MAX_SESSIONS" -eq 0 ] || [ "$derived" -lt "$MAX_SESSIONS" ]; then
+    MAX_SESSIONS="$derived"
+  fi
+fi
+
+mkdir -p "$LOG_DIR"
+RUN_LOG="$LOG_DIR/$(date -u '+%Y%m%dT%H%M%SZ').log"
+
+say() { printf '[autopilot %s] %s\n' "$(date -u '+%H:%M:%SZ')" "$*" | tee -a "$RUN_LOG"; }
+
+# --- progress ----------------------------------------------------------------
+# `claude -p` writes nothing until it exits, so a session that is working looks
+# identical to one that is hung: hours of silence either way. The state it is
+# moving through, though, is all on disk, and that is what this reads.
+#
+# Not --output-format stream-json. That would report the session's own events,
+# which is more detail, but it would also cost the plain-text log that the
+# session-limit detector and every diagnosis in this script read — and those are
+# load-bearing. Polling what the run records is less precise about the inside of
+# a turn and exact about what actually happened.
+
+# Which agent the loop has to be running, derived from what it recorded. The
+# statuses are not ambiguous: each one is entered by exactly one dispatch.
+agent_for() {
+  case "$1" in
+    in_progress)   printf 'builder' ;;
+    review)        printf 'reviewer' ;;
+    fix_required)  printf 'builder (fixing review findings)' ;;
+    blocked)       printf 'arbiter' ;;
+    *)             printf '%s' "$1" ;;
+  esac
+}
+
+progress_snapshot() {
+  # `story_status`, not `status`: that name is read-only in zsh, and a helper
+  # nobody can source into a shell to try out is a helper nobody tries out.
+  local mdir story story_status attempts done total mstatus
+  [ -f .backlog-active ] || { printf 'no active run'; return; }
+  mdir="$(head -n1 .backlog-active | tr -d '[:space:]')"
+  [ -f "$mdir/tasks.json" ] || { printf 'run opening'; return; }
+
+  done="$(jq '[.stories[]|select(.status=="done")]|length' "$mdir/tasks.json" 2>/dev/null || echo '?')"
+  total="$(jq '.stories|length' "$mdir/tasks.json" 2>/dev/null || echo '?')"
+  mstatus="$(jq -r '.status' "$mdir/review-state.json" 2>/dev/null || echo '?')"
+
+  story="$(jq -r '[.stories[]|select(.status!="done" and .status!="pending")][0] // empty | .id' "$mdir/tasks.json" 2>/dev/null)"
+  if [ -z "$story" ]; then
+    printf '%s %s/%s · %s · between Stories' "$(basename "$mdir")" "$done" "$total" "$mstatus"
+    return
+  fi
+  story_status="$(jq -r --arg s "$story" '.stories[]|select(.id==$s)|.status' "$mdir/tasks.json")"
+  attempts="$(jq -r --arg s "$story" '.stories[]|select(.id==$s)|.attempts' "$mdir/tasks.json")"
+  printf '%s %s/%s · %s %s (attempt %s) · %s' \
+    "$(basename "$mdir")" "$done" "$total" "$story" "$story_status" "$attempts" "$(agent_for "$story_status")"
+}
+
+# Runs beside the session and reports only what changed, so a quiet hour is quiet
+# in the log too rather than three hundred identical lines.
+progress_ticker() {
+  local last_state="" last_commit="" last_adrs="" last_verdicts="" now
+  last_commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
+  last_adrs="$(ls docs/decisions/ADR-*.md 2>/dev/null | wc -l | tr -d ' ')"
+
+  while :; do
+    sleep "${OPANEL_PROGRESS_EVERY:-60}"
+
+    now="$(progress_snapshot)"
+    if [ "$now" != "$last_state" ]; then
+      say "· $now"
+      last_state="$now"
+    fi
+
+    now="$(git rev-parse --short HEAD 2>/dev/null || true)"
+    if [ -n "$now" ] && [ "$now" != "$last_commit" ]; then
+      say "· commit $now — $(git log -1 --format=%s 2>/dev/null)"
+      last_commit="$now"
+    fi
+
+    now="$(ls docs/decisions/ADR-*.md 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$now" != "$last_adrs" ]; then
+      say "· ADR written: $(ls -t docs/decisions/ADR-*.md 2>/dev/null | head -1)"
+      last_adrs="$now"
+    fi
+
+    if [ -f .backlog-active ]; then
+      mdir="$(head -n1 .backlog-active | tr -d '[:space:]')"
+      now="$(grep -cE '^\*?\*?Verdict:' "$mdir/DECISIONS.md" 2>/dev/null || echo 0)"
+      if [ -n "$last_verdicts" ] && [ "$now" != "$last_verdicts" ]; then
+        say "· arbiter: $(grep -hE '^\*?\*?Verdict:' "$mdir/DECISIONS.md" 2>/dev/null | tail -1 | tr -s ' ')"
+      fi
+      last_verdicts="$now"
+    fi
+  done
+}
+
+# What the working directories look like right now: newest modification time and
+# file count, over the places work actually lands. Cheap, and it changes on any
+# write, create or delete — which is all the watchdog needs to answer "did this
+# session do anything since I last looked".
+repo_fingerprint() {
+  find app lib spec docs bin config db tmp/test-results -type f -newermt '-1 year' \
+    -exec stat -f '%m' {} + 2>/dev/null | sort -rn | head -1
+  find app lib spec docs bin config db -type f 2>/dev/null | wc -l
+}
+
+say "chain starting; log: $RUN_LOG"
+if [ -n "$BUDGET_USD" ]; then
+  if [ -n "$TOTAL_USD" ]; then
+    say "spend cap: \$$BUDGET_USD per session, at most $MAX_SESSIONS sessions — a worst case of \$$TOTAL_USD, not a measured spend"
+  else
+    say "spend cap: \$$BUDGET_USD per session, no cap on the run"
+  fi
+fi
+
+session=0
+while :; do
+  # The chain's own stop conditions, checked before spending a session on them.
+  NEXT="$(bin/next-milestone 2>>"$RUN_LOG")"
+  rc=$?
+  case "$rc" in
+    0) : ;;
+    1) say "every Milestone is accepted — chain complete"; break ;;
+    3) say "chain stopped: a Milestone is blocked by the arbiter"; break ;;
+    *) say "bin/next-milestone failed (exit $rc) — stopping rather than guessing"; break ;;
+  esac
+
+  session=$((session + 1))
+  if [ "$MAX_SESSIONS" -gt 0 ] && [ "$session" -gt "$MAX_SESSIONS" ]; then
+    say "session budget spent ($MAX_SESSIONS)"
+    break
+  fi
+
+  say "session $session — next Milestone: $NEXT"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    say "dry run: would start a session on $NEXT"
+    break
+  fi
+
+  # A fresh session every time. The skill rebuilds state from the repository,
+  # which is the only thing that survives a restart honestly — never --continue,
+  # because resuming a summarised context is how a loop starts believing things
+  # the repository does not say.
+  #
+  # Asked in prose rather than as `/autopilot`. The skill belongs to a plugin, so
+  # its slash form is `/opanel-loop:autopilot`, and the bare name produced
+  # `Unknown command: /autopilot` — a session that exits in three seconds having
+  # done nothing. Prose degrades gracefully: if the name ever changes, the model
+  # still finds the skill instead of failing silently.
+  #
+  # Permissions are skipped because there is nobody to answer a prompt. The
+  # guards are still in force: guard-bash.sh and guard-edit.sh are PreToolUse
+  # hooks, and a hook `deny` is not a permission prompt — it refuses regardless
+  # of this flag.
+  started_at=$(date +%s)
+  # Where this session's output begins. Everything read back about it — the
+  # session limit above all — is scoped to the lines after this mark, never to
+  # the accumulated log.
+  log_mark="$(wc -l < "$RUN_LOG" 2>/dev/null || echo 0)"
+  claude -p "Invoke the opanel-loop autopilot skill and follow it exactly: run the Opanel Milestone chain unattended. There is nobody to answer a question, so do not ask one — arbitrate as the skill instructs." \
+    --dangerously-skip-permissions \
+    ${BUDGET_ARGS[@]+"${BUDGET_ARGS[@]}"} \
+    >>"$RUN_LOG" 2>&1 &
+  session_pid=$!
+
+  progress_ticker &
+  ticker_pid=$!
+  # Killed on every exit from this iteration — the wait below, the watchdog, an
+  # interrupt — so a stopped run never leaves a ticker writing to its log.
+  trap 'kill "$ticker_pid" 2>/dev/null; kill "$session_pid" 2>/dev/null' INT TERM
+
+  # The watchdog. A session that stops writing has stopped working, whatever its
+  # process table says.
+  #
+  # On 2026-09-10 a Docker daemon stopped answering and `bin/gate local` sat at
+  # 0% CPU for 1 h 40 min. Nothing noticed: the suite budget is asserted after a
+  # run, the turn budget counts turns and no turn was completing, and the guard
+  # below only catches a session that ends *too fast*. A session that never ends
+  # was the one shape with no detector at all.
+  #
+  # Progress is measured as a file written under the directories the work
+  # touches. A session mid-thought writes nothing for a minute; none writes
+  # nothing for twenty.
+  # Progress is measured against a mark taken when this session started, never
+  # as "any write in the last N minutes".
+  #
+  # The first version asked exactly that, and it killed thirteen sessions in a
+  # row at the sixty-second mark: after an idle stretch the window is already
+  # empty when a session starts, so every session was declared hung before it
+  # had written its first file. The Stories those sessions opened burned an
+  # attempt each on the way out. A watchdog that cannot tell "not yet" from
+  # "never" is worse than none.
+  last_progress=$(date +%s)
+  mark="$(repo_fingerprint)"
+
+  while kill -0 "$session_pid" 2>/dev/null; do
+    sleep 60
+    kill -0 "$session_pid" 2>/dev/null || break
+
+    now="$(repo_fingerprint)"
+    if [ "$now" != "$mark" ]; then
+      mark="$now"
+      last_progress=$(date +%s)
+      continue
+    fi
+
+    if [ "$(( $(date +%s) - last_progress ))" -ge "$((HANG_MINUTES * 60))" ]; then
+      say "nothing written in ${HANG_MINUTES}m of this session — it is hung, killing it"
+      kill "$session_pid" 2>/dev/null
+      sleep 2
+      # Its children outlive it: the gate, the parallel workers, and whatever
+      # they are blocked on. Left behind, they stack up run after run and
+      # compete for the same database.
+      pkill -f "bin/gate local" 2>/dev/null
+      pkill -f "parallel_test" 2>/dev/null
+      pkill -f "vendor/bundle/ruby/.*/bin/rspec" 2>/dev/null
+      break
+    fi
+  done
+
+  wait "$session_pid" 2>/dev/null
+  rc=$?
+  kill "$ticker_pid" 2>/dev/null
+  wait "$ticker_pid" 2>/dev/null || true
+  elapsed=$(( $(date +%s) - started_at ))
+
+  say "session $session ended (exit $rc) after ${elapsed}s"
+
+  # --- the session limit ----------------------------------------------------
+  # Checked after *every* session, before anything else reads the exit, and
+  # against only the lines this session wrote.
+  #
+  # Both of those were wrong at first. The check sat inside the short-session
+  # branch, so a session that worked for three hours and then hit the limit was
+  # not recognised — the runner simply started another, which died in sixty
+  # seconds, and only that one triggered the wait. And it grepped the whole run
+  # log, which accumulates across sessions, so a limit message from hours ago
+  # would have sent a healthy run to sleep.
+  #
+  # A spent session limit is a wait, not a failure. The CLI prints the reset
+  # time — "You've hit your session limit · resets 9pm (America/Sao_Paulo)" — so
+  # the runner sleeps until then and carries on. Overnight that is the difference
+  # between waking to a finished Milestone and waking to a log that stopped.
+  session_output="$(tail -n +"$((log_mark + 1))" "$RUN_LOG" 2>/dev/null)"
+  if printf '%s' "$session_output" | grep -qi "hit your session limit\|usage limit\|rate limit"; then
+    resume_at="$(printf '%s' "$session_output" | quota_resets_at /dev/stdin)"
+    if [ -n "$resume_at" ]; then
+      wait_for=$(( resume_at - $(date +%s) ))
+      # Never sleep past a working day on a parsed string: a misread "9pm"
+      # should cost minutes, not a night.
+      if [ "$wait_for" -gt 0 ] && [ "$wait_for" -le "$MAX_QUOTA_WAIT" ]; then
+        say "session limit reached; sleeping $((wait_for / 60))m until $(date -r "$resume_at" '+%H:%M') and resuming"
+        sleep "$((wait_for + 60))"
+        short_runs=0
+        continue
+      fi
+      say "session limit reached, but its reset is $((wait_for / 3600))h away — past the ${MAX_QUOTA_WAIT}s this runner will wait. Rerun bin/autopilot then; the chain picks up from what is recorded."
+    else
+      say "session limit reached and the reset time could not be read. Rerun bin/autopilot when it resets; the chain picks up from what is recorded."
+    fi
+    break
+  fi
+
+  # A session that returns in seconds did no work, whatever it exited with. The
+  # first version only backed off on a non-zero exit, so a misconfiguration that
+  # exited 0 spun as fast as the CLI could start — nine sessions in twenty
+  # seconds. Exit code is not the signal; elapsed time is.
+  # `-le`, not `-lt`: the watchdog killed sessions at exactly 60s and the guard
+  # read 60 as long enough, so thirteen of them spun past a limit set at three.
+  if [ "$elapsed" -le "$MIN_SESSION_SECONDS" ]; then
+    short_runs=$((short_runs + 1))
+    say "session did no work (${elapsed}s < ${MIN_SESSION_SECONDS}s); $short_runs in a row"
+
+    if [ "$short_runs" -ge "$MAX_SHORT_RUNS" ]; then
+      # A session limit never reaches here — it is recognised per session above
+      # and breaks there. What is left is a setup that genuinely does nothing,
+      # which is the only thing this message should now claim. The version that
+      # also guessed "usage limit" from the whole log would have said it on a
+      # stale line from an earlier session.
+      say "stopping: $MAX_SHORT_RUNS sessions in a row did nothing, and none of them reported a session limit. Read $RUN_LOG before rerunning."
+      break
+    fi
+    sleep 30
+  else
+    short_runs=0
+  fi
+
+  if [ "$rc" -ne 0 ]; then
+    say "non-zero exit; backing off 60s before the next session"
+    sleep 60
+  fi
+done
+
+say "autopilot finished after $session session(s)"
+say "open Pull Requests:"
+gh pr list --state open 2>>"$RUN_LOG" | tee -a "$RUN_LOG" || true

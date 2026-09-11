@@ -13,11 +13,26 @@ RSpec.describe "Inertia shared props", type: :security do
     passphrase recovery session cookie authorization signature encryption
   ].freeze
 
-  def shared_prop_keys
-    get "/", headers: modern_browser
+  def shared_prop_keys(path = "/")
+    get path, headers: modern_browser
 
     payload = inertia_payload
     flatten_keys(payload.fetch("props").slice(*payload.fetch("sharedProps")))
+  end
+
+  # M01-06 added `currentUser`, `teams` and `currentTeam`, and they appear **only**
+  # when somebody is signed in. Scanning `/` anonymously therefore scanned a
+  # surface that does not include the props the rule is now mostly about — the
+  # check ran where they do not exist. This signs in so the scan sees them.
+  def signed_in_shared_prop_keys
+    password = "hunter2-hunter2-hunter2"
+    user = create(:user, email: "shared-props@example.test", password: password)
+    create(:team, owner: user, slug: "shared-props-team")
+
+    https!
+    post sign_in_path, params: { email: user.email, password: password }
+
+    shared_prop_keys("/t/shared-props-team/projects")
   end
 
   def flatten_keys(value, prefix = nil)
@@ -38,6 +53,34 @@ RSpec.describe "Inertia shared props", type: :security do
     get "/", headers: modern_browser
 
     expect(inertia_payload["sharedProps"]).to match_array(%w[requestId flash errors])
+  end
+
+  it "declares the authenticated surface too, which is larger" do
+    signed_in_shared_prop_keys
+
+    expect(inertia_payload["sharedProps"])
+      .to match_array(%w[requestId flash errors currentUser teams currentTeam])
+  end
+
+  it "contains no key marked as sensitive, signed in — where the props exist" do
+    offending = signed_in_shared_prop_keys.select do |key|
+      normalized = key.downcase.delete("_.")
+
+      SENSITIVE_KEY_FRAGMENTS.any? { |fragment| normalized.include?(fragment.delete("_")) }
+    end
+
+    expect(offending).to be_empty,
+      "these shared props look sensitive and are published in every authenticated response: #{offending.inspect}"
+  end
+
+  it "publishes no credential value, signed in" do
+    keys = signed_in_shared_prop_keys
+    body = response.body
+
+    expect(keys).to include("currentUser.email"), "the scan did not reach the authenticated props"
+    expect(body).not_to include("hunter2-hunter2-hunter2")
+    expect(body).not_to match(/\$argon2id\$/)
+    expect(body).not_to include(Session.last.token_digest) if Session.exists?
   end
 
   it "contains no key marked as sensitive" do

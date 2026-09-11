@@ -37,6 +37,15 @@ require_relative "../lib/opanel/redaction"
 require_relative "../lib/opanel/log_formatter"
 require_relative "../lib/opanel/correlation_middleware"
 
+# The identifier registry of ADR-0002, validated on every boot in every
+# environment. A duplicate type prefix makes an identifier ambiguous in a log, an
+# audit record, an API response and a Swarm label at once, so it has to be a boot
+# error rather than something discovered on the one route that happens to use the
+# colliding type. Required directly, and excluded from autoloading below, for the
+# same reason as the configuration above.
+require_relative "../lib/opanel/identifier"
+Opanel::Identifier.validate_registry!
+
 module Opanel
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
@@ -52,7 +61,7 @@ module Opanel
     config.autoload_lib(
       ignore: %w[assets tasks gates rubocop
                  opanel/configuration.rb opanel/redaction.rb opanel/log_formatter.rb
-                 opanel/correlation_middleware.rb]
+                 opanel/correlation_middleware.rb opanel/identifier.rb]
     )
 
     # app/frontend/ holds the React/TypeScript tree bundled by Vite. Rails treats

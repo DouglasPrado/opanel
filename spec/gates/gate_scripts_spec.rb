@@ -6,6 +6,7 @@ require "fileutils"
 require_relative "../../lib/gates/story_boundary"
 require_relative "../../lib/gates/post_commit"
 require_relative "../../lib/gates/related_specs"
+require_relative "../support/gate_repository"
 
 # The three local gates, proved by breaking them.
 #
@@ -18,15 +19,15 @@ require_relative "../../lib/gates/related_specs"
 # can: a gate that only works in the tree that produced it has not been tested,
 # it has been observed.
 RSpec.describe "The local gates", :slow do
-  GATE_ROOT = File.expand_path("../..", __dir__)
+  def gate_root = @gate_root || File.expand_path("../..", __dir__)
   BOUNDARY = Opanel::Gates::StoryBoundary
   POST_COMMIT = Opanel::Gates::PostCommit
 
-  def gate(*arguments, root: GATE_ROOT)
+  def gate(*arguments, root: gate_root)
     Open3.capture2e("bin/gate", *arguments, chdir: root)
   end
 
-  def gate_json(*arguments, root: GATE_ROOT)
+  def gate_json(*arguments, root: gate_root)
     output, status = gate(*arguments, "--format", "json", root: root)
     [ JSON.parse(output), status ]
   end
@@ -67,7 +68,7 @@ RSpec.describe "The local gates", :slow do
         output, status = Open3.capture2e(
           environment, "bash", "-c",
           "source bin/_gate_lib.sh; gate_begin probe text; gate_pass one ok; gate_finish",
-          chdir: GATE_ROOT
+          chdir: gate_root
         )
 
         expect(status).to be_success, output
@@ -78,7 +79,7 @@ RSpec.describe "The local gates", :slow do
     it "is the stand-in that catches it: the BSD form fails against it" do
       with_gnu_mktemp do |environment|
         _output, status = Open3.capture2e(
-          environment, "bash", "-c", "mktemp -t opanel-gate", chdir: GATE_ROOT
+          environment, "bash", "-c", "mktemp -t opanel-gate", chdir: gate_root
         )
 
         expect(status).not_to be_success,
@@ -90,17 +91,26 @@ RSpec.describe "The local gates", :slow do
   # Genuinely staged, not `--intent-to-add`: the gate reads
   # `git diff --cached`, which does not list an intent-to-add entry, so a
   # probe added that way would never reach the check it is meant to trip.
+  #
+  # Held under RepositoryLock: this writes into the real working tree of
+  # gate_root via `git add`/`git rm --cached`, which take `.git/index.lock`
+  # and do not retry on contention — two workers racing there can make one
+  # silently no-op. And under `bin/test --parallel` a full-tree scan running
+  # in another worker (spec/security/security_scan_spec.rb) would otherwise
+  # see the probe mid-flight and report a leak nobody here planted for it.
   def with_staged(path, contents)
-    full = File.join(GATE_ROOT, path)
-    FileUtils.mkdir_p(File.dirname(full))
-    File.write(full, contents)
-    Open3.capture2e("git", "add", "--force", path, chdir: GATE_ROOT)
-    yield
-  ensure
-    Open3.capture2e("git", "rm", "--cached", "--force", "--quiet", path, chdir: GATE_ROOT)
-    FileUtils.rm_f(full)
-    directory = File.dirname(full)
-    FileUtils.rmdir(directory) if Dir.exist?(directory) && Dir.empty?(directory)
+    Opanel::Gates::GateRepository.with(gate_root) do |directory|
+      @gate_root = directory
+      full = File.join(directory, path)
+      FileUtils.mkdir_p(File.dirname(full))
+      File.write(full, contents)
+      _output, status = Open3.capture2e("git", "add", "--force", path, chdir: directory)
+      raise "could not stage probe" unless status.success?
+
+      yield
+    ensure
+      @gate_root = nil
+    end
   end
 
 
@@ -123,7 +133,7 @@ RSpec.describe "The local gates", :slow do
     end
 
     it "runs the eight items of Annex I §12.1, in order" do
-      source = File.read(File.join(GATE_ROOT, "bin/gate"))
+      source = File.read(File.join(gate_root, "bin/gate"))
       pre_commit = source[/^  pre-commit\)(.*?)^    ;;/m]
 
       %w[format lint typecheck tests secret-scan migrations no-stray-files diff-boundary]
@@ -150,7 +160,7 @@ RSpec.describe "The local gates", :slow do
   describe "each Pre-commit item rejects what it exists to catch" do
     it "rejects unformatted Ruby" do
       with_staged("lib/opanel/gate_probe_format.rb", "x  =  1\nputs   x\n") do
-        _output, status = Open3.capture2e("bin/format", "--check", chdir: GATE_ROOT)
+        _output, status = Open3.capture2e("bin/format", "--check", chdir: gate_root)
         expect(status).not_to be_success
       end
     end
@@ -164,14 +174,14 @@ RSpec.describe "The local gates", :slow do
           a+b
         end
       RUBY
-        _output, status = Open3.capture2e("bin/lint", chdir: GATE_ROOT)
+        _output, status = Open3.capture2e("bin/lint", chdir: gate_root)
         expect(status).not_to be_success
       end
     end
 
     it "rejects a type error" do
       with_staged("app/frontend/gate-probe/broken.ts", "export const n: number = true\n") do
-        _output, status = Open3.capture2e("bin/typecheck", chdir: GATE_ROOT)
+        _output, status = Open3.capture2e("bin/typecheck", chdir: gate_root)
         expect(status).not_to be_success
       end
     end
@@ -187,7 +197,7 @@ RSpec.describe "The local gates", :slow do
         end
       RUBY
         _output, status = Open3.capture2e(
-          "bin/test", "spec/unit/gate_probe_failing_spec.rb", chdir: GATE_ROOT
+          "bin/test", "spec/unit/gate_probe_failing_spec.rb", chdir: gate_root
         )
         expect(status).not_to be_success
       end
@@ -201,8 +211,11 @@ RSpec.describe "The local gates", :slow do
       # sometimes and a flaky security test is a defect.
       token = "ghp_" + ("hR3xQ9wLmT7bVzN2yKfJ4sCdA8eUpG" + "1oX5i")
 
+      # `--staged`, not `--fast`: the token is planted in the index, and that is
+      # the scope the pre-commit gate scans. Scanning the whole tree to find a
+      # staged file cost 38 seconds and proved something broader than the claim.
       with_staged("config/ci/.gate-probe.env", "GITHUB_TOKEN=#{token}\n") do
-        output, status = Open3.capture2e("bin/security", "--fast", chdir: GATE_ROOT)
+        output, status = Open3.capture2e("bin/security", "--staged", chdir: gate_root)
 
         expect(status).not_to be_success
         expect(output).not_to include(token)
@@ -217,7 +230,7 @@ RSpec.describe "The local gates", :slow do
           end
         end
       RUBY
-        _output, status = Open3.capture2e("bin/migration-gate", chdir: GATE_ROOT)
+        _output, status = Open3.capture2e("bin/migration-gate", chdir: gate_root)
         expect(status).not_to be_success
       end
     end
@@ -225,15 +238,20 @@ RSpec.describe "The local gates", :slow do
     # A stray artifact is not a style problem: it is how a dump, a key or a
     # customer's data reaches a repository by accident.
     it "rejects a staged build artifact" do
+      # `--only`: the expectation reads one field, and running the other seven
+      # checks to reach it cost 123 seconds — a full suite and a full tree scan
+      # to assert that a staged .sqlite3 is rejected. The narrowed run proves the
+      # same thing; the report marks the rest `skip`, so it cannot be mistaken
+      # for a full pass.
       with_staged("config/gate-probe-artifact.sqlite3", "not really a database\n") do
-        report, _status = gate_json("pre-commit", "--story", "M00-12")
+        report, _status = gate_json("pre-commit", "--only", "no-stray-files", "--story", "M00-12")
         expect(check(report, "no-stray-files")["result"]).to eq("fail")
       end
     end
 
     # AC5: the boundary check, proved negatively.
     it "rejects a file outside the Story's declared boundary" do
-      result = BOUNDARY.check("M00-12", [ "app/models/service.rb" ], GATE_ROOT)
+      result = BOUNDARY.check("M00-12", [ "app/models/service.rb" ], gate_root)
 
       expect(result.status).to eq(:fail)
       expect(result.reason).to include("outside the boundary of M00-12")
@@ -241,7 +259,7 @@ RSpec.describe "The local gates", :slow do
     end
 
     it "accepts a file inside it" do
-      expect(BOUNDARY.check("M00-12", [ "bin/gate" ], GATE_ROOT).status).to eq(:pass)
+      expect(BOUNDARY.check("M00-12", [ "bin/gate" ], gate_root).status).to eq(:pass)
     end
 
     # `.github/**` reads as "everything under .github", and has to behave that
@@ -251,7 +269,7 @@ RSpec.describe "The local gates", :slow do
       files = [ ".github/CODEOWNERS", ".github/workflows/ci.yml",
                 ".github/actions/archive/action.yml" ]
 
-      expect(BOUNDARY.check("M00-11", files, GATE_ROOT).status).to eq(:pass)
+      expect(BOUNDARY.check("M00-11", files, gate_root).status).to eq(:pass)
     end
 
     # Always-allowed paths: a Story that could not record its own state would be
@@ -259,12 +277,12 @@ RSpec.describe "The local gates", :slow do
     it "accepts the pack's own bookkeeping without declaring it" do
       files = [ "docs/implementation/M00/tasks.json", "docs/implementation/M00/reports/M00-12.md" ]
 
-      expect(BOUNDARY.check("M00-12", files, GATE_ROOT).status).to eq(:pass)
+      expect(BOUNDARY.check("M00-12", files, gate_root).status).to eq(:pass)
     end
 
     # The check must not be satisfiable by declaring nothing.
     it "fails an undeclared Story rather than waving it through" do
-      result = BOUNDARY.check("M99-01", [ "app/models/service.rb" ], GATE_ROOT)
+      result = BOUNDARY.check("M99-01", [ "app/models/service.rb" ], gate_root)
 
       expect(result.status).to eq(:fail)
       expect(result.reason).to include("declares no boundary")
@@ -278,7 +296,7 @@ RSpec.describe "The local gates", :slow do
   describe "the related specs" do
     RELATED = Opanel::Gates::RelatedSpecs
 
-    def selection_for(*changed) = RELATED.for_changed(changed, root: GATE_ROOT)
+    def selection_for(*changed) = RELATED.for_changed(changed, root: gate_root)
 
     it "selects a changed spec directly" do
       selection = selection_for("spec/unit/application_job_spec.rb")
@@ -315,7 +333,7 @@ RSpec.describe "The local gates", :slow do
     it "exits non-zero rather than selecting nothing" do
       output, status = Open3.capture2e(
         "ruby", "lib/gates/related_specs.rb",
-        stdin_data: "app/mcp/tool_registry.rb\n", chdir: GATE_ROOT
+        stdin_data: "app/mcp/tool_registry.rb\n", chdir: gate_root
       )
 
       expect(status).not_to be_success
@@ -326,11 +344,11 @@ RSpec.describe "The local gates", :slow do
   describe "the git hook" do
     # AC4.
     it "is installed by bin/setup" do
-      expect(File.read(File.join(GATE_ROOT, "bin/setup"))).to include("bin/install-hooks")
+      expect(File.read(File.join(gate_root, "bin/setup"))).to include("bin/install-hooks")
     end
 
     it "is versioned, so a change to it is reviewable" do
-      hook = File.join(GATE_ROOT, ".githooks/pre-commit")
+      hook = File.join(gate_root, ".githooks/pre-commit")
 
       expect(File.exist?(hook)).to be(true)
       expect(File.executable?(hook)).to be(true)
@@ -352,13 +370,13 @@ RSpec.describe "The local gates", :slow do
         Open3.capture2e("git", "init", "--quiet", directory)
         env = { "GIT_DIR" => File.join(directory, ".git"), "GIT_WORK_TREE" => directory }
 
-        refused, refused_status = Open3.capture2e(env, "bin/install-hooks", "--check", chdir: GATE_ROOT)
+        refused, refused_status = Open3.capture2e(env, "bin/install-hooks", "--check", chdir: gate_root)
 
         expect(refused_status).not_to be_success
         expect(refused).to include("unset")
 
-        Open3.capture2e(env, "bin/install-hooks", chdir: GATE_ROOT)
-        output, status = Open3.capture2e(env, "bin/install-hooks", "--check", chdir: GATE_ROOT)
+        Open3.capture2e(env, "bin/install-hooks", chdir: gate_root)
+        output, status = Open3.capture2e(env, "bin/install-hooks", "--check", chdir: gate_root)
 
         expect(status).to be_success, output
         expect(output).to include(".githooks")
@@ -447,7 +465,7 @@ RSpec.describe "The local gates", :slow do
     end
 
     it "is written only by a gate that passed" do
-      source = File.read(File.join(GATE_ROOT, "bin/gate"))
+      source = File.read(File.join(gate_root, "bin/gate"))
       recorder = source[/record_pre_commit_evidence\(\) \{(.*?)^\}/m]
 
       expect(recorder).to include("GATE_FAILURES"),
@@ -455,7 +473,7 @@ RSpec.describe "The local gates", :slow do
     end
 
     it "is written by the gate itself, keyed by the tree" do
-      expect(File.read(File.join(GATE_ROOT, "bin/gate")))
+      expect(File.read(File.join(gate_root, "bin/gate")))
         .to include("record_pre_commit_evidence")
     end
 
@@ -469,7 +487,7 @@ RSpec.describe "The local gates", :slow do
     # post-commit gate name the flag in order to forbid it, and a checker that
     # reports the sentence explaining the rule is one people learn to ignore.
     it "is not tripped by prose that names the flag in order to forbid it" do
-      expect(File.read(File.join(GATE_ROOT, ".githooks/pre-commit"))).to include("--no-verify")
+      expect(File.read(File.join(gate_root, ".githooks/pre-commit"))).to include("--no-verify")
 
       report, _status = gate_json("post-commit", "--story", "M00-11")
 
@@ -1001,10 +1019,10 @@ RSpec.describe "The local gates", :slow do
     end
 
     it "may not be edited to make a Story pass" do
-      merge_gate = File.read(File.join(GATE_ROOT, "bin/merge-gate"))
+      merge_gate = File.read(File.join(gate_root, "bin/merge-gate"))
 
       expect(merge_gate).to include("bin/gate")
-      expect(File.read(File.join(GATE_ROOT, ".github/CODEOWNERS"))).to include("/lib/gates/")
+      expect(File.read(File.join(gate_root, ".github/CODEOWNERS"))).to include("/lib/gates/")
     end
   end
 end

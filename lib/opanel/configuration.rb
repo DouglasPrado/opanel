@@ -151,6 +151,110 @@ module Opanel
         format: :number,
         default: "300",
         description: "How long a worker may go silent before its claimed jobs are released."
+      ),
+      Key.new(
+        name: "OPANEL_OUTBOX_DISPATCHER_BATCH_SIZE",
+        required_in: [],
+        format: :integer,
+        default: "100",
+        description: "Maximum number of outbox events to publish in one dispatcher run."
+      ),
+      Key.new(
+        name: "OPANEL_OUTBOX_DISPATCHER_CADENCE_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "5",
+        description: "How often the outbox dispatcher publishes pending events to the queue."
+      ),
+      Key.new(
+        name: "OPANEL_RECOVERY_SWEEP_BATCH_SIZE",
+        required_in: [],
+        format: :integer,
+        default: "50",
+        description: "Maximum number of stalled operations to recover per sweep run."
+      ),
+      Key.new(
+        name: "OPANEL_RECOVERY_SWEEP_CADENCE_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "30",
+        description: "How often the recovery sweep checks for stalled operations."
+      ),
+      Key.new(
+        name: "OPANEL_RECOVERY_SWEEP_HEARTBEAT_THRESHOLD_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "600",
+        description: "How long a RUNNING operation may go without heartbeat before marked stalled (10 minutes)."
+      ),
+      Key.new(
+        name: "OPANEL_RECOVERY_SWEEP_QUEUED_THRESHOLD_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "300",
+        description: "How long a QUEUED operation may wait before marked stalled (5 minutes)."
+      ),
+      Key.new(
+        name: "OPANEL_QUEUE_BACKPRESSURE_HIGH_WATER_MARK",
+        required_in: [],
+        format: :integer,
+        default: "1000",
+        description: "Number of unpublished events that triggers backpressure (deferral of new operations)."
+      ),
+      Key.new(
+        name: "OPANEL_QUEUE_BACKPRESSURE_DELAY_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "60",
+        description: "How long to defer operation enqueue when queue backpressure is active."
+      ),
+      Key.new(
+        name: "OPANEL_NETWORK_RECONCILE_CADENCE_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "60",
+        description: "How often the network reconciler runs a periodic sweep (M01-17)."
+      ),
+      Key.new(
+        name: "OPANEL_SERVICE_RECONCILE_CADENCE_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "30",
+        description: "How often the Service reconciler runs a periodic sweep (M01-18). The sweep is the " \
+                     "guarantee of correctness; the Operation trigger is only an accelerator (doc 07 §11.2)."
+      ),
+      Key.new(
+        name: "OPANEL_SERVICE_OBSERVATION_CADENCE_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "30",
+        description: "How often the Service observation job runs to collect actual state from Swarm (M01-19). " \
+                     "Observations are append-only; UI uses timestamp to detect staleness (doc 10 §25)."
+      ),
+      Key.new(
+        name: "OPANEL_WORKER_IDENTITY",
+        required_in: [],
+        format: :free_text,
+        default: nil,
+        description: "Unique identifier for this worker process (lease owner). Auto-generated from " \
+                     "hostname and PID if not set. Override only in multi-tenant deployments where " \
+                     "the orchestrator assigns node identity."
+      ),
+      Key.new(
+        name: "OPANEL_WORKER_BOOT_ID",
+        required_in: [],
+        format: :free_text,
+        default: nil,
+        description: "Boot counter to distinguish process restarts. Used to generate OPANEL_WORKER_IDENTITY " \
+                     "when it is not explicitly set. Normally left blank."
+      ),
+      Key.new(
+        name: "OPANEL_RESOURCE_LOCK_TTL_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "120",
+        description: "Time-to-live for resource locks. After this many seconds without renewal, " \
+                     "a lock expires and another worker may assume (AC7)."
       )
     ].freeze
 
@@ -216,6 +320,43 @@ module Opanel
         "from the environment; Opanel reads none from a versioned file.",
         ""
       ].join("\n")
+    end
+
+    # Convenience accessors for M01-14 outbox and recovery configuration.
+    def self.outbox_dispatcher_batch_size
+      ENV.fetch("OPANEL_OUTBOX_DISPATCHER_BATCH_SIZE", "100").to_i
+    end
+
+    def self.outbox_dispatcher_cadence_seconds
+      ENV.fetch("OPANEL_OUTBOX_DISPATCHER_CADENCE_SECONDS", "5").to_i
+    end
+
+    def self.recovery_sweep_batch_size
+      ENV.fetch("OPANEL_RECOVERY_SWEEP_BATCH_SIZE", "50").to_i
+    end
+
+    def self.recovery_sweep_cadence_seconds
+      ENV.fetch("OPANEL_RECOVERY_SWEEP_CADENCE_SECONDS", "30").to_i
+    end
+
+    def self.recovery_sweep_heartbeat_threshold
+      Time.current.utc - ENV.fetch("OPANEL_RECOVERY_SWEEP_HEARTBEAT_THRESHOLD_SECONDS", "600").to_i.seconds
+    end
+
+    def self.recovery_sweep_queued_threshold
+      Time.current.utc - ENV.fetch("OPANEL_RECOVERY_SWEEP_QUEUED_THRESHOLD_SECONDS", "300").to_i.seconds
+    end
+
+    def self.service_reconcile_cadence_seconds
+      ENV.fetch("OPANEL_SERVICE_RECONCILE_CADENCE_SECONDS", "30").to_i
+    end
+
+    def self.queue_backpressure_high_water_mark
+      ENV.fetch("OPANEL_QUEUE_BACKPRESSURE_HIGH_WATER_MARK", "1000").to_i
+    end
+
+    def self.queue_backpressure_delay_seconds
+      ENV.fetch("OPANEL_QUEUE_BACKPRESSURE_DELAY_SECONDS", "60").to_i
     end
   end
 end

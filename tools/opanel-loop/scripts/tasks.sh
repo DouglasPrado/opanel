@@ -73,6 +73,22 @@ cmd_file() {
   fi
 }
 
+review_budget_ok() {
+  local repo directory
+  repo="${CLAUDE_PROJECT_DIR:-$(git -C "$MDIR" rev-parse --show-toplevel 2>/dev/null || true)}"
+  directory="$repo/tmp/opanel-loop/review-budgets"
+  [ -d "$directory" ] || return 0
+  # The newest round supersedes earlier rounds; an expired round is never a
+  # clean verdict, even if an old review file and counts still exist.
+  python3 - "$directory" "$1" <<'PYTHON'
+import json, pathlib, sys, time
+records = [json.loads(p.read_text()) for p in pathlib.Path(sys.argv[1]).glob("*.json")]
+records = [r for r in records if r.get("story") == sys.argv[2]]
+latest = max(records, key=lambda r: r["deadline"]) if records else {}
+sys.exit(1 if latest.get("expired") else 0)
+PYTHON
+}
+
 review_counts_ok() {
   local id="$1" review="$MDIR/review/$1.md" line critical high
   [ -f "$review" ] || return 1
@@ -84,12 +100,48 @@ review_counts_ok() {
   [ "$critical" -eq 0 ] && [ "$high" -eq 0 ]
 }
 
+QUALIFIERS="BLOCKED_FOR_PRODUCT_DECISION BLOCKED_FOR_HUMAN_APPROVAL BLOCKED_EXTERNAL_DEPENDENCY"
+
 cmd_set() {
-  local id="$1" state="$2" reason="${3:-}"
+  local id="$1" state="$2" reason="${3:-}" diagnosis="${4:-}"
   story_exists "$id" || die "unknown story: $id"
   valid_state "$state" || die "invalid state: $state (valid: $STATES)"
 
+  # `blocked` writes the shape config/pack/tasks.schema.json requires — a
+  # qualifier saying who can unblock it, and a diagnosis long enough to act on.
+  # This wrote a flat `reason` string instead, so every block it recorded failed
+  # BLOCKED_HAS_REASON: the loop could mark a Story blocked and the pack gate
+  # would then refuse the Milestone for the way it was marked.
+  if [ "$state" = "blocked" ]; then
+    local q
+    for q in $QUALIFIERS; do [ "$q" != "$reason" ] || break; done
+    case " $QUALIFIERS " in
+      *" $reason "*) ;;
+      *) die "blocked needs a qualifier first: $QUALIFIERS
+usage: set <id> blocked <qualifier> <diagnosis>" ;;
+    esac
+    [ "${#diagnosis}" -ge 20 ] || die \
+"blocked needs a reproducible diagnosis of at least 20 characters — \"it did not
+work\" tells the next session nothing"
+    with_lock "$LOCK" write_json "$TASKS" \
+      '(.stories[] | select(.id == $id) | .status) = "blocked"
+       | (.stories[] | select(.id == $id) | .blockedReason) = {qualifier: $q, diagnosis: $d}' \
+      --arg id "$id" --arg q "$reason" --arg d "$diagnosis"
+    printf '%s -> blocked (%s)\n' "$id" "$reason"
+    return 0
+  fi
+
+  if [ "$state" = "in_progress" ]; then
+    # Fixed before the builder edits. Reopening a Story retains the same base.
+    local repo
+    repo="$(git -C "$MDIR" rev-parse --show-toplevel 2>/dev/null || true)"
+    if [ -n "$repo" ] && [ -x "$repo/bin/story-scope" ]; then
+      "$repo/bin/story-scope" start "$id" >/dev/null || die "could not record Story base"
+    fi
+  fi
+
   if [ "$state" = "done" ]; then
+    review_budget_ok "$id" || die "review budget expired: incomplete review cannot authorize done"
     if [ ! -f "$MDIR/review/$id.md" ]; then
       printf 'refusing done: %s has no review at %s\n' "$id" "$MDIR/review/$id.md" >&2
       exit 2
@@ -118,6 +170,11 @@ cmd_set() {
 cmd_attempt() {
   local id="$1"
   story_exists "$id" || die "unknown story: $id"
+  if [ "$(jq -r --arg id "$id" '.stories[] | select(.id == $id) | .attempts // 0' "$TASKS")" -ge 3 ]; then
+    cmd_set "$id" blocked BLOCKED_FOR_HUMAN_APPROVAL \
+      "Automatic attempt budget exhausted (3). Preserve findings and evidence; continue independent Stories. A human must authorize a new attempt budget."
+    die "attempt budget exhausted for $id"
+  fi
   with_lock "$LOCK" write_json "$TASKS" \
     '(.stories[] | select(.id == $id) | .attempts) = ((.stories[] | select(.id == $id) | .attempts // 0) + 1)' \
     --arg id "$id"
@@ -128,6 +185,9 @@ cmd_review() {
   local id="$1" c="$2" h="$3" m="$4" l="$5"
   story_exists "$id" || die "unknown story: $id"
   case "$c$h$m$l" in *[!0-9]*) die "counts must be integers" ;; esac
+  if [ "$c" -eq 0 ] && [ "$h" -eq 0 ]; then
+    review_budget_ok "$id" || die "review budget expired: cannot record a clean review"
+  fi
   with_lock "$LOCK" write_json "$TASKS" \
     '(.stories[] | select(.id == $id) | .review) =
        {critical: ($c|tonumber), high: ($h|tonumber),
@@ -166,7 +226,9 @@ cmd_active() {
 # rather than inheriting an exhausted one.
 cmd_run_start() {
   with_lock "$LOCK" write_json "$TASKS" \
-    '.run = {startedAt: $now, turns: 0}' --arg now "$(now_utc)"
+    '.run = {startedAt: $now, turns: 0,
+             doneAtStart: ([.stories[] | select(.status == "done")] | length)}' \
+    --arg now "$(now_utc)"
   printf 'run started %s\n' "$(now_utc)"
 }
 
@@ -184,7 +246,8 @@ case "$COMMAND" in
   next)      cmd_next ;;
   get)       [ $# -ge 1 ] || die "usage: get <id>"; cmd_get "$1" ;;
   file)      [ $# -ge 1 ] || die "usage: file <id>"; cmd_file "$1" ;;
-  set)       [ $# -ge 2 ] || die "usage: set <id> <status> [reason]"; cmd_set "$1" "$2" "${3:-}" ;;
+  set)       [ $# -ge 2 ] || die "usage: set <id> <status> [reason] | set <id> blocked <qualifier> <diagnosis>"
+             cmd_set "$1" "$2" "${3:-}" "${4:-}" ;;
   attempt)   [ $# -ge 1 ] || die "usage: attempt <id>"; cmd_attempt "$1" ;;
   review)    [ $# -ge 5 ] || die "usage: review <id> <c> <h> <m> <l>"; cmd_review "$1" "$2" "$3" "$4" "$5" ;;
   commit)    [ $# -ge 2 ] || die "usage: commit <id> <hash>"; cmd_commit "$1" "$2" ;;

@@ -33,5 +33,37 @@ module Opanel
     SYSTEM = "system"
 
     ALL = [ DEPLOYMENTS, RUNTIME, CLUSTER, CERTIFICATES, BACKUP_DR, SYSTEM ].freeze
+
+    # Route an event type to its logical queue (M01-14 dispatcher, doc 07 §9.1).
+    # An event with no route raises; routing to an undeclared queue is an architecture violation.
+    # @param event_type [String] the event type (e.g., "service.desired_state.changed.v1")
+    # @return [String] the logical queue name (one of ALL)
+    # @raise [ArgumentError] if event_type does not match a known route
+    def self.for_event_type(event_type)
+      case event_type
+      when /^service\..*deployment/i
+        DEPLOYMENTS
+      when /^service\.desired_state/i
+        RUNTIME
+      when /^service\.scale/i
+        RUNTIME
+      when /^service\.restart/i
+        RUNTIME
+      when /^node\./i
+        CLUSTER
+      when /^certificate\./i
+        CERTIFICATES
+      when /^snapshot\./i
+        BACKUP_DR
+      when /^reconciliation\./i
+        SYSTEM
+      when /^cleanup\./i
+        SYSTEM
+      else
+        raise ArgumentError, "Unknown event type: #{event_type}. " \
+          "Known queues: #{ALL.inspect}. " \
+          "Add routing to #{self}.for_event_type or add event type to allowlist."
+      end
+    end
   end
 end

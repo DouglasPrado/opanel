@@ -25,6 +25,22 @@ STATE_SH="$PLUGIN_ROOT/scripts/review-state.sh"
 MDIR="$(head -n1 "$ACTIVE" | tr -d '[:space:]')"
 case "$MDIR" in /*) ;; *) MDIR="$ROOT/$MDIR" ;; esac
 
+# --- whose run is this? -----------------------------------------------------
+# Line 2 of .backlog-active is the session id of the run's owner. A session that
+# is not the owner is a bystander in the same repository, and driving it through
+# the loop is worse than useless: on 2026-09-10 an interactive session was told
+# "Story M01-11 is still open. Close it" dozens of times while the autopilot's
+# own session was writing that exact Story. Two writers, one tasks.json.
+#
+# Unowned runs — a .backlog-active written before this line existed — are left
+# alone rather than adopted, so an upgrade mid-run does not silently hand the
+# loop to whoever stops first.
+OWNER="$(sed -n '2p' "$ACTIVE" | tr -d '[:space:]')"
+ME="${CLAUDE_SESSION_ID:-${CLAUDE_CODE_SESSION_ID:-}}"
+if [ -n "$OWNER" ] && [ -n "$ME" ] && [ "$OWNER" != "$ME" ]; then
+  exit 0
+fi
+
 stop_now() { rm -f "$ACTIVE"; exit 0; }
 
 block() {
@@ -53,10 +69,38 @@ if [ "$TURNS" -gt "$LIMIT" ]; then
 fi
 
 STATUS="$(bash "$STATE_SH" "$MDIR" status 2>/dev/null || echo implementing)"
+BLOCK_REASON="$(jq -r '.blockedReason // ""' "$MDIR/review-state.json" 2>/dev/null || true)"
 
 case "$STATUS" in
-  human_acceptance|blocked)
-    stop_now
+  # ADR-0007 — none of these branches ends the run waiting for a person.
+  #
+  # The one exception is a Milestone the arbiter itself ruled BLOCK on: asking
+  # the same question of the same evidence again is the infinite loop this
+  # script exists to prevent.
+  blocked)
+    # Prefix, not equality: the arbiter records why it blocked, so the reason
+    # reads "ARBITER_BLOCK — <what is missing>" and never equals the code.
+    case "$BLOCK_REASON" in
+      ARBITER_BLOCK_NEEDS_ADR*)
+        # Blocked on a decision nobody has written down. That is work an agent
+        # can do, so the chain does not end here: the adr-author writes it, and
+        # the human reads it in the Milestone's Pull Request like every other
+        # autonomous decision.
+        block "$MILESTONE is blocked on a decision that does not exist yet ($BLOCK_REASON). Dispatch the adr-author agent in a fresh context with the arbiter's entry in $MDIR/DECISIONS.md and the evidence it cites. Write what it returns to docs/decisions/ADR-<NNNN>-<slug>.md with the next free number, then run review-state.sh $MDIR adr-written docs/decisions/<file>. If it returns ALREADY DECIDED or NEEDS HUMAN, record that in DECISIONS.md and do not write an ADR."
+        ;;
+      ARBITER_BLOCK*)
+        stop_now
+        ;;
+    esac
+    block "The Milestone is blocked ($BLOCK_REASON). Under ADR-0007 that is an arbitration, not a stop: dispatch the arbiter agent in a fresh context with the recorded reason and the evidence behind it, append its decision verbatim to $MDIR/DECISIONS.md, then run review-state.sh $MDIR arbitrate."
+    ;;
+  # ACCEPTED landed here. The arbiter releases the Milestone now, not a human.
+  human_acceptance)
+    block "The Milestone verdict is ACCEPTED and waiting to be released. Dispatch the arbiter agent to confirm the counts, the commit and MILESTONE_REPORT.md, append its decision to $MDIR/DECISIONS.md, then run review-state.sh $MDIR arbitrate."
+    ;;
+  # Released. Ship the Pull Request, then chain to the next Milestone.
+  accepted)
+    block "$MILESTONE is accepted. Open its stacked Pull Request with 'bin/milestone-pr $MILESTONE', then continue the chain with /autopilot. Do not merge anything."
     ;;
   ready_for_review)
     block "M00 handoff: the Milestone is ready_for_review. Run /review-milestone $MDIR now. Do not implement anything else."
@@ -82,9 +126,13 @@ fi
 # budgeted for and the state is clean between Stories.
 MAX_PER_RUN="${OPANEL_MAX_STORIES_PER_RUN:-0}"
 if [ "$MAX_PER_RUN" -gt 0 ]; then
-  DONE_THIS_RUN="$(jq --arg s "$(jq -r '.run.startedAt // ""' "$MDIR/tasks.json")" \
-    '[.stories[] | select(.status == "done")] | length' "$MDIR/tasks.json" 2>/dev/null || echo 0)"
-  if [ "$DONE_THIS_RUN" -ge "$MAX_PER_RUN" ]; then
+  # Counted against the baseline `run-start` recorded, not against every Story
+  # the Milestone ever closed. The first version read `startedAt` and then
+  # counted all `done` stories anyway, so a Milestone with work already behind it
+  # stopped immediately — the flag did not do what its name says.
+  BASELINE="$(jq -r '.run.doneAtStart // 0' "$MDIR/tasks.json" 2>/dev/null || echo 0)"
+  DONE_NOW="$(jq '[.stories[] | select(.status == "done")] | length' "$MDIR/tasks.json" 2>/dev/null || echo 0)"
+  if [ "$((DONE_NOW - BASELINE))" -ge "$MAX_PER_RUN" ]; then
     stop_now
   fi
 fi
@@ -98,12 +146,12 @@ REMAINING="$(bash "$TASKS_SH" "$MDIR" remaining 2>/dev/null || echo 0)"
 BLOCKED_REQUIRED="$(jq -r '[.stories[] | select(.required == true and .status == "blocked")] | length' "$MDIR/tasks.json")"
 
 if [ "$BLOCKED_REQUIRED" -gt 0 ]; then
-  bash "$STATE_SH" "$MDIR" block REQUIRED_STORY_BLOCKED >/dev/null 2>&1 || true
-  stop_now
+  IDS="$(jq -r '[.stories[] | select(.required == true and .status == "blocked") | .id] | join(", ")' "$MDIR/tasks.json")"
+  block "Required Stories are blocked: $IDS. Under ADR-0007 this is an arbitration. Dispatch the arbiter agent for each, append its decision to $MDIR/DECISIONS.md, and act on the verdict — FIX reopens the Story for one bounded round, DEBT defers it to the Milestone the arbiter names."
 fi
 
 if [ "$REMAINING" -gt 0 ]; then
-  block "$REMAINING Stories remain but none is ready. Record why in BLOCKERS.md with a reproducible diagnosis, and mark the dependent Stories blocked."
+  block "$REMAINING Stories remain but none is ready. Record why in BLOCKERS.md with a reproducible diagnosis, then dispatch the arbiter agent to decide what the run does about it and append its decision to $MDIR/DECISIONS.md."
 fi
 
 # --- closing the Milestone -------------------------------------------------
@@ -113,7 +161,7 @@ GATE_OK="$(printf '%s' "$GATE_OUT" | jq -r '.ok // false' 2>/dev/null || echo fa
 if [ "$GATE_OK" != "true" ]; then
   REASON="$(printf '%s' "$GATE_OUT" | jq -r '[.checks[]? | select(.result != "pass") | .name] | join(", ")' 2>/dev/null || true)"
   [ -n "$REASON" ] || REASON="see bin/stop-gate $MILESTONE"
-  block "bin/stop-gate $MILESTONE is not ok ($REASON). Fix what it names and generate MILESTONE_REPORT.md with 'Status: READY_FOR_REVIEW'."
+  block "bin/stop-gate $MILESTONE is not ok ($REASON). Fix what it names and generate MILESTONE_REPORT.md with 'Status: READY_FOR_REVIEW'. If you have already tried and the same check is still red, do not try a third time — dispatch the arbiter agent with the gate's output and append its decision to $MDIR/DECISIONS.md."
 fi
 
 bash "$STATE_SH" "$MDIR" set ready_for_review >/dev/null 2>&1 || true

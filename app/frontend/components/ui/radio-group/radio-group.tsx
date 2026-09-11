@@ -58,7 +58,7 @@ function RadioGroupChoice({
       data-slot="radio-group-choice"
       htmlFor={itemId}
       className={cn(
-        'group/radio-group-choice relative flex min-h-11 cursor-pointer items-start gap-2.5 rounded-xs border border-input bg-transparent px-3 py-2.5 text-start text-lg transition-colors outline-none select-none hover:bg-muted/50 has-[:focus-visible]:border-ring has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 has-data-checked:border-primary/40 has-data-checked:bg-muted has-data-disabled:pointer-events-none has-data-disabled:cursor-not-allowed has-data-disabled:opacity-50 dark:bg-input/20 dark:has-data-checked:bg-muted',
+        'group/radio-group-choice relative flex min-h-11 cursor-pointer items-start gap-2.5 rounded-xs border border-input bg-transparent px-3 py-2.5 text-start text-base transition-colors outline-none select-none hover:bg-muted/50 has-[:focus-visible]:border-ring has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 has-data-checked:border-primary/40 has-data-checked:bg-muted has-data-disabled:pointer-events-none has-data-disabled:cursor-not-allowed has-data-disabled:opacity-50 dark:bg-input/20 dark:has-data-checked:bg-muted',
         className,
       )}
     >

@@ -19,6 +19,20 @@ RSpec.describe "the production log sink", type: :security do
   PLANTED_PASSWORD = "hunter2"
   PLANTED_TOKEN = "tok_abcdef123456"
 
+  # `config.eager_load = true` in production (config/environments/production.rb)
+  # makes Zeitwerk require every file under every autoload path — including
+  # `lib/opanel/`, where spec/gates/ci_pipeline_spec.rb and
+  # spec/gates/gate_scripts_spec.rb briefly plant a deliberately broken probe
+  # file to prove the lint check rejects it. Under `bin/test --parallel`
+  # those specs run in other worker *processes*, sharing this same checkout:
+  # if a probe is on disk at the instant this boots, Zeitwerk autoloads it
+  # and raises `Zeitwerk::NameError` on a file that was never meant to define
+  # a real constant — a boot failure that has nothing to do with logging.
+  #
+  # Held under RepositoryLock (exclusive, the same lock
+  # spec/security/security_scan_spec.rb takes around its own full-tree scan):
+  # this reads the whole tree via eager loading, so it must not overlap a
+  # probe being planted, for the same reason a secret scan must not.
   def boot_production(ruby)
     env = {
       "RAILS_ENV" => "production",
@@ -31,10 +45,12 @@ RSpec.describe "the production log sink", type: :security do
       "RAILS_LOG_LEVEL" => "info"
     }
 
-    Open3.capture3(
-      env, "bundle", "exec", "ruby", "-e", "require './config/environment'; #{ruby}",
-      chdir: Rails.root.to_s, unsetenv_others: false
-    )
+    Opanel::Gates::RepositoryLock.exclusive do
+      Open3.capture3(
+        env, "bundle", "exec", "ruby", "-e", "require './config/environment'; #{ruby}",
+        chdir: Rails.root.to_s, unsetenv_others: false
+      )
+    end
   end
 
   def json_lines(output)

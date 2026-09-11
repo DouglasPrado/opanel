@@ -1,21 +1,43 @@
-require "rails_helper"
+require "spec_helper"
+require "active_support/all"
+require "active_support/testing/time_helpers"
+require "securerandom"
 require "open3"
 require "tmpdir"
 require "fileutils"
 require "json"
 require "yaml"
-require Rails.root.join("lib/gates/dependency_gate")
-require Rails.root.join("lib/gates/secret_allowlist")
-require Rails.root.join("lib/gates/security_report")
-require Rails.root.join("lib/gates/security_waivers")
+require_relative "../../lib/gates/dependency_gate"
+require_relative "../../lib/gates/secret_allowlist"
+require_relative "../../lib/gates/security_report"
+require_relative "../../lib/gates/security_waivers"
 
 # A scanner nobody proved can fail is a scanner that reports "clean" forever.
 # Each one is planted with a finding it must catch, and the waiver policy is
 # tested at its two boundaries: a waiver without an owner and an expiry is not a
 # waiver, and an expired one blocks again.
+require_relative "../support/gate_repository"
+
 RSpec.describe "security scanning", type: :security do
+  include ActiveSupport::Testing::TimeHelpers
+
+  around { |example| with_security_repository { example.run } }
+
+  def security_root = Pathname.new(@security_root || File.expand_path("../..", __dir__))
+
+  def with_security_repository
+    return yield if @security_root
+
+    Opanel::Gates::GateRepository.with(security_root.to_s) do |directory|
+      @security_root = directory
+      yield
+    ensure
+      @security_root = nil
+    end
+  end
+
   def run(*command, env: {})
-    Open3.capture2e(env, *command, chdir: Rails.root.to_s)
+    Open3.capture2e(env, *command, chdir: security_root.to_s)
   end
 
   describe "secret scan" do
@@ -40,7 +62,7 @@ RSpec.describe "security scanning", type: :security do
 
         output, status = run(
           "gitleaks", "dir", directory,
-          "--config", Rails.root.join("config/security/gitleaks.toml").to_s,
+          "--config", security_root.join("config/security/gitleaks.toml").to_s,
           "--redact", "--no-banner", "--exit-code", "1"
         )
 
@@ -97,28 +119,173 @@ RSpec.describe "security scanning", type: :security do
     # accident: someone pastes the output of a command that printed one. The
     # scan has to reach those directories, and tmp/ being allowlisted must not
     # quietly extend to them.
+    # Held under RepositoryLock: this plants a real, tracked-tree secret and
+    # scans the whole tree in the same breath. Under `bin/test --parallel`,
+    # another worker's "passes on this repository" full-tree scan
+    # (spec/gates/gate_scripts_spec.rb, spec/gates/ci_pipeline_spec.rb use
+    # the same lock around their own probes) would otherwise see this file
+    # mid-flight and fail on a leak it never planted.
     it "reaches the report and evidence directories" do
       planted = "docs/implementation/M00/reports/.scan-probe.md"
-      full = Rails.root.join(planted)
+      full = security_root.join(planted)
 
-      begin
-        File.write(full, "recovered token: #{planted_github_token}\n")
-        output, status = run(
-          "gitleaks", "dir", ".",
-          "--config", Rails.root.join("config/security/gitleaks.toml").to_s,
-          "--redact", "--no-banner", "--exit-code", "1"
+      with_security_repository do
+        begin
+          File.write(full, "recovered token: #{planted_github_token}\n")
+          output, status = run(
+            "gitleaks", "dir", ".",
+            "--config", security_root.join("config/security/gitleaks.toml").to_s,
+            "--redact", "--no-banner", "--exit-code", "1"
+          )
+
+          expect(status).not_to be_success,
+            "a credential pasted into a Story Report was not detected:\n#{output}"
+          expect(output).not_to include(planted_github_token)
+        ensure
+          FileUtils.rm_f(full)
+        end
+      end
+    end
+
+    # M01-91 §3: the local gate scans the diff, not the tree. The scope has to
+    # be provable in both directions — a secret in a changed file is found, and
+    # the narrowing is exactly the changed set and nothing looser. Under the
+    # same lock as the other planted scans: a parallel worker's full-tree scan
+    # must not see this file mid-flight.
+    it "finds a secret in a file changed since the merge base under --diff" do
+      planted = "docs/implementation/M00/reports/.diff-probe.md"
+      full = security_root.join(planted)
+
+      with_security_repository do
+        begin
+          File.write(full, "recovered token: #{planted_github_token}\n")
+          output, status = run("bin/security", "--fast", "--diff")
+
+          expect(status).not_to be_success,
+            "a credential in a changed file was not detected by --diff:\n#{output}"
+          expect(output).not_to include(planted_github_token)
+          expect(output).to include("secret-scan-diff")
+        ensure
+          FileUtils.rm_f(full)
+        end
+      end
+    end
+
+    # M01-93: the scanner's scope is the set git can commit, and the whole
+    # point of narrowing it that way is that the narrowing is *git's* decision,
+    # not a path list. So the scope is proved in both directions in the same
+    # place: a file that can be committed is scanned, a file git ignores is not
+    # — and the second assertion states the reason (it cannot be committed)
+    # rather than just the outcome.
+    #
+    # The first version of this scope copied the set into `tmp/` and scanned it
+    # there. `gitleaks dir` honours the repository's `.gitignore`, `tmp/` is
+    # ignored, and the scan read ~0 bytes with 1 049 files present: green
+    # because it looked at nothing. These examples are what caught it.
+    describe "the committable set (M01-93)" do
+      def scan_full = run("bin/security", "--fast")
+
+      it "finds a secret in a new file that has not been added yet" do
+        planted = security_root.join("docs/implementation/M00/reports/.set-probe.md")
+
+        with_security_repository do
+          begin
+            File.write(planted, "recovered token: #{planted_github_token}\n")
+            output, status = scan_full
+
+            expect(status).not_to be_success,
+              "a credential in a committable file was not detected:\n#{output}"
+            expect(output).not_to include(planted_github_token)
+          ensure
+            FileUtils.rm_f(planted)
+          end
+        end
+      end
+
+      it "finds a secret in a tracked file" do
+        tracked = security_root.join("docs/MASTER.md")
+        original = tracked.read
+
+        with_security_repository do
+          begin
+            tracked.write("#{original}\n<!-- #{planted_github_token} -->\n")
+            _output, status = scan_full
+
+            expect(status).not_to be_success, "a credential in a tracked file was not detected"
+          ensure
+            tracked.write(original)
+          end
+        end
+      end
+
+      # The independent review of M01-93 planted this and the scan reported PASS:
+      # the copy split its input on "\n" as well as NUL, so a newline inside a
+      # file name cut the path into fragments that matched no file. git tracks
+      # such a name without complaint, so the file was committable, unscanned,
+      # and invisible — the worst of the three.
+      it "finds a secret in a file whose name contains a newline" do
+        planted = security_root.join("docs/implementation/M00/reports/.probe\nname.md")
+
+        with_security_repository do
+          begin
+            File.write(planted, "recovered token: #{planted_github_token}\n")
+            output, status = scan_full
+
+            expect(status).not_to be_success,
+              "a credential in a committable file was skipped because of its name:\n#{output}"
+          ensure
+            FileUtils.rm_f(planted)
+          end
+        end
+      end
+
+      it "leaves a path git ignores out of scope, because it cannot be committed" do
+        ignored = security_root.join("tmp/.set-probe.md")
+
+        with_security_repository do
+          begin
+            File.write(ignored, "recovered token: #{planted_github_token}\n")
+
+            # The reason, asserted rather than assumed: git refuses to consider
+            # this path, so no commit can carry it.
+            _ignore_output, ignore_status = run("git", "check-ignore", "-q",
+ignored.relative_path_from(security_root).to_s)
+            expect(ignore_status).to be_success, "tmp/ is no longer ignored — this example proves nothing"
+
+            _output, status = scan_full
+
+            expect(status).to be_success,
+              "the scan spent time on a path that cannot be committed"
+          ensure
+            FileUtils.rm_f(ignored)
+          end
+        end
+      end
+
+      # The path allowlist predates this scope and each entry carries its reason
+      # in the file. What M01-93 must not do is grow it: the whole argument for
+      # narrowing to the committable set is that git's ignore rules decide, not
+      # a list here. Pinned, so a ninth entry is a reviewed diff.
+      #
+      # Three of them — node_modules/, vendor/bundle/, ^tmp/ — are now dead for
+      # the tree scan, because nothing under them is committable. They stay:
+      # they still apply to --staged and --history, and removing an exclusion
+      # whose directory could be un-ignored tomorrow is a decision for the Story
+      # that proves it, not a side effect of this one.
+      it "did not grow its path allowlist" do
+        config = security_root.join("config/security/gitleaks.toml").read
+        section = config[/^paths = \[(.*?)^\]/m].to_s
+        quoted = section.scan(/'{3}(.+?)'{3}/).flatten
+
+        expect(quoted).to contain_exactly(
+          'package-lock\\.json', 'Gemfile\\.lock', 'vendor/bundle/.*', 'node_modules/.*',
+          'public/vite.*/.*', '^tmp/', '\\.env\\.example', 'app/frontend/components/ui/icons/.*'
         )
-
-        expect(status).not_to be_success,
-          "a credential pasted into a Story Report was not detected:\n#{output}"
-        expect(output).not_to include(planted_github_token)
-      ensure
-        FileUtils.rm_f(full)
       end
     end
 
     it "is not allowlisted away from the pack" do
-      allowlist = Rails.root.join("config/security/gitleaks.toml").read
+      allowlist = security_root.join("config/security/gitleaks.toml").read
 
       %w[docs/implementation reports evidence].each do |fragment|
         expect(allowlist).not_to include(fragment),
@@ -126,16 +293,23 @@ RSpec.describe "security scanning", type: :security do
       end
     end
 
+    # Held under RepositoryLock (see the comment on "reaches the report and
+    # evidence directories" above): a full-tree-and-history scan of the real
+    # working tree must not overlap with another worker mid-way through
+    # staging a synthetic secret of its own — the exact collision that made
+    # this example flaky under `bin/test --parallel` (M01-91).
     it "passes on this repository, tree and history" do
-      _output, status = run("bin/security", "--fast", "--history")
+      output, status = with_security_repository do
+        run("bin/security", "--fast", "--history")
+      end
 
-      expect(status).to be_success
+      expect(status).to be_success, output
     end
   end
 
   describe "dependency scanning" do
     it "runs bundler-audit, npm audit and Brakeman" do
-      source = Rails.root.join("bin/security").read
+      source = security_root.join("bin/security").read
 
       expect(source).to include("bundle-audit")
       expect(source).to include("npm audit")
@@ -166,7 +340,7 @@ RSpec.describe "security scanning", type: :security do
         # The repository's bundle resolves the tool; the temp directory supplies
         # the lockfile it reads from the working directory.
         output, status = Open3.capture2e(
-          { "BUNDLE_GEMFILE" => Rails.root.join("Gemfile").to_s },
+          { "BUNDLE_GEMFILE" => security_root.join("Gemfile").to_s },
           "bundle", "exec", "bundle-audit", "check", "--update",
           chdir: directory
         )
@@ -177,19 +351,19 @@ RSpec.describe "security scanning", type: :security do
     end
 
     it "sets an explicit npm audit level rather than failing on any severity" do
-      expect(Rails.root.join("bin/security").read).to include("--audit-level=high")
+      expect(security_root.join("bin/security").read).to include("--audit-level=high")
     end
   end
 
   describe "the allowlist" do
-    let(:config) { Rails.root.join("config/security/gitleaks.toml").read }
+    let(:config) { security_root.join("config/security/gitleaks.toml").read }
 
     # M00-10 AC4. This used to count `#` characters in the file, which a single
     # paragraph at the top satisfies for any number of entries — and the way an
     # entry gets added is by pasting it under a comment that was about something
     # else.
     it "explains every entry, checked one entry at a time" do
-      violations = Opanel::Gates::SecretAllowlist.check(Rails.root.to_s)
+      violations = Opanel::Gates::SecretAllowlist.check(security_root.to_s)
 
       expect(violations.map(&:message)).to be_empty
     end
@@ -215,7 +389,7 @@ RSpec.describe "security scanning", type: :security do
     end
 
     it "is a check bin/security runs, not a spec nobody wires up" do
-      expect(Rails.root.join("bin/security").read).to include("lib/gates/secret_allowlist.rb")
+      expect(security_root.join("bin/security").read).to include("lib/gates/secret_allowlist.rb")
     end
 
     it "allowlists fixture values rather than whole security spec files" do
@@ -273,21 +447,21 @@ RSpec.describe "security scanning", type: :security do
       end
 
       it "silences the finding while it is in date" do
-        travel_to(Time.zone.parse("2026-09-30")) do
+        travel_to(Time.parse("2026-09-30")) do
           expect(waivers.waives?("npm-audit", "GHSA-xxxx")).to be(true)
           expect(waivers.expired).to be_empty
         end
       end
 
       it "blocks again the day after it expires" do
-        travel_to(Time.zone.parse("2026-10-02")) do
+        travel_to(Time.parse("2026-10-02")) do
           expect(waivers.waives?("npm-audit", "GHSA-xxxx")).to be(false)
           expect(waivers.expired.map(&:id)).to eq([ "npm-audit-2026-001" ])
         end
       end
 
       it "warns before it expires, so renewal is deliberate" do
-        travel_to(Time.zone.parse("2026-09-25")) do
+        travel_to(Time.parse("2026-09-25")) do
           expect(waivers.expiring_soon.map(&:id)).to eq([ "npm-audit-2026-001" ])
         end
       end
@@ -331,7 +505,7 @@ RSpec.describe "security scanning", type: :security do
     end
 
     it "is documented with the questions Annex I §10.1 requires" do
-      template = Rails.root.join("docs/templates/DEPENDENCY_JUSTIFICATION.md").read
+      template = security_root.join("docs/templates/DEPENDENCY_JUSTIFICATION.md").read
 
       %w[Necessidade Alternativa Manutenção Escopo Licença Segurança Lockfile].each do |criterion|
         expect(template).to include(criterion)
@@ -486,7 +660,7 @@ RSpec.describe "security scanning", type: :security do
     end
 
     it "runs inside bin/security, so CI executes it on every push" do
-      expect(Rails.root.join("bin/security").read).to include("bin/dependency-gate")
+      expect(security_root.join("bin/security").read).to include("bin/dependency-gate")
     end
   end
 
@@ -504,7 +678,7 @@ RSpec.describe "security scanning", type: :security do
       }
     end
 
-    let(:report) { Opanel::Gates::SecurityReport.build(gate, Rails.root.to_s) }
+    let(:report) { Opanel::Gates::SecurityReport.build(gate, security_root.to_s) }
 
     it "records the scanner and its version" do
       expect(report[:tools].map { |tool| tool[:name] })
@@ -521,12 +695,12 @@ RSpec.describe "security scanning", type: :security do
     end
 
     it "is written by the run that produced it, and archived" do
-      jobs = YAML.safe_load_file(Rails.root.join("config/ci/jobs.yml"))
+      jobs = YAML.safe_load_file(security_root.join("config/ci/jobs.yml"))
       scan = jobs.dig("jobs", "security-fast", "commands").map(&:last)
         .find { |command| command.start_with?("bin/security") }
 
       expect(scan).to include("--out tmp/security/")
-      expect(Rails.root.join(".github/actions/archive/action.yml").read).to include("tmp/security/")
+      expect(security_root.join(".github/actions/archive/action.yml").read).to include("tmp/security/")
     end
 
     # M00-R09. The report was built from the gate's check list — one entry per

@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Prints the Milestone the autopilot should run next, or nothing when the chain
+# is finished (ADR-0007 §3).
+#
+#   bin/next-milestone          # -> M02
+#
+# Order is numeric, and that is not a simplification of the DAG in
+# docs/implementation/DEPENDENCIES.md — it is forced by the stack. `milestone/m03`
+# branches from `milestone/m02`, so two Milestones cannot be in flight on the same
+# stack regardless of what the DAG would allow to run in parallel. Parallel
+# execution needs separate worktrees and separate stacks; it is deliberately not
+# what this script does.
+#
+# A Milestone counts as finished when its review-state is `accepted` or
+# `human_acceptance` — the second because M00 was released by a human before
+# ADR-0007 existed, and rerunning it would be wrong.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+
+for dir in docs/implementation/M[0-9][0-9]; do
+  [ -d "$dir" ] || continue
+  milestone="$(basename "$dir")"
+  state="$dir/review-state.json"
+
+  status="implementing"
+  if [ -f "$state" ]; then
+    status="$(jq -r '.status // "implementing"' "$state" 2>/dev/null || echo implementing)"
+  fi
+
+  case "$status" in
+    accepted|human_acceptance)
+      # Accepted, but not yet integrated. ADR-0010 has each Milestone start from
+      # a merged `main`, so an open Pull Request is where the chain waits — and
+      # waiting is the whole point: without this the next Milestone branches from
+      # the previous one's unmerged work and the sequence is a stack again,
+      # wearing a different name.
+      if command -v gh >/dev/null 2>&1; then
+        open_pr="$(gh pr list --head "milestone/m$(printf '%02d' "$((10#${milestone#M}))")" \
+                     --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+        if [ -n "$open_pr" ]; then
+          echo "chain waiting: $milestone is accepted and its PR #$open_pr is open. Merge it, then rerun — ADR-0010." >&2
+          exit 3
+        fi
+      fi
+      continue
+      ;;
+    blocked)
+      # An arbiter BLOCK ends the chain: the next Milestone stacks on this one,
+      # so there is nothing to move on to. Any other block is still arbitrable
+      # and belongs to whoever is running the loop, not to this script.
+      # Prefix, not equality. The arbiter records *why* it blocked — "ARBITER_BLOCK
+      # — M01-17 executor-observation contract needs an ADR (…)" — and an `=`
+      # test against the bare code never matched. The chain then neither stopped
+      # nor advanced: every new session read `blocked`, could do nothing, and
+      # exited after two minutes, which is what "it stops all the time" looked
+      # like from outside.
+      reason="$(jq -r '.blockedReason // ""' "$state" 2>/dev/null || true)"
+      case "$reason" in
+        ARBITER_BLOCK_NEEDS_ADR*)
+          # Not a stop. The decision is missing, and writing it is work — the
+          # session that starts here is the one whose Stop hook dispatches the
+          # adr-author. Ordering matters: this case must precede the general
+          # ARBITER_BLOCK below, which its prefix would otherwise match.
+          ;;
+        ARBITER_BLOCK*)
+          echo "chain stopped: $milestone is blocked by the arbiter — $reason" >&2
+          exit 3
+          ;;
+      esac
+      printf '%s\n' "$milestone"
+      exit 0
+      ;;
+    *)
+      printf '%s\n' "$milestone"
+      exit 0
+      ;;
+  esac
+done
+
+echo "every Milestone is accepted" >&2
+exit 1

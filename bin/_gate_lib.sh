@@ -57,6 +57,19 @@ gate_run() {
   local check="$1"; shift
   local started output status duration
 
+  # GATE_ONLY narrows a run to named checks. It exists for the specs that prove
+  # one check rejects one planted failure: proving `no-stray-files` used to cost
+  # a full pre-commit — the suite, the secret scan, everything — 123 seconds to
+  # assert one field.
+  #
+  # It narrows, it never relaxes: a check that runs still has to pass, and
+  # nothing in bin/gate's own gates passes GATE_ONLY. A run that used it says so
+  # in its report, so a green result cannot be mistaken for a full one.
+  if [ -n "${GATE_ONLY:-}" ] && ! printf '%s' ",$GATE_ONLY," | grep -q ",$check,"; then
+    gate_skip "$check" "not selected by --only"
+    return 0
+  fi
+
   started="$(gate_now_ms)"
   output="$("$@" 2>&1)"
   status=$?
@@ -81,6 +94,18 @@ gate_skip() {
   local check="$1" reason="$2"
   gate_record "$check" "skip" 0 "$reason"
   [ "$GATE_FORMAT" = "text" ] && printf '  %-22s SKIP  %s\n' "$check" "$reason"
+  return 0
+}
+
+# A check that ran, found something, and does not block. Its own result value,
+# `warn`, because a warning recorded as `skip` is indistinguishable in the JSON
+# report from "not applicable", and invisible to anything filtering on `fail`
+# (M01-92 review, F-3). It never increments GATE_FAILURES: the blocking version
+# of the same check lives in the gate that owns it.
+gate_warn() {
+  local check="$1" reason="$2"
+  gate_record "$check" "warn" 0 "$reason"
+  [ "$GATE_FORMAT" = "text" ] && printf '  %-22s WARN  %s\n' "$check" "$reason"
   return 0
 }
 
@@ -230,6 +255,14 @@ PY
     exit 1
   fi
 
+  # Keep each run, in either display format, for the independent reviewer.
+  local record_path
+  record_path="tmp/gate/runs/${GATE_NAME//:/-}-$$-$GATE_STARTED_AT.json"
+  if ! gate_write_json "$record_path"; then
+    echo "could not persist gate evidence: $record_path" >&2
+    exit 1
+  fi
+
   if [ "$GATE_FORMAT" = "json" ]; then
     python3 - "$GATE_RESULTS_FILE" "$GATE_NAME" "$result" "$duration" <<'PY'
 import json, sys
@@ -270,11 +303,11 @@ gate_files() {
     return 0
   fi
 
-  base="$(git merge-base HEAD "${OPANEL_GATE_BASE:-main}" 2>/dev/null || git rev-parse HEAD)"
-  {
-    git diff --name-only --diff-filter=ACMR "$base"
-    git diff --name-only --diff-filter=ACMR --cached
-  } | sort -u | grep -E "$pattern" | while read -r file; do
+  # The loop records a base when opening the Story. CI keeps branch scope.
+  # Include untracked files; a new source file must be checked before staging.
+  local files
+  files="$(bin/story-scope files)" || exit 1
+  printf '%s\n' "$files" | grep -E "$pattern" | while IFS= read -r file; do
     [ -e "$file" ] && printf '%s\n' "$file"
   done || true
 }

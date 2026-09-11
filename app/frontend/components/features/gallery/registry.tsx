@@ -144,8 +144,19 @@ import { Toggle } from '@/components/ui/toggle';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
+import { PANEL_NAVIGATION } from '@/components/layouts/panel-layout';
+import { EnvironmentBadge } from '@/components/shared/environment-badge';
 import { Notifications } from '@/components/shared/notifications';
 import { Profile } from '@/components/shared/profile';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  NoPermissionState,
+  OfflineState,
+  StaleState,
+} from '@/components/shared/states';
+import { TeamSwitcher } from '@/components/shared/team-switcher';
 
 import {
   AppShell,
@@ -855,6 +866,63 @@ export const galleryEntries: GalleryEntry[] = [
     name: 'profile',
     category: 'shared',
     render: () => <Profile name="Douglas Prado" email="operator@example.com" />,
+  },
+  {
+    name: 'states',
+    category: 'shared',
+    render: () => (
+      <div className="flex w-full flex-col gap-4">
+        <LoadingState label="Loading services" lines={2} />
+        <EmptyState title="No services yet" description="Deploy an image to see it running here." />
+        <NoPermissionState description="You need the ADMIN role to change members." />
+        <ErrorState description="The service could not be reached." requestId="req_01HX8Z9K" />
+        <OfflineState lastSeenAt="2 minutes ago" />
+        <StaleState observedAt="4 minutes ago" />
+      </div>
+    ),
+  },
+  {
+    name: 'team-switcher',
+    category: 'shared',
+    render: () => (
+      <TeamSwitcher
+        teams={[
+          { id: 'team_01', name: 'Acme', slug: 'acme', role: 'OWNER' },
+          { id: 'team_02', name: 'Beta Corp', slug: 'beta', role: 'DEVELOPER' },
+        ]}
+        currentTeamId="team_01"
+      />
+    ),
+  },
+  {
+    name: 'environment-badge',
+    category: 'shared',
+    render: () => (
+      <div className="flex flex-wrap items-center gap-2">
+        <EnvironmentBadge kind="PRODUCTION" />
+        <EnvironmentBadge kind="HOMOLOGATION" />
+        <EnvironmentBadge kind="DEVELOPMENT" />
+        <EnvironmentBadge kind="PREVIEW" />
+        <EnvironmentBadge kind="CUSTOM" />
+      </div>
+    ),
+  },
+
+  {
+    name: 'panel-layout',
+    category: 'layouts',
+    // The layout itself needs Inertia's page context, which the gallery does not
+    // provide; what is shown is the decision it encodes — the product-first order
+    // of doc 10 §3, which is the part a reviewer needs to see.
+    render: () => (
+      <ol className="text-muted-foreground flex flex-col gap-1 text-sm">
+        {PANEL_NAVIGATION.map((entry, index) => (
+          <li key={entry.key}>
+            {index + 1}. {entry.label}
+          </li>
+        ))}
+      </ol>
+    ),
   },
 
   {

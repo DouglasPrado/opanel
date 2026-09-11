@@ -14,6 +14,11 @@ class ErrorsController < ApplicationController
   skip_forgery_protection
   allow_browser versions: :modern, block: -> { render_error(406) }
 
+  # An error page has to render for anyone. Requiring a session here would answer
+  # a 404 with a redirect to sign in, which tells an anonymous visitor that the
+  # page exists and hides the real failure from a signed-out operator.
+  allow_unauthenticated_access
+
   STATUS_MESSAGES = {
     400 => "That request could not be understood.",
     403 => "You do not have access to this.",

@@ -66,9 +66,43 @@ cmd_set() {
   need_state
   local status="$1"
   valid_status "$status" || die "invalid status: $status"
+  # `ready_for_review` is reachable only through `fix-done` or the Stop hook,
+  # because both run the Stop Gate first. M00 entered its sixth review in a state
+  # its own gate rejected, by writing this status directly — so the status that
+  # hands work to a reviewer is not one a caller may simply assert.
+  [ "$status" != "ready_for_review" ] || die \
+"refusing to set ready_for_review directly: it is what hands the Milestone to a
+reviewer, and it must pass bin/stop-gate first. Use 'fix-done', which runs the
+gate and refuses a red result."
   with_lock "$LOCK" write_json "$STATE" \
     '.status = $s | .updatedAt = $now' --arg s "$status" --arg now "$(touch_now)"
   printf '%s\n' "$status"
+}
+
+# The gate that decides whether work may be handed to a reviewer at all.
+#
+# It runs `bin/stop-gate <Mxx>` and treats anything other than `ok:true` as a
+# refusal — including a gate that could not run. A check that did not execute is
+# not a check that passed, and the alternative is what M00 lived through: the
+# reviewer becoming the first thing to run the gates, which is the most expensive
+# component doing the cheapest work.
+stop_gate_ok() {
+  local root gate out ok
+  root="$(cd "$(dirname "$MDIR")/../.." && pwd)"
+  # OPANEL_STOP_GATE exists so the loop's own tests can drive this branch with a
+  # gate they control. It is a seam for tests, not a way to opt out: an unset or
+  # missing binary is a refusal, so pointing it at nothing fails closed.
+  gate="${OPANEL_STOP_GATE:-$root/bin/stop-gate}"
+  [ -x "$gate" ] || { STOP_GATE_REASON="stop gate not found or not executable: $gate"; return 1; }
+
+  out="$(cd "$root" && "$gate" "$MILESTONE" 2>/dev/null)" || true
+  ok="$(printf '%s' "$out" | jq -r '.ok // false' 2>/dev/null || echo false)"
+  if [ "$ok" = "true" ]; then return 0; fi
+
+  STOP_GATE_REASON="$(printf '%s' "$out" \
+    | jq -r '[.checks[]? | select(.result != "pass") | "\(.name): \(.reason // "failed")"] | join("; ")' 2>/dev/null || true)"
+  [ -n "$STOP_GATE_REASON" ] || STOP_GATE_REASON="bin/stop-gate $MILESTONE did not report ok (it may not have run)"
+  return 1
 }
 
 cmd_review_start() {
@@ -144,6 +178,16 @@ cmd_fix_start() {
 # review for the current state of the Milestone.
 cmd_fix_done() {
   need_state
+  # The gate runs here, not only when the last Story closes. Before this, the
+  # first handoff of a Milestone was gated and every later one was not: M00
+  # reached its sixth review with bin/stop-gate red, and two of that round's
+  # three findings were things the gate would have named in seconds.
+  if ! stop_gate_ok; then
+    printf 'refusing ready_for_review: bin/stop-gate %s is not ok\n  %s\n' \
+      "$MILESTONE" "$STOP_GATE_REASON" >&2
+    printf 'the state stays `fixing`. Fix what the gate names, then run fix-done again.\n' >&2
+    exit 2
+  fi
   with_lock "$LOCK" write_json "$STATE" \
     '.status = "ready_for_review" | .verdict = null
      | .criticalCount = null | .highCount = null
@@ -151,6 +195,97 @@ cmd_fix_done() {
      | .lastError = null | .blockedReason = null | .updatedAt = $now' \
     --arg now "$(touch_now)"
   printf 'ready_for_review\n'
+}
+
+# The way out of ARBITER_BLOCK_NEEDS_ADR: the decision now exists, so the reason
+# the Milestone stopped no longer does.
+#
+# It takes the ADR's path and refuses a path that is not there. A block lifted by
+# asserting that a decision was written, with no file to read, is the same defect
+# as a Story marked done with no review — the artifact is the evidence, and a
+# command that trusts its caller about the artifact protects nothing.
+cmd_adr_written() {
+  need_state
+  local adr="$1" status
+  [ -n "$adr" ] || die "usage: adr-written <path-to-ADR>"
+
+  status="$(current)"
+  [ "$status" = "blocked" ] || die "adr-written applies to a blocked Milestone, not '$status'"
+
+  local reason
+  reason="$(jq -r '.blockedReason // ""' "$STATE")"
+  case "$reason" in
+    ARBITER_BLOCK_NEEDS_ADR*) ;;
+    *) die "this Milestone is blocked on '$reason', which is not a missing decision" ;;
+  esac
+
+  local root
+  root="$(cd "$(dirname "$MDIR")/../.." && pwd)"
+  case "$adr" in /*) ;; *) adr="$root/$adr" ;; esac
+  [ -f "$adr" ] || die "no such ADR: $adr
+The adr-author returns the text; the lead writes the file. Write it before lifting the block."
+  grep -q '^# ADR-' "$adr" || die "$adr does not start with an '# ADR-<NNNN>' heading"
+
+  # The ADR was the one artifact with no second reader, and the owner has said
+  # they will not be it. So the review is required here rather than encouraged in
+  # a skill: whoever writes never approves, and a decision six Stories inherit is
+  # the worst place in this system to make an exception.
+  local verdict
+  # `|| true`: under `set -e` a grep that matches nothing aborts the script before
+  # the refusal below can explain itself. The first version did exactly that — it
+  # refused correctly, with exit 1 and not one word about why, which is the shape
+  # of failure this whole file exists to avoid.
+  verdict="$(grep -i '^Verdict:' "$MDIR/DECISIONS.md" 2>/dev/null | tail -n1 | awk '{print toupper($2)}' || true)"
+  case "$verdict" in
+    ACCEPT)
+      ;;
+    REVISE)
+      die "the adr-reviewer returned REVISE. Send its findings back to the adr-author for one bounded round, rewrite the ADR, record the new review, then run this again."
+      ;;
+    ESCALATE)
+      die "the adr-reviewer returned ESCALATE: this decision is the owner's. The Milestone stays blocked and the question is in $MDIR/DECISIONS.md."
+      ;;
+    *)
+      die "no adr-reviewer verdict in $MDIR/DECISIONS.md.
+Dispatch the adr-reviewer agent on $adr in a fresh context and append its verdict
+before lifting the block. An ADR nothing reviewed is an ADR the run wrote and
+approved in the same breath."
+      ;;
+  esac
+
+  with_lock "$LOCK" write_json "$STATE" \
+    '.status = "implementing" | .blockedReason = null | .lastError = null
+     | .updatedAt = $now' --arg now "$(touch_now)"
+  printf 'implementing (unblocked by %s)\n' "$(basename "$adr")"
+}
+
+# The budgets are governance, not bookkeeping: they decide when a Milestone stops
+# being the loop's problem and becomes a human's. During M00 they were raised
+# three times by hand, because the script wrote them once in `init` and offered no
+# command — which meant the number limiting the implementer was set by the
+# implementer, with the reason living only in a commit message.
+cmd_budget() {
+  need_state
+  local field="$1" value="$2" reason="$3"
+  case "$field" in
+    maxReviewAttempts|maxFixAttempts) ;;
+    *) die "budget field must be maxReviewAttempts or maxFixAttempts" ;;
+  esac
+  case "$value" in ''|*[!0-9]*) die "budget value must be a positive integer" ;; esac
+  [ "$value" -ge 1 ] || die "budget value must be at least 1"
+  [ -n "$reason" ] || die "budget requires a reason: it is recorded in the state and read by the reviewer"
+
+  local previous
+  previous="$(jq -r --arg f "$field" '.[$f]' "$STATE")"
+  with_lock "$LOCK" write_json "$STATE" \
+    '.[$f] = ($v|tonumber)
+     | .budgetChanges = ((.budgetChanges // []) + [{
+         field: $f, from: ($p|tonumber), to: ($v|tonumber),
+         reason: $r, at: $now
+       }])
+     | .updatedAt = $now' \
+    --arg f "$field" --arg v "$value" --arg p "$previous" --arg r "$reason" --arg now "$(touch_now)"
+  printf '%s: %s -> %s (%s)\n' "$field" "$previous" "$value" "$reason"
 }
 
 cmd_block() {
@@ -176,6 +311,66 @@ cmd_error() {
   printf 'error: %s (executionFailures=%s)\n' "$code" "$(jq -r '.executionFailures' "$STATE")"
 }
 
+# ADR-0007 — the arbitration that replaces the human release.
+#
+# `verdict ACCEPTED` still lands on `human_acceptance`: that state is the point
+# where the Milestone is finished and something must decide to release the next
+# one. What changed is who decides. This command is the only way out of it, and
+# it refuses to run without an arbiter decision recorded in DECISIONS.md — so a
+# lead cannot release a Milestone by asserting that it is released.
+cmd_arbitrate() {
+  need_state
+  local decision_file status verdict
+  status="$(current)"
+  case "$status" in
+    human_acceptance|blocked) ;;
+    *) die "arbitrate applies to human_acceptance or blocked, not '$status'" ;;
+  esac
+
+  decision_file="$MDIR/DECISIONS.md"
+  [ -f "$decision_file" ] || die \
+"refusing to arbitrate: $decision_file does not exist.
+Dispatch the arbiter agent and append its decision before calling this."
+
+  # The ledger must name this milestone and carry a verdict line. Grepping for
+  # the milestone alone would accept a decision written about another one.
+  grep -q "^Verdict:" "$decision_file" || die \
+"refusing to arbitrate: $decision_file has no 'Verdict:' line.
+The arbiter's output is recorded verbatim, not summarised."
+  verdict="$(grep '^Verdict:' "$decision_file" | tail -n1 | awk '{print $2}')"
+
+  case "$verdict" in
+    DEBT|FIX)
+      with_lock "$LOCK" write_json "$STATE" \
+        '.status = "accepted" | .lastReviewer = "arbiter"
+         | .blockedReason = null | .lastError = null | .updatedAt = $now' \
+        --arg now "$(touch_now)"
+      printf 'accepted (arbiter: %s)\n' "$verdict"
+      ;;
+    BLOCK)
+      # `Blocks-On` decides which kind of stop this is, and they are not the
+      # same stop: a missing decision is work the adr-author does and the chain
+      # continues; anything else waits for a person. The line is read from the
+      # ledger the arbiter just wrote, so the distinction cannot be asserted by
+      # whoever calls this script.
+      local blocks_on code
+      blocks_on="$(grep -i '^Blocks-On:' "$decision_file" | tail -n1 | awk '{print toupper($2)}')"
+      if [ "$blocks_on" = "ADR" ]; then
+        code="ARBITER_BLOCK_NEEDS_ADR — $(grep -i '^Situation:' "$decision_file" | tail -n1 | cut -c12- | cut -c1-160)"
+      else
+        code="ARBITER_BLOCK — $(grep -i '^Situation:' "$decision_file" | tail -n1 | cut -c12- | cut -c1-160)"
+      fi
+      with_lock "$LOCK" write_json "$STATE" \
+        '.status = "blocked" | .blockedReason = $r
+         | .lastReviewer = "arbiter" | .updatedAt = $now' \
+        --arg r "$code" --arg now "$(touch_now)"
+      printf 'blocked (arbiter: BLOCK, blocks-on: %s)\n' "${blocks_on:-HUMAN}" >&2
+      exit 2
+      ;;
+    *) die "unrecognised arbiter verdict in $decision_file: '$verdict'" ;;
+  esac
+}
+
 cmd_attempt_number() {
   need_state
   printf '%02d\n' "$(jq -r '.reviewAttempt' "$STATE")"
@@ -190,9 +385,13 @@ case "$COMMAND" in
                   cmd_verdict "$1" "$2" "$3" "$4" "$5" ;;
   fix-start)      cmd_fix_start ;;
   fix-done)       cmd_fix_done ;;
+  budget)         [ $# -ge 3 ] || die "usage: budget <maxReviewAttempts|maxFixAttempts> <value> <reason>"
+                  cmd_budget "$1" "$2" "$3" ;;
   block)          [ $# -ge 1 ] || die "usage: block <reason>"; cmd_block "$1" ;;
   error)          [ $# -ge 1 ] || die "usage: error <code>"; cmd_error "$1" ;;
+  arbitrate)      cmd_arbitrate ;;
+  adr-written)    [ $# -ge 1 ] || die "usage: adr-written <path-to-ADR>"; cmd_adr_written "$1" ;;
   attempt-number) cmd_attempt_number ;;
   *) die "unknown command: ${COMMAND:-<none>}
-usage: review-state.sh <milestone-dir> {init|status|set|review-start|verdict|fix-start|fix-done|block|error|attempt-number}" ;;
+usage: review-state.sh <milestone-dir> {init|status|set|review-start|verdict|fix-start|fix-done|budget|block|error|arbitrate|adr-written|attempt-number}" ;;
 esac

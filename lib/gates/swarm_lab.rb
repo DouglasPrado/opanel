@@ -4,6 +4,7 @@ require "ipaddr"
 require "json"
 require "open3"
 require "resolv"
+require "timeout"
 require "yaml"
 
 module Opanel
@@ -60,8 +61,75 @@ module Opanel
         status.success?
       end
 
-      def docker(*arguments)
-        Open3.capture3("docker", *arguments)
+      # Every call to the Engine leaves this process here, and every one of them
+      # is bounded.
+      #
+      # It was `Open3.capture3` with no deadline, and on 2026-09-10 a Docker
+      # Desktop daemon stopped answering: the lab examples blocked on a call that
+      # never returned, `bin/gate local` sat at 0% CPU for 1 h 40 min, and the
+      # autonomous run stalled behind it. Nothing detected that — the suite budget
+      # is asserted *after* a run, and a run that never ends is never asserted.
+      # A dead daemon has to look like a failed command, not like a slow one.
+      DOCKER_TIMEOUT_SECONDS = Integer(ENV.fetch("OPANEL_DOCKER_TIMEOUT", "30"))
+
+      # `Timeout.timeout` around `Open3.capture3` is the obvious version and it
+      # does not work: the exception unwinds into capture3's own `ensure`, which
+      # waits for the child, and the child is the thing that is stuck. Measured —
+      # it sailed past a 120 s outer deadline against the same dead daemon. The
+      # deadline has to belong to the wait, and it has to end with a signal.
+      def docker(*arguments, stdin_data: nil)
+        Open3.popen3("docker", *arguments) do |stdin, stdout, stderr, wait_thread|
+          # Drained in threads: a child that fills a pipe buffer blocks before it
+          # can exit, and then the wait below would be timing a deadlock of our
+          # own making rather than the daemon's.
+          out = Thread.new { stdout.read }
+          err = Thread.new { stderr.read }
+
+          begin
+            stdin.write(stdin_data) if stdin_data
+          rescue Errno::EPIPE
+            nil
+          ensure
+            begin
+              stdin.close
+            rescue IOError
+              nil
+            end
+          end
+
+          if wait_thread.join(DOCKER_TIMEOUT_SECONDS)
+            [out.value, err.value, wait_thread.value]
+          else
+            terminate(wait_thread)
+            out.kill
+            err.kill
+            # Shaped like a non-zero result rather than raised, so every existing
+            # caller — `image_available?`, the `status.success?` checks, `docker!` —
+            # treats an unresponsive daemon exactly as a refused command.
+            ["", "docker #{arguments.first} did not answer within " \
+                 "#{DOCKER_TIMEOUT_SECONDS}s: the daemon is unresponsive",
+             UnresponsiveStatus.new]
+          end
+        end
+      end
+
+      # TERM first so the CLI can close its connection; KILL because a client
+      # blocked on a socket that will never answer does not handle TERM.
+      def terminate(wait_thread)
+        Process.kill("TERM", wait_thread.pid)
+        return if wait_thread.join(2)
+
+        Process.kill("KILL", wait_thread.pid)
+        wait_thread.join(2)
+      rescue Errno::ESRCH
+        nil
+      end
+
+      # Quacks like the `Process::Status` `capture3` returns, for the timeout path.
+      class UnresponsiveStatus
+        def success? = false
+        def exitstatus = 124 # what `timeout(1)` reports, for anything reading it
+        def to_s = "unresponsive"
       end
 
       def docker!(*arguments)
@@ -75,7 +143,7 @@ module Opanel
       # stdin. Passing a path instead would put the value on somebody's disk,
       # which is the thing a Swarm secret exists to avoid.
       def docker_input(*arguments, input:)
-        Open3.capture3("docker", *arguments, stdin_data: input)
+        docker(*arguments, stdin_data: input)
       end
 
       # Removing something that is already gone is the desired state, not a

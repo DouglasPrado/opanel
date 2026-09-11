@@ -41,7 +41,7 @@ function MenubarTrigger({
     <MenubarPrimitive.Trigger
       data-slot="menubar-trigger"
       className={cn(
-        'flex items-center rounded-xs px-4 py-2.5 text-lg font-medium outline-hidden select-none hover:bg-muted aria-expanded:bg-muted',
+        'flex items-center rounded-xs px-4 py-2.5 text-base font-medium outline-hidden select-none hover:bg-muted aria-expanded:bg-muted',
         className,
       )}
       {...props}
@@ -88,7 +88,7 @@ function MenubarItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/menubar-item relative flex cursor-default items-center gap-2 rounded-xs px-3 py-2 text-lg outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-9 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-[18px] data-[variant=destructive]:*:[svg]:text-destructive!",
+        "group/menubar-item relative flex cursor-default items-center gap-2 rounded-xs px-3 py-2 text-base outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-9 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-[18px] data-[variant=destructive]:*:[svg]:text-destructive!",
         className,
       )}
       {...props}
@@ -110,7 +110,7 @@ function MenubarCheckboxItem({
       data-slot="menubar-checkbox-item"
       data-inset={inset}
       className={cn(
-        'relative flex cursor-default items-center gap-2 rounded-xs py-2 pr-3 pl-9 text-lg outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-9 data-disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0',
+        'relative flex cursor-default items-center gap-2 rounded-xs py-2 pr-3 pl-9 text-base outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-9 data-disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0',
         className,
       )}
       checked={checked}
@@ -139,7 +139,7 @@ function MenubarRadioItem({
       data-slot="menubar-radio-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-xs py-2 pr-3 pl-9 text-lg outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-9 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-[18px]",
+        "relative flex cursor-default items-center gap-2 rounded-xs py-2 pr-3 pl-9 text-base outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-9 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-[18px]",
         className,
       )}
       {...props}
@@ -165,7 +165,7 @@ function MenubarLabel({
     <MenubarPrimitive.Label
       data-slot="menubar-label"
       data-inset={inset}
-      className={cn('px-3 py-2 text-lg font-medium data-inset:pl-9', className)}
+      className={cn('px-3 py-2 text-base font-medium data-inset:pl-9', className)}
       {...props}
     />
   );
@@ -214,7 +214,7 @@ function MenubarSubTrigger({
       data-slot="menubar-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex cursor-default items-center gap-2 rounded-xs px-3 py-2 text-lg outline-none select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-9 data-open:bg-accent data-open:text-accent-foreground [&_svg:not([class*='size-'])]:size-[18px]",
+        "flex cursor-default items-center gap-2 rounded-xs px-3 py-2 text-base outline-none select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-9 data-open:bg-accent data-open:text-accent-foreground [&_svg:not([class*='size-'])]:size-[18px]",
         className,
       )}
       {...props}

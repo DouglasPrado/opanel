@@ -25,7 +25,7 @@ function DataTableColumnHeader<TData extends RowData, TValue extends CellData = 
   className,
 }: DataTableColumnHeaderProps<TData, TValue>) {
   if (!column.getCanSort()) {
-    return <span className={cn('text-lg font-medium', className)}>{title}</span>;
+    return <span className={cn('text-base font-medium', className)}>{title}</span>;
   }
 
   const sortDirection = column.getIsSorted();
