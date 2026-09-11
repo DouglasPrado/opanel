@@ -12,7 +12,7 @@
   "mediumCount": null,
   "lowCount": null,
   "lastError": "ARBITER_BLOCK — M01-17 executor-observation contract needs an ADR (DECISIONS.md, 2026-09-11)",
-  "blockedReason": "ARBITER_BLOCK — M01-17 executor-observation contract needs an ADR (DECISIONS.md, 2026-09-11)",
+  "blockedReason": "ARBITER_BLOCK_NEEDS_ADR — M01-17 executor-observation contract needs an ADR (DECISIONS.md, 2026-09-11)",
   "acceptedAt": null,
   "updatedAt": "2026-09-11T08:05:14Z"
 }

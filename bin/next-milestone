@@ -44,6 +44,12 @@ for dir in docs/implementation/M[0-9][0-9]; do
       # like from outside.
       reason="$(jq -r '.blockedReason // ""' "$state" 2>/dev/null || true)"
       case "$reason" in
+        ARBITER_BLOCK_NEEDS_ADR*)
+          # Not a stop. The decision is missing, and writing it is work — the
+          # session that starts here is the one whose Stop hook dispatches the
+          # adr-author. Ordering matters: this case must precede the general
+          # ARBITER_BLOCK below, which its prefix would otherwise match.
+          ;;
         ARBITER_BLOCK*)
           echo "chain stopped: $milestone is blocked by the arbiter — $reason" >&2
           exit 3
