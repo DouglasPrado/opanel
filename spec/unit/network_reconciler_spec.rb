@@ -19,7 +19,7 @@ RSpec.describe NetworkReconciler, type: :unit do
         Opanel::Result.success(lock_double)
       )
       expect(ReleaseResourceLock).to receive(:call).with(
-        hash_including(lock: lock_double, worker_identity: anything)
+        hash_including(lock: lock_double, worker_identity: Opanel::WorkerIdentity.current)
       )
 
       executor_double = double("executor")
@@ -61,6 +61,69 @@ RSpec.describe NetworkReconciler, type: :unit do
                             executor: executor_double, logger: logger_double)
 
       expect(logger_double).to have_received(:info).at_least(:once)
+    end
+  end
+
+  describe "lease takeover on expiry (AC12)" do
+    it "re-observes before acting when taking over an expired lease" do
+      network = create(:network, environment: environment, cluster: cluster, team: team,
+                                status: Network::PROVISIONING, desired_revision: 1,
+                                applied_revision: nil, swarm_network_id: nil)
+
+      # Pre-insert a ResourceLock with expired lease and foreign owner
+      expired_lock = ResourceLock.create!(
+        team: team,
+        scope_key: "environment:#{environment.id}",
+        owner: "foreign-worker-identity",
+        lease_until: 1.minute.ago,
+        fencing_token: 2
+      )
+      initial_fencing_token = expired_lock.fencing_token
+
+      # Allow ReleaseResourceLock to be called normally
+      expect(ReleaseResourceLock).to receive(:call).with(
+        hash_including(worker_identity: Opanel::WorkerIdentity.current)
+      ).and_call_original
+
+      # Create a verifying double that captures commands in order
+      executor_double = double("executor")
+      captured_commands = []
+
+      allow(executor_double).to receive(:execute) do |command|
+        captured_commands << command
+
+        case command.type
+        when "inspect_network"
+          # First inspect returns nil (network doesn't exist in Swarm)
+          instance_double(ExecutionResult,
+            outcome: ExecutionResult::NOOP,
+            observed: nil
+          )
+        when "create_network"
+          # Create returns APPLIED with runtime ID
+          instance_double(ExecutionResult,
+            outcome: ExecutionResult::APPLIED,
+            runtime_resource_ids: [ "nettest123abc" ],
+            observed: nil
+          )
+        end
+      end
+
+      NetworkReconciler.call(environment: environment, executor: executor_double, logger: Rails.logger)
+
+      # Verify that the successor took over: fencing_token incremented
+      expired_lock.reload
+      expect(expired_lock.fencing_token).to be > initial_fencing_token,
+        "Fencing token should increment when lease is taken over"
+
+      # Verify that inspection happens first
+      expect(captured_commands.first.type).to eq("inspect_network"),
+        "First command must be inspect_network when taking over expired lease"
+
+      # Verify a create_network was issued after inspection
+      create_command = captured_commands.find { |cmd| cmd.type == "create_network" }
+      expect(create_command).not_to be_nil,
+        "create_network should be called after inspection"
     end
   end
 

@@ -102,7 +102,7 @@ class NetworkReconciler
       apply_and_verify(network, diff, run, lock.fencing_token)
     ensure
       # Step 9: Release lease.
-      ReleaseResourceLock.call(lock: lock, worker_identity: system_actor.id)
+      ReleaseResourceLock.call(lock: lock, worker_identity: Opanel::WorkerIdentity.current)
     end
 
     Opanel::Result.success
@@ -331,10 +331,5 @@ class NetworkReconciler
       )
     end
     result
-  end
-
-  # System actor for internal operations.
-  def system_actor
-    User.new(id: "system")
   end
 end
