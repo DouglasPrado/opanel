@@ -800,3 +800,71 @@ está no arquivo; apenas o resumo do PR fica incompleto.
 **`git stash@{0}`** continua estacionado: é a implementação de uma sessão anterior
 escrita contra o contrato ainda não decidido, e a ADR-0009 rejeitou a forma que
 ela escolheu. Cabe ao humano descartá-la.
+
+---
+
+## M01-17 pós-commit — oito falhas que a Story causou fora dos seus dezesseis arquivos
+
+**Estado:** `bin/gate post-commit --story M01-17` vermelho em três checks
+(`diff-review`, `reviewer-findings`, `fitness`, `state` e `no-verify-absent`
+verdes):
+
+- `acceptance-mapping` FAIL — "maps 0 of 12 acceptance criteria". Causa: o
+  relatório trazia a seção como `## Acceptance Criteria Mapping` e as linhas como
+  `| AC1 |`, e `lib/gates/acceptance_mapping.rb:49,52` exige o título exato
+  `## Acceptance Criteria` e linhas `| <dígitos> |`. Corrigido pelo lead no
+  relatório, conformando à gramática do `docs/templates/STORY_REPORT.md`: nenhuma
+  afirmação mudou, só o formato. Na mesma passagem, a evidência do AC7 foi
+  corrigida de `swarm_ownership_labels_spec.rb:66-101` (que prova adoção de
+  Service, não este critério) para
+  `network_unowned_blocked_lab_spec.rb`, que é onde `DEGRADED` e o
+  `error_reason` são afirmados; a substituição está anotada na própria linha.
+- `pre-commit-executed` FAIL — "unknown check". Resíduo de ADR-0008 em
+  `bin/gate:243`, já arbitrado em `DECISIONS.md:70` e fora do alcance de qualquer
+  Story do M01.
+- `tests` FAIL — evidência ausente contra os inputs do HEAD. Regenerada como o
+  próprio gate manda (`OPANEL_STORY=M01-17 bin/test --changed`): **1 523
+  exemplos, 14 falhas, 1 pendente.**
+
+**As 14, separadas.** Cinco são as falhas pré-existentes de
+`spec/gates/gate_scripts_spec.rb:390,432,440,449,458` (o resíduo de ADR-0008 de
+`DECISIONS.md:70`). As outras **oito** não estão no conjunto pré-existente
+registrado e são, pela evidência abaixo, causadas por esta Story:
+
+```
+spec/unit/service_technical_name_spec.rb:18,88
+spec/integration/swarm_executor_lab_spec.rb:39,117,150
+spec/integration/swarm_nodes_lab_spec.rb:33,58
+spec/integration/swarm_ownership_foreign_resource_spec.rb:119
+```
+
+**Evidência de que a causa é a Story, não a base.** Os quatro arquivos são
+`false` em `boundaries.yml` sob `M01-17` — nenhum declarado — e
+`git diff --name-only eafe075..HEAD --` sobre os quatro é **vazio**: nenhum deles
+foi tocado por commit algum desde a base da Story. Logo a mudança está no código,
+não nos exemplos. E para o mais claro dos quatro,
+`git show eafe075:spec/unit/service_technical_name_spec.rb:19-21`:
+
+```ruby
+# Format: svc_<projectId>_<environmentId>_<serviceId> (doc 08 §5, M01-16 AC3)
+expected = "svc_#{project.external_id}_#{environment.external_id}_#{service.external_id}"
+expect(service.technical_name).to eq(expected)
+```
+
+É exatamente o padrão que a terceira arbitragem de 2026-09-11 mandou encurtar
+para `svc_<serviceId>`. O exemplo afirma o esquema antigo e está vermelho porque
+o esquema mudou. Os outros três são, pelo mesmo raciocínio, resíduo da ADR-0009 e
+do encurtamento no caminho de Service — `swarm_executor_lab_spec.rb:39,117,150`
+exercita criação/adoção/remoção de service e network contra o Engine real, e
+`swarm_ownership_foreign_resource_spec.rb:119` o `log_anomaly` de um Service com
+`managed=true` e IDs inválidos.
+
+**O que isto significa e quem decide.** A quinta revisão da M01-17 mediu os
+dezesseis arquivos declarados — 118 exemplos, 0 falhas — e não podia ver estes
+oito, porque nenhum deles é declarado pela Story. O `bin/test --story` da rodada
+mede o mesmo conjunto declarado. Foi o `post-commit`, rodando a suíte inteira,
+que os expôs. A Story está `done` em `1f24e9c` com `review 0 0 1 0`; o lead **não**
+reabre, **não** reclassifica e **não** edita nenhum desses exemplos — dois deles
+afirmam um esquema de nomes que uma arbitragem decidiu mudar, e mexer numa
+asserção para ficar verde é exatamente o que está proibido. Sob o ADR-0007, um
+gate vermelho é arbitragem.
