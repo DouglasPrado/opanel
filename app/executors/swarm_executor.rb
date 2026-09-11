@@ -101,23 +101,34 @@ class SwarmExecutor
   # ---- the operations ------------------------------------------------------
 
   def do_inspect_service(command)
-    response = client.get("/services/#{identifier(command.resource_id)}")
-    return outcome_for(command, response) unless response.ok?
+    by_label = find_by_label("/services", command.resource_id)
+    if by_label
+      response = client.get("/services/#{by_label['ID']}")
+      if response.ok?
+        observation = normalize_service_observation(response.body)
+        return ExecutionResult.applied(command, version: observation.version,
+          ids: [ by_label["ID"] ], observed: observation)
+      end
+    end
 
-    ExecutionResult.applied(command, version: version_of(response.body), ids: [ response.body["ID"] ],
-      name: response.body.dig("Spec", "Name"))
+    ExecutionResult.failed(command, "NOT_FOUND")
   end
 
   def do_create_service(command)
     existing = find_by_label("/services", command.resource_id)
-    return ExecutionResult.noop(command, version: version_of(existing), ids: [ existing["ID"] ],
-      adopted: true) if existing
+    if existing
+      observation = normalize_service_observation(existing)
+      return ExecutionResult.noop(command, version: observation.version, ids: [ existing["ID"] ],
+        adopted: true, observed: observation)
+    end
 
     response = client.post("/services/create", service_spec(command))
     return outcome_for(command, response) unless response.ok?
 
     created = client.get("/services/#{identifier(response.body['ID'])}")
-    ExecutionResult.applied(command, version: version_of(created.body), ids: [ response.body["ID"] ])
+    observation = normalize_service_observation(created.body) if created.ok?
+    ExecutionResult.applied(command, version: observation&.version, ids: [ response.body["ID"] ],
+      observed: observation)
   end
 
   def do_update_service_spec(command)
@@ -158,28 +169,61 @@ class SwarmExecutor
 
   def do_create_network(command)
     existing = find_by_label("/networks", command.resource_id)
-    return ExecutionResult.noop(command, ids: [ existing["Id"] ], adopted: true) if existing
+    if existing
+      observation = normalize_network_observation(existing)
+      return ExecutionResult.noop(command, version: observation.version, ids: [ existing["Id"] ],
+        adopted: true, observed: observation)
+    end
+
+    # Before creating, check for name conflicts with unowned networks (AC6, BLOCKED).
+    desired_name = command.payload.fetch("name", command.resource_id)
+    conflict_check = check_network_name_conflict(command, desired_name)
+    if conflict_check
+      return conflict_check
+    end
 
     response = client.post("/networks/create", network_spec(command))
     return outcome_for(command, response) unless response.ok?
 
-    ExecutionResult.applied(command, ids: [ response.body["Id"] ])
+    # Read back the created network to get a full observation
+    network_id = response.body["ID"] || response.body["Id"]
+    created = client.get("/networks/#{network_id}") if network_id
+    if created && created.ok?
+      observation = normalize_network_observation(created.body)
+      return ExecutionResult.applied(command, version: observation.version, ids: [ network_id ],
+        observed: observation)
+    end
+
+    # If we couldn't read the network back, still return success with the ID from create
+    ExecutionResult.applied(command, ids: [ network_id ])
   end
 
   def do_inspect_network(command)
-    response = client.get("/networks/#{identifier(command.resource_id)}")
-    return outcome_for(command, response) unless response.ok?
+    # Find by ownership label (ADR-0009 §5: owned networks addressed by label).
+    by_label = find_by_label("/networks", command.resource_id)
+    if by_label
+      response = client.get("/networks/#{by_label['Id']}")
+      if response.ok?
+        observation = normalize_network_observation(response.body)
+        return ExecutionResult.applied(command, version: observation.version,
+          ids: [ by_label["Id"] ], observed: observation)
+      end
+    end
 
-    ExecutionResult.applied(command, ids: [ response.body["Id"] ], name: response.body["Name"],
-      driver: response.body["Driver"])
+    # Not found by label = not found (name conflicts are checked in do_create_network).
+    ExecutionResult.failed(command, "NOT_FOUND")
   end
 
   def do_remove_network(command)
-    response = client.delete("/networks/#{identifier(command.resource_id)}")
-    return ExecutionResult.noop(command, absent: true) if response.not_found?
-    return outcome_for(command, response) unless response.ok?
+    by_label = find_by_label("/networks", command.resource_id)
+    if by_label
+      response = client.delete("/networks/#{by_label['Id']}")
+      return ExecutionResult.noop(command, absent: true) if response.not_found?
+      return outcome_for(command, response) unless response.ok?
+      return ExecutionResult.applied(command, ids: [ by_label["Id"] ])
+    end
 
-    ExecutionResult.applied(command, ids: [ command.resource_id ])
+    ExecutionResult.noop(command, absent: true)
   end
 
   def do_list_nodes(command)
@@ -192,12 +236,13 @@ class SwarmExecutor
   end
 
   def do_inspect_node(command)
+    # Nodes are not created by the platform; addressed directly by Swarm node ID (ADR-0009 §5).
     response = client.get("/nodes/#{identifier(command.resource_id)}")
     return outcome_for(command, response) unless response.ok?
 
-    ExecutionResult.applied(command, version: version_of(response.body), ids: [ response.body["ID"] ],
-      role: response.body.dig("Spec", "Role"), availability: response.body.dig("Spec", "Availability"),
-      state: response.body.dig("Status", "State"))
+    observation = normalize_node_observation(response.body)
+    ExecutionResult.applied(command, version: observation.version, ids: [ response.body["ID"] ],
+      observed: observation)
   end
 
   # Bounded, and demultiplexed: the Engine frames non-TTY logs as 8-byte headers
@@ -269,6 +314,78 @@ class SwarmExecutor
     end
   end
 
+  # ---- normalizers: Engine JSON → RuntimeObservation (ADR-0009 §3) ----------
+
+  # Normalize a network Engine response into a RuntimeObservation.
+  def normalize_network_observation(body)
+    Opanel::RuntimeObservation.new(
+      kind: "network",
+      runtime_id: body["Id"],
+      name: body["Name"],
+      labels: body["Labels"] || {},
+      version: version_of(body),
+      attributes: {
+        "driver" => body["Driver"],
+        "scope" => body["Scope"],
+        "attachable" => body["Attachable"],
+        "internal" => body["Internal"]
+      }.compact
+    )
+  end
+
+  # Normalize a service Engine response into a RuntimeObservation.
+  def normalize_service_observation(body)
+    Opanel::RuntimeObservation.new(
+      kind: "service",
+      runtime_id: body["ID"],
+      name: body["Spec"]["Name"],
+      labels: body["Spec"]["Labels"] || {},
+      version: version_of(body),
+      attributes: {
+        "image" => body.dig("Spec", "TaskTemplate", "ContainerSpec", "Image"),
+        "replicas" => body.dig("Spec", "Mode", "Replicated", "Replicas"),
+        "mode" => body["Spec"]["Mode"].is_a?(Hash) ? body["Spec"]["Mode"].keys.first : "replicated"
+      }.compact
+    )
+  end
+
+  # Normalize a node Engine response into a RuntimeObservation.
+  def normalize_node_observation(body)
+    Opanel::RuntimeObservation.new(
+      kind: "node",
+      runtime_id: body["ID"],
+      name: body["Description"]["Hostname"],
+      labels: body["Description"]["Labels"] || {},
+      version: version_of(body),
+      attributes: {
+        "role" => body.dig("Spec", "Role"),
+        "availability" => body.dig("Spec", "Availability"),
+        "state" => body.dig("Status", "State"),
+        "hostname" => body.dig("Description", "Hostname"),
+        "advertise_address" => body.dig("Description", "Engine", "EngineVersion")
+      }.compact
+    )
+  end
+
+  # Check if a network name conflicts with an unowned network.
+  # Returns a FAILED result if conflict found, nil otherwise.
+  def check_network_name_conflict(command, desired_name)
+    response = client.get("/networks")
+    return nil unless response.ok?
+
+    Array(response.body).each do |net|
+      if net["Name"] == desired_name
+        observation = normalize_network_observation(net)
+        unless Opanel::Ownership.managed_by_platform?(observation)
+          # Unowned network with same name → BLOCKED
+          return ExecutionResult.failed(command, "RESOURCE_NAME_CONFLICT", conflict_name: desired_name)
+        end
+      end
+    end
+
+    nil
+  end
+
   # ---- helpers -------------------------------------------------------------
 
   def identifier(value)
@@ -278,10 +395,9 @@ class SwarmExecutor
     text
   end
 
-  # Find a resource by its ownership labels. The caller passes a resource_id
-  # (in ULID or external format), and we look for it in the appropriate ownership label
-  # (service_id or environment_id). The label stores the external format (e.g.,
-  # "svc_01M..."), so we must normalize the resource_id to external format to search.
+  # Find a resource by its ownership labels (ADR-0009 §5).
+  # The resource_id is always in external format (svc_01…, env_01…). We search
+  # for it in the appropriate ownership label (service_id or environment_id).
   # This is part of idempotent create: if the resource exists with our labels,
   # adopt it rather than failing (doc 07 §6.2, AC7).
   def find_by_label(collection, resource_id)
@@ -290,23 +406,10 @@ class SwarmExecutor
     label_key = collection == "/services" ? "service_id" : "environment_id"
     label_name = "#{Opanel::Ownership::NAMESPACE}.#{label_key}"
 
-    # Normalize resource_id to external format. It may arrive as either a ULID
-    # or already in external format (e.g., "svc_01M..."). If it contains an underscore,
-    # it's probably already prefixed, so use it directly. Otherwise, try to detect
-    # the type and convert it.
+    # resource_id is already in external format; validate and use it directly.
     validated_id = identifier(resource_id)
 
-    # If the resource_id contains an underscore, it's likely already in external
-    # format (prefix_ulid). Use it directly without conversion.
-    if validated_id.include?("_")
-      external_id = validated_id
-    else
-      # It's a ULID. Determine the type and convert based on collection type.
-      type = collection == "/services" ? :service : :environment
-      external_id = Opanel::Identifier.external(type, validated_id)
-    end
-
-    filter = JSON.generate("label" => [ "#{label_name}=#{external_id}" ])
+    filter = JSON.generate("label" => [ "#{label_name}=#{validated_id}" ])
     response = client.get("#{collection}?filters=#{CGI.escape(filter)}")
     return nil unless response.ok?
 

@@ -105,18 +105,18 @@ module Opanel::Ownership
 
     # The ownership predicate: is this runtime resource managed by the platform?
     #
-    # Returns true only if:
-    # 1. com.opanel.managed=true is present
+    # Takes a RuntimeObservation (ADR-0009 §4) and returns true only if:
+    # 1. com.opanel.managed=true is present in labels
     # 2. All IDs in the labels resolve correctly
     # 3. The resolved IDs match the entities they point to
     #
     # A resource claiming managed=true with inconsistent IDs is logged as an anomaly
     # (AC5) and returns false — we do not adopt it, and we do not delete it. The default
     # failure mode is "not ours" (AC5).
-    def managed_by_platform?(runtime_resource)
-      return false unless runtime_resource.is_a?(Hash)
+    def managed_by_platform?(observation)
+      return false unless observation.is_a?(Opanel::RuntimeObservation)
 
-      labels = runtime_resource.dig("Spec", "Labels") || {}
+      labels = observation.labels
       return false unless labels["#{NAMESPACE}.managed"] == "true"
 
       # Decode the IDs. If any step fails, log and return false.
@@ -129,7 +129,7 @@ module Opanel::Ownership
       # All required IDs must be present. Services have service_id; networks don't.
       required_ids = [ team_id, project_id, environment_id ]
       if required_ids.any?(&:blank?)
-        log_anomaly(runtime_resource, "missing required ID labels")
+        log_anomaly(observation, "missing required ID labels")
         return false
       end
 
@@ -144,24 +144,24 @@ module Opanel::Ownership
         environment = Environment.find_by(id: Opanel::Identifier.parse(:environment, environment_id)) if environment_id
         service = Service.find_by(id: Opanel::Identifier.parse(:service, service_id)) if service_id
       rescue Opanel::Identifier::InvalidIdentifier => e
-        log_anomaly(runtime_resource, "ID decode failed: #{e.message}")
+        log_anomaly(observation, "ID decode failed: #{e.message}")
         return false
       end
       # rubocop:enable Opanel/UnscopedTenantQuery
 
       # IDs must be consistent (AC5).
       if team && project && project.team_id != team.id
-        log_anomaly(runtime_resource, "project.team_id does not match label team_id")
+        log_anomaly(observation, "project.team_id does not match label team_id")
         return false
       end
 
       if project && environment && environment.project_id != project.id
-        log_anomaly(runtime_resource, "environment.project_id does not match label project_id")
+        log_anomaly(observation, "environment.project_id does not match label project_id")
         return false
       end
 
       if environment && service && service.environment_id != environment.id
-        log_anomaly(runtime_resource, "service.environment_id does not match label environment_id")
+        log_anomaly(observation, "service.environment_id does not match label environment_id")
         return false
       end
 
@@ -179,25 +179,19 @@ module Opanel::Ownership
 
     # Log an anomaly for manual review. AC5: resources with managed=true and
     # inconsistent IDs are never removed automatically; this is the audit trail.
-    def log_anomaly(runtime_resource, reason)
-      resource_name = runtime_resource.dig("Spec", "Name") || "unknown"
-      resource_id = runtime_resource["ID"] || runtime_resource["Id"] || "unknown"
-
+    def log_anomaly(observation, reason)
       Rails.logger.warn(
         event: "ownership.anomaly",
         reason: reason,
-        resource_type: resource_type_for(runtime_resource),
-        resource_id: resource_id,
-        resource_name: resource_name
+        resource_type: observation.kind,
+        resource_id: observation.runtime_id,
+        resource_name: observation.name
       )
     end
 
-    # Determine the type of runtime resource (service, network, etc.) for logging.
-    def resource_type_for(runtime_resource)
-      # Services have Spec.TaskTemplate, networks do not
-      return "service" if runtime_resource.dig("Spec", "TaskTemplate").present?
-      return "network" if runtime_resource.dig("Spec", "Driver").present?
-      "unknown"
+    # Determine the type of runtime resource from a RuntimeObservation.
+    def resource_type_for(observation)
+      observation.kind
     end
   end
 end

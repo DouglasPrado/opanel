@@ -226,6 +226,33 @@ cmd_adr_written() {
 The adr-author returns the text; the lead writes the file. Write it before lifting the block."
   grep -q '^# ADR-' "$adr" || die "$adr does not start with an '# ADR-<NNNN>' heading"
 
+  # The ADR was the one artifact with no second reader, and the owner has said
+  # they will not be it. So the review is required here rather than encouraged in
+  # a skill: whoever writes never approves, and a decision six Stories inherit is
+  # the worst place in this system to make an exception.
+  local verdict
+  # `|| true`: under `set -e` a grep that matches nothing aborts the script before
+  # the refusal below can explain itself. The first version did exactly that — it
+  # refused correctly, with exit 1 and not one word about why, which is the shape
+  # of failure this whole file exists to avoid.
+  verdict="$(grep -i '^Verdict:' "$MDIR/DECISIONS.md" 2>/dev/null | tail -n1 | awk '{print toupper($2)}' || true)"
+  case "$verdict" in
+    ACCEPT)
+      ;;
+    REVISE)
+      die "the adr-reviewer returned REVISE. Send its findings back to the adr-author for one bounded round, rewrite the ADR, record the new review, then run this again."
+      ;;
+    ESCALATE)
+      die "the adr-reviewer returned ESCALATE: this decision is the owner's. The Milestone stays blocked and the question is in $MDIR/DECISIONS.md."
+      ;;
+    *)
+      die "no adr-reviewer verdict in $MDIR/DECISIONS.md.
+Dispatch the adr-reviewer agent on $adr in a fresh context and append its verdict
+before lifting the block. An ADR nothing reviewed is an ADR the run wrote and
+approved in the same breath."
+      ;;
+  esac
+
   with_lock "$LOCK" write_json "$STATE" \
     '.status = "implementing" | .blockedReason = null | .lastError = null
      | .updatedAt = $now' --arg now "$(touch_now)"

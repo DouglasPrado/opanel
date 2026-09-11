@@ -105,27 +105,25 @@ class NetworkReconciler
   private
 
   # Inspect the network's state in Docker Swarm.
+  # Returns a RuntimeObservation (ADR-0009) or nil.
   def inspect_network_in_swarm(network)
     # Construct ExecutorCommand for inspection.
-    # Note: resource_id is environment_id because find_by_label looks for environment_id label.
+    # resource_id is the external environment_id (find_by_label looks for this label).
     command = ExecutorCommand.new(
       id: Opanel::Identifier.external(:operation, SecureRandom.uuid),
       type: "inspect_network",
       cluster_id: network.cluster.id,
       resource_type: "Network",
-      resource_id: network.environment.id.to_s,
+      resource_id: network.environment.external_id,
       correlation_id: Current.correlation_id.presence || SecureRandom.uuid
     )
 
     result = @executor.execute(command)
 
-    # The executor returns either the network object or a failed outcome.
-    # For inspect, "not found" is valid and means actual = nil.
+    # The executor returns an observation in result.observed, or nil if not found.
     case result.outcome
-    when ExecutionResult::APPLIED
-      result.safe_metadata.dig(:network_data)
-    when ExecutionResult::NOOP
-      result.safe_metadata.dig(:network_data)
+    when ExecutionResult::APPLIED, ExecutionResult::NOOP
+      result.observed
     else
       nil  # Network not found or error; treat as nonexistent for now.
     end
@@ -170,14 +168,14 @@ class NetworkReconciler
   # Apply CREATE: call the executor and re-inspect.
   def apply_create_network(network, diff, run, fencing_token)
     # Construct ExecutorCommand with payload for the executor.
-    # Note: resource_id is environment_id because find_by_label looks for environment_id label.
+    # resource_id is the external environment_id (find_by_label looks for this label).
     # One network per environment, so environment identifies the network uniquely.
     command = ExecutorCommand.new(
       id: Opanel::Identifier.external(:operation, SecureRandom.uuid),
       type: "create_network",
       cluster_id: network.cluster.id,
       resource_type: "Network",
-      resource_id: network.environment.id.to_s,
+      resource_id: network.environment.external_id,
       desired_revision: network.desired_revision,
       correlation_id: Current.correlation_id.presence || SecureRandom.uuid,
       payload: {
@@ -192,7 +190,7 @@ class NetworkReconciler
     case result.outcome
     when ExecutionResult::APPLIED
       # Success: the network was created. Now re-inspect (AC11).
-      swarm_id = result.ids&.first
+      swarm_id = result.runtime_resource_ids.first
       network.update!(swarm_network_id: swarm_id) if swarm_id
 
       # Re-inspect to confirm.
@@ -218,7 +216,7 @@ class NetworkReconciler
       actual = inspect_network_in_swarm(network)
       if actual && Opanel::Ownership.managed_by_platform?(actual)
         # It's ours, just not updated in the DB yet.
-        swarm_id = actual["ID"]
+        swarm_id = actual.runtime_id
         network.update!(swarm_network_id: swarm_id, applied_revision: network.desired_revision,
                        status: Network::READY)
         run.update!(result: ReconciliationRun::SUCCESS)

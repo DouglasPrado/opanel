@@ -17,7 +17,7 @@
 # identifiers, versions and counts there — never a spec, never a body, never an
 # error message verbatim.
 class ExecutionResult < Data.define(:command_id, :outcome, :observed_runtime_version,
-  :runtime_resource_ids, :safe_metadata, :error_code, :observe_before_retry)
+  :runtime_resource_ids, :safe_metadata, :error_code, :observe_before_retry, :observed)
   APPLIED = "APPLIED"
   NOOP = "NOOP"
   CONFLICT = "CONFLICT"
@@ -33,14 +33,14 @@ class ExecutionResult < Data.define(:command_id, :outcome, :observed_runtime_ver
   RUNTIME_REJECTED = "RUNTIME_REJECTED"
 
   def initialize(command_id:, outcome:, observed_runtime_version: nil, runtime_resource_ids: [],
-    safe_metadata: {}, error_code: nil, observe_before_retry: false)
+    safe_metadata: {}, error_code: nil, observe_before_retry: false, observed: nil)
     raise ArgumentError, "unknown outcome #{outcome.inspect}" unless OUTCOMES.include?(outcome)
 
     super(command_id: command_id, outcome: outcome,
       observed_runtime_version: observed_runtime_version,
       runtime_resource_ids: Array(runtime_resource_ids).freeze,
       safe_metadata: safe_metadata.to_h.freeze, error_code: error_code,
-      observe_before_retry: observe_before_retry)
+      observe_before_retry: observe_before_retry, observed: observed)
   end
 
   def applied? = outcome == APPLIED
@@ -58,14 +58,14 @@ class ExecutionResult < Data.define(:command_id, :outcome, :observed_runtime_ver
   def unknown_outcome? = error_code == UNKNOWN_OUTCOME
 
   class << self
-    def applied(command, version: nil, ids: [], **metadata)
+    def applied(command, version: nil, ids: [], observed: nil, **metadata)
       new(command_id: command.id, outcome: APPLIED, observed_runtime_version: version,
-        runtime_resource_ids: ids, safe_metadata: metadata)
+        runtime_resource_ids: ids, safe_metadata: metadata, observed: observed)
     end
 
-    def noop(command, version: nil, ids: [], **metadata)
+    def noop(command, version: nil, ids: [], observed: nil, **metadata)
       new(command_id: command.id, outcome: NOOP, observed_runtime_version: version,
-        runtime_resource_ids: ids, safe_metadata: metadata)
+        runtime_resource_ids: ids, safe_metadata: metadata, observed: observed)
     end
 
     def conflict(command, version: nil, ids: [], **metadata)

@@ -24,9 +24,9 @@ RSpec.describe "the executor contracts (doc 07 §20)", type: :contract do
 
   describe "ExecutionResult (§20.2)" do
     RESULT_FIELDS = %i[command_id outcome observed_runtime_version runtime_resource_ids
-      safe_metadata error_code observe_before_retry].freeze
+      safe_metadata error_code observe_before_retry observed].freeze
 
-    it "carries the fields §20.2 names, plus the one flag §5.3 requires" do
+    it "carries the fields §20.2 names, plus the one flag §5.3 requires, plus ADR-0009 observation" do
       expect(ExecutionResult.members).to eq(RESULT_FIELDS)
     end
 

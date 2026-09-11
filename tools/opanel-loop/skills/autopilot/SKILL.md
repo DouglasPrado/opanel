@@ -75,15 +75,28 @@ A `BLOCK` is two different stops, and the arbiter's `Blocks-On` line says which:
 - **`Blocks-On: ADR`** — the work is blocked on a decision nobody has written
   down, which is work an agent can do. Dispatch the `adr-author` agent in a fresh
   context with the arbiter's ledger entry and the evidence it cites. Write what it
-  returns to `docs/decisions/ADR-<NNNN>-<slug>.md` with the next free number, then:
+  returns to `docs/decisions/ADR-<NNNN>-<slug>.md` with the next free number.
+
+  Then dispatch the **`adr-reviewer`** agent on that file, in a fresh context — it
+  must not see the author's reasoning, for the same reason the Story reviewer must
+  not see the builder's. Append its verdict block verbatim to `DECISIONS.md`:
+
+  | Verdict | What you do |
+  |---|---|
+  | `ACCEPT` | Lift the block. Its findings travel to the debt ledger and the PR body. |
+  | `REVISE` | One bounded round back to the `adr-author`, on the named points only — it answers what was raised, it does not reopen its own decision. Rewrite the ADR, record the new review, then lift. A second `REVISE` on the same ground is an `ESCALATE`. |
+  | `ESCALATE` | The Milestone stays blocked and the question waits for the owner. |
 
   ```sh
   tools/opanel-loop/scripts/review-state.sh <dir> adr-written docs/decisions/<file>
   ```
 
-  That refuses a path that is not on disk, so the block cannot be lifted by
-  asserting a decision was made. The Milestone returns to `implementing` and the
-  Story that needed the decision is reopened.
+  That refuses a path that is not on disk **and** refuses without an `ACCEPT` on
+  record, so a block cannot be lifted by asserting a decision was made, nor by a
+  decision nothing reviewed. The Milestone returns to `implementing` and the Story
+  that needed the decision is reopened.
+
+  You do not review the ADR yourself and you do not argue with the verdict.
 
   Two other answers come back from `adr-author` and neither is a failure:
   `ALREADY DECIDED` means an approved document settles it and the implementation

@@ -12,6 +12,11 @@
 # CREATE: desired network does not exist; create it.
 # BLOCKED: network name/ID conflicts with an unowned resource; never adopt (AC6).
 #
+# ## Actual State
+#
+# The `actual` parameter is a RuntimeObservation (ADR-0009) or nil. Observations
+# are the normalized form returned by the executor; never raw Engine JSON.
+#
 module Opanel
   class NetworkDiff
     attr_reader :diff_class, :error_reason, :actions_to_apply
@@ -48,7 +53,7 @@ module Opanel
       else
         # Network exists but is not managed by us; BLOCKED (AC6, never adopt).
         @diff_class = BLOCKED
-        @error_reason = "A network named #{@actual.dig('Spec', 'Name').inspect} already exists " \
+        @error_reason = "A network named #{@actual.name.inspect} already exists " \
                         "and is not managed by the platform. Rename the network or delete it manually."
       end
 
@@ -66,7 +71,7 @@ module Opanel
     def actual_matches_desired?
       return false if @actual.nil?
 
-      actual_name = @actual.dig("Spec", "Name")
+      actual_name = @actual.name
       desired_name = @desired.technical_name
 
       # Compare name and ownership (revision is in the labels).
