@@ -36,11 +36,19 @@ for dir in docs/implementation/M[0-9][0-9]; do
       # An arbiter BLOCK ends the chain: the next Milestone stacks on this one,
       # so there is nothing to move on to. Any other block is still arbitrable
       # and belongs to whoever is running the loop, not to this script.
+      # Prefix, not equality. The arbiter records *why* it blocked — "ARBITER_BLOCK
+      # — M01-17 executor-observation contract needs an ADR (…)" — and an `=`
+      # test against the bare code never matched. The chain then neither stopped
+      # nor advanced: every new session read `blocked`, could do nothing, and
+      # exited after two minutes, which is what "it stops all the time" looked
+      # like from outside.
       reason="$(jq -r '.blockedReason // ""' "$state" 2>/dev/null || true)"
-      if [ "$reason" = "ARBITER_BLOCK" ]; then
-        echo "chain stopped: $milestone is blocked by the arbiter" >&2
-        exit 3
-      fi
+      case "$reason" in
+        ARBITER_BLOCK*)
+          echo "chain stopped: $milestone is blocked by the arbiter — $reason" >&2
+          exit 3
+          ;;
+      esac
       printf '%s\n' "$milestone"
       exit 0
       ;;

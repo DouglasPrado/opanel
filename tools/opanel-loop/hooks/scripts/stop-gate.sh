@@ -78,9 +78,11 @@ case "$STATUS" in
   # the same question of the same evidence again is the infinite loop this
   # script exists to prevent.
   blocked)
-    if [ "$BLOCK_REASON" = "ARBITER_BLOCK" ]; then
-      stop_now
-    fi
+    # Prefix, not equality: the arbiter records why it blocked, so the reason
+    # reads "ARBITER_BLOCK — <what needs a human>" and never equals the code.
+    case "$BLOCK_REASON" in
+      ARBITER_BLOCK*) stop_now ;;
+    esac
     block "The Milestone is blocked ($BLOCK_REASON). Under ADR-0007 that is an arbitration, not a stop: dispatch the arbiter agent in a fresh context with the recorded reason and the evidence behind it, append its decision verbatim to $MDIR/DECISIONS.md, then run review-state.sh $MDIR arbitrate."
     ;;
   # ACCEPTED landed here. The arbiter releases the Milestone now, not a human.
