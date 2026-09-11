@@ -21,6 +21,22 @@ MAX_SESSIONS=0          # 0 = unlimited
 DRY_RUN=0
 LOG_DIR="tmp/autopilot"
 
+# Spend caps. Both off unless asked for: a default dollar figure in a versioned
+# script is a number nobody chose, and the first run to hit it would read as a
+# bug rather than a budget.
+#
+#   --budget-usd N   per session, enforced by the CLI itself (--max-budget-usd)
+#   --total-usd M    for the whole run, enforced here
+#
+# The total is a *worst case*, not a meter. The CLI caps each session; this
+# script cannot see what a session actually spent without switching the run log
+# to JSON and parsing it, which would cost the plain-text log the quota detector
+# and every diagnosis in this file depends on. So `--total-usd` bounds the run at
+# floor(M / N) sessions and says so. It guarantees you never exceed M; it does
+# not claim you spent it.
+BUDGET_USD=""
+TOTAL_USD=""
+
 # A session shorter than this did no work. Starting the CLI, loading the plugin
 # and reading the state costs a few seconds; a Story costs minutes.
 MIN_SESSION_SECONDS=60
@@ -69,6 +85,10 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --max-sessions) MAX_SESSIONS="$2"; shift ;;
     --max-sessions=*) MAX_SESSIONS="${1#--max-sessions=}" ;;
+    --budget-usd) BUDGET_USD="$2"; shift ;;
+    --budget-usd=*) BUDGET_USD="${1#--budget-usd=}" ;;
+    --total-usd) TOTAL_USD="$2"; shift ;;
+    --total-usd=*) TOTAL_USD="${1#--total-usd=}" ;;
     --dry-run) DRY_RUN=1 ;;
     -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
@@ -77,6 +97,30 @@ while [ $# -gt 0 ]; do
 done
 
 command -v claude >/dev/null 2>&1 || { echo "the claude CLI is required" >&2; exit 2; }
+
+# --total-usd needs a per-session figure to divide by: without one there is no
+# arithmetic, only a hope that the run stops in time.
+if [ -n "$TOTAL_USD" ] && [ -z "$BUDGET_USD" ]; then
+  echo "--total-usd needs --budget-usd: the run cap is a session count derived from the two." >&2
+  exit 2
+fi
+
+BUDGET_ARGS=()
+if [ -n "$BUDGET_USD" ]; then
+  BUDGET_ARGS=(--max-budget-usd "$BUDGET_USD")
+fi
+
+if [ -n "$TOTAL_USD" ]; then
+  derived="$(awk -v t="$TOTAL_USD" -v b="$BUDGET_USD" 'BEGIN { printf "%d", (b > 0 ? int(t / b) : 0) }')"
+  if [ "$derived" -lt 1 ]; then
+    echo "--total-usd $TOTAL_USD does not pay for one session at --budget-usd $BUDGET_USD." >&2
+    exit 2
+  fi
+  # The tighter of the two wins; an explicit --max-sessions is never widened.
+  if [ "$MAX_SESSIONS" -eq 0 ] || [ "$derived" -lt "$MAX_SESSIONS" ]; then
+    MAX_SESSIONS="$derived"
+  fi
+fi
 
 mkdir -p "$LOG_DIR"
 RUN_LOG="$LOG_DIR/$(date -u '+%Y%m%dT%H%M%SZ').log"
@@ -94,6 +138,13 @@ repo_fingerprint() {
 }
 
 say "chain starting; log: $RUN_LOG"
+if [ -n "$BUDGET_USD" ]; then
+  if [ -n "$TOTAL_USD" ]; then
+    say "spend cap: \$$BUDGET_USD per session, at most $MAX_SESSIONS sessions — a worst case of \$$TOTAL_USD, not a measured spend"
+  else
+    say "spend cap: \$$BUDGET_USD per session, no cap on the run"
+  fi
+fi
 
 session=0
 while :; do
@@ -138,6 +189,7 @@ while :; do
   started_at=$(date +%s)
   claude -p "Invoke the opanel-loop autopilot skill and follow it exactly: run the Opanel Milestone chain unattended. There is nobody to answer a question, so do not ask one — arbitrate as the skill instructs." \
     --dangerously-skip-permissions \
+    "${BUDGET_ARGS[@]}" \
     >>"$RUN_LOG" 2>&1 &
   session_pid=$!
 
