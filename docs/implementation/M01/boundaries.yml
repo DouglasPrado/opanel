@@ -1220,3 +1220,77 @@ boundaries:
     - docs/implementation/SPEC_CONFLICTS.md
     - docs/implementation/M01/reports/M01-18.md
     - docs/implementation/M01/DECISIONS.md
+
+  M01-19:
+    # Actual State, observed and never assumed. The Story's shape is the twin of
+    # M01-10's node_observation.rb — append-only, rebuildable from the runtime,
+    # timestamped so the UI can say how old it is — now on the Service, where
+    # doc 07 §17.1 requires the presented status to be *derived* rather than a
+    # boolean somebody wrote.
+    #
+    # A conflict this Story will meet on its first read, declared here so it is
+    # not resolved silently: `Service::STATUSES` is DRAFT / PROVISIONING /
+    # RUNNING / DEGRADED / STOPPED / DELETING (app/models/service.rb:50-55,
+    # state machine at :57-63), while the Story's Scope names the doc 07 §17.1
+    # set PENDING / DEPLOYING / HEALTHY / DEGRADED / FAILED / PAUSED. Two
+    # vocabularies for one field. AC2 asks for the derived one and AC11 forbids
+    # the observation writing desired-state columns, so a decision is needed
+    # about which name the derivation returns and whether `services.status`
+    # keeps the reconciler's word. SPEC_CONFLICTS.md is declared for it.
+    - db/migrate/*.rb
+    - db/schema.rb
+    # The observation entity and the derivation seam. The derivation is a pure
+    # function of appliedRevision plus the observation, kept out of the model so
+    # the unit tests the Story requires have something to address.
+    - app/models/service_observation.rb
+    - lib/opanel/service_status.rb
+    # `Service has_many :service_observations`, plus whatever the derivation
+    # needs to read. AC2 and AC11 are the guard: nothing here writes a health
+    # boolean and nothing writes a desired-state column.
+    - app/models/service.rb
+    # Observe via the Executor, which already exposes inspect_service and
+    # list_tasks from M01-18. Declared because the Story routes observation
+    # through it and M01-18's debt — that `Version.Index` alone is never the
+    # deciding discriminator in current_tasks — is inherited here, where the
+    # tasks are read rather than filtered.
+    - app/executors/swarm_executor.rb
+    - lib/opanel/runtime_observation.rb
+    - app/commands/observe_service.rb
+    - app/queries/service_runtime_view.rb
+    - app/queries/tenant_scope.rb
+    # Cadence. The sweep is the guarantee; Docker Events are M02-12.
+    - app/jobs/observe_services_job.rb
+    - config/recurring.yml
+    - lib/opanel/configuration.rb
+    # configuration_spec requires every Configuration::KEYS entry to appear in
+    # the versioned example file, so a cadence key cannot be registered without
+    # it. No credential is added.
+    - .env.example
+    # Tenancy for a new readable resource, and the cop that polices it.
+    - app/policies/service_policy.rb
+    - lib/opanel/authorization.rb
+    - lib/rubocop/cop/opanel/unscoped_tenant_query.rb
+    # AF-03 enumerates the services intent columns. Declared only in case the
+    # observation's own columns must be named there to keep AC11 mechanical.
+    - config/architecture/fitness.yml
+    # Tests.
+    - spec/unit/service_status_spec.rb
+    - spec/unit/service_observation_spec.rb
+    - spec/unit/service_observation_ordering_spec.rb
+    - spec/integration/service_observation_spec.rb
+    - spec/integration/service_observation_stale_spec.rb
+    - spec/integration/service_observation_out_of_order_spec.rb
+    - spec/integration/service_runtime_view_spec.rb
+    - spec/integration/service_observation_lab_spec.rb
+    - spec/integration/service_unhealthy_lab_spec.rb
+    - spec/integration/service_digest_divergence_lab_spec.rb
+    - spec/policies/service_observation_policy_spec.rb
+    - spec/policies/service_policy_spec.rb
+    - spec/security/service_observation_secrets_spec.rb
+    - spec/security/reconciler_user_intent_spec.rb
+    - spec/factories/**
+    - spec/support/**
+    # Conflicts and the pack's record of them.
+    - docs/implementation/SPEC_CONFLICTS.md
+    - docs/implementation/M01/reports/M01-19.md
+    - docs/implementation/M01/DECISIONS.md
