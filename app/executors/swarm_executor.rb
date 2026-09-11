@@ -289,7 +289,7 @@ class SwarmExecutor
     tasks = Array(response.body)
     current = current_tasks(tasks, by_label)
     metadata = { count: tasks.length, current_count: current.length,
-                 states: tasks.map { |t| t.dig("Status", "State") }.tally }
+                 states: current.map { |t| t.dig("Status", "State") }.tally }
     code = blocking_code(current)
     metadata[:blocking_code] = code if code
 

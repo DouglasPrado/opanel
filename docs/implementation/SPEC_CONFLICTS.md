@@ -354,11 +354,20 @@ Registradas para evitar releitura como pendência. **Nenhuma ação necessária.
 - **Impacto:** nomes de coluna, nomes de campo do modelo, nomes de atributos expostos, and queries.
 - **Resolução aplicada:** `resolved`. Doc 07 §5.1 é a primeira mente desta decisão; doc 09 §9.1 e §21 (CommandEnvelope) a refinam. O `CommandEnvelope` do doc 09 §21 é o contrato **viajante** que formata o payload da Operation para o executor (M01-15+), então a coerência com ele é mais crítica que a coerência com doc 07 §5.1 — que é um diagrama conceitual em prosa. `M01-13` implementa `resource_type`/`resource_id` no banco e no modelo; doc 07 §5.1 continua válida conceitualmente e não é editada (a próxima reescrita do Anexo A fará a atualização prosaica).
 
+## SC-24 — Service status vocabulary: DRAFT/PROVISIONING/RUNNING/DEGRADED/STOPPED/DELETING vs PENDING/DEPLOYING/HEALTHY/DEGRADED/FAILED/PAUSED
+
+- **Documentos envolvidos:** `app/models/service.rb:50-55` (STATUSES atuais), `docs/architecture/07-internal-control-plane.md` §17.1 (status derivado do spec: PENDING, DEPLOYING, HEALTHY, DEGRADED, FAILED, PAUSED), `docs/implementation/M01/stories/M01-19-actual-state-and-derived-status.md` (AC2: "O status do Service é derivado... nenhuma coluna booleana... é gravada manualmente").
+- **Situação:** duas vocabulárias para o mesmo conceito. A atual vive em `Service.status` como registro do que o reconciliador observou. A do spec é o status **derivado** apresentado na UI, calculado de `appliedRevision` + `ServiceObservation` em tempo de leitura (doc 07 §17.1, regra normativa).
+- **Impacto:** Nome que o derivador retorna, manutenção de qual está onde, semântica de DEGRADED (que aparece nas duas), transições de estado.
+- **Resolução:** `resolved` em 2026-09-11. `M01-19` implementa a derivação pura em `lib/opanel/service_status.rb` com a **vocabulária do spec** (PENDING, DEPLOYING, HEALTHY, DEGRADED, FAILED). `Service.status` continua sendo o que o reconciliador observou e registrou, e **não é mais lido diretamente pela UI**. As duas vocabulárias coexistem: a velha em `Service.status` (usada internamente para máquina de estado do reconciliador), a nova em `Opanel::ServiceStatus.derive()` (usada para apresentação). Não é um problema: duas palavras diferentes para duas coisas diferentes. O que não pode haver é confusão sobre qual é qual — e ela fica resolvida por serem funções/métodos explícitos, não colunas ambíguas.
+- **Transições:** `TRANSITIONS` em `Service` fica intacta (governa o que o reconciliador pode registrar). A derivação é uma função pura sem máquina de estado, porque o estado vem de dois inputs isolados (applied_revision vs desired_revision, e observation de saúde) e não há transições proibidas.
+- **AC2/AC11 satisfeitos:** status é derivado (não booleano gravado), observação não escreve coluna de desired state (ServiceObservation é append-only, imutável, separa desired de actual).
+
 ## Resumo
 
 | Estado | Quantidade | Itens |
 |---|---|---|
-| `resolved` | 18 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16, **SC-18**, **SC-19**, **SC-20**, **SC-22**, **SC-23** |
+| `resolved` | 19 | SC-01, SC-02, SC-03, **SC-04**, SC-05, SC-06, **SC-08**, SC-09, SC-10, SC-12, SC-14, SC-15, SC-16, **SC-18**, **SC-19**, **SC-20**, **SC-22**, **SC-23**, **SC-24** |
 | `deferred` | 3 | SC-07 (inventário de componentes, dono `M00-05`), SC-11 (backend de métricas, dono `M09-03`), **SC-21** (resolução de tag de imagem, dono `M01-18`) |
 | `unresolved` | 0 | — |
 | informativo | 5 | SC-13.1 … SC-13.5 |

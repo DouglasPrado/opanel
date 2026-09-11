@@ -50,6 +50,9 @@ module Opanel
       # A Service belongs to an Environment which belongs to a Project which belongs
       # to a Team; the Policy resolves the actor's membership from the Service's Team.
       "Service" => "ServicePolicy",
+      # A ServiceObservation is an immutable, append-only observation of a Service's
+      # actual state. Authorization is inherited from the parent Service.
+      "ServiceObservation" => "ServiceObservationPolicy",
       # An Operation belongs to a Team directly and records infrastructure work.
       # The Policy resolves the actor's membership from the Operation's Team.
       "Operation" => "OperationPolicy",

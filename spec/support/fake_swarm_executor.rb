@@ -57,7 +57,8 @@ module SwarmObservations
 
   # The shape ADR-0009 §2 fixes for a service: flattened labels, and an
   # attribute allowlist of image, replicas and mode.
-  def service_observation(service, image: nil, replicas: nil, runtime_id: "runtime1", revision: nil, labels: nil)
+  def service_observation(service, image: nil, replicas: nil, runtime_id: "runtime1", revision: nil, labels: nil,
+version: nil)
     Opanel::RuntimeObservation.new(
       kind: "service",
       runtime_id: runtime_id,
@@ -65,7 +66,7 @@ module SwarmObservations
       labels: labels || Opanel::Ownership.labels_for(service).merge(
         "com.opanel.desired_revision" => (revision || service.desired_revision).to_s
       ),
-      version: 12,
+      version: version || 12,
       attributes: {
         "image" => image || ServiceReconciler::SpecTranslation.image_for(service),
         "replicas" => replicas || service.replicas,

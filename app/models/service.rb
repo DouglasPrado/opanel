@@ -77,6 +77,9 @@ class Service < ApplicationRecord
   # Operations reference any resource by type + id, not just Services.
   has_many :operations, -> { where(resource_type: "Service") }, foreign_key: :resource_id, dependent: :destroy
 
+  # Observations of actual Swarm state. Append-only, immutable, timestamped.
+  has_many :service_observations, dependent: :destroy
+
   validates :name, presence: true, length: { maximum: NAME_MAX_LENGTH }
   validates :slug, presence: true, format: { with: SLUG_FORMAT },
     length: { in: SLUG_MIN_LENGTH..SLUG_MAX_LENGTH }

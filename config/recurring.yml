@@ -14,6 +14,10 @@ production:
     class: ObserveClusterNodesJob
     queue: default
     schedule: every 30 seconds
+  observe_services:
+    class: ObserveServicesJob
+    queue: default
+    schedule: every <%= ENV.fetch("OPANEL_SERVICE_OBSERVATION_CADENCE_SECONDS", "30") %> seconds
   publish_outbox_events:
     class: PublishOutboxEventsJob
     queue: system

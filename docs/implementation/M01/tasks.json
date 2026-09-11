@@ -375,12 +375,17 @@
     {
       "id": "M01-19",
       "file": "stories/M01-19-actual-state-and-derived-status.md",
-      "status": "in_progress",
+      "status": "blocked",
       "dependsOn": [
         "M01-18"
       ],
-      "attempts": 1,
-      "required": true
+      "attempts": 3,
+      "required": true,
+      "reason": "arbitracao 2026-09-11 (DECISIONS.md, entrada M01/M01-19): FIX — uma rodada, so o wait_for sobre a observacao nas duas lab specs do AC3. O arbitro escreveu 3->4; tasks.sh trava em >=3, entao a elevacao e aplicada como o precedente da M01-17 (75515d5): attempts=2 e uma chamada attempt re-arma a guarda em 3. Uma rodada, que e o que a decisao pede. Se os dois exemplos nao ficarem verdes, BLOCK em HUMAN.",
+      "blockedReason": {
+        "qualifier": "BLOCKED_FOR_HUMAN_APPROVAL",
+        "diagnosis": "Arbitragem 2026-09-11 (DECISIONS.md, M01/M01-19): BLOCK / Blocks-On HUMAN. Condicao de fechamento atingida. Defeito localizado: observe_service.rb le safe_metadata.fetch(\"states\") com chave String, mas o executor grava chaves Symbol, entao running/healthy/failed sao deterministicamente 0. M01-20..23 param junto."
+      }
     },
     {
       "id": "M01-20",

@@ -224,6 +224,14 @@ module Opanel
                      "guarantee of correctness; the Operation trigger is only an accelerator (doc 07 §11.2)."
       ),
       Key.new(
+        name: "OPANEL_SERVICE_OBSERVATION_CADENCE_SECONDS",
+        required_in: [],
+        format: :number,
+        default: "30",
+        description: "How often the Service observation job runs to collect actual state from Swarm (M01-19). " \
+                     "Observations are append-only; UI uses timestamp to detect staleness (doc 10 §25)."
+      ),
+      Key.new(
         name: "OPANEL_WORKER_IDENTITY",
         required_in: [],
         format: :free_text,

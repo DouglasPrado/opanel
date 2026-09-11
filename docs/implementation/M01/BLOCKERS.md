@@ -982,3 +982,180 @@ Itens 4 (job scoping) e 5 (negativo cross-team) da rodada foram verificados como
 já existentes: `app/jobs/reconcile_services_job.rb:84` escopa por
 `team_id: operation.team_id`; `spec/policies/service_policy_spec.rb:144-150` tem
 o negativo cross-team. Esses dois pontos do review saem de "não verificado".
+
+---
+
+## M01-19 — orçamento de tentativas esgotado com as duas lab specs do AC3 vermelhas
+
+**Data:** 2026-09-11 · **Status:** `fix_required`, `attempts: 3/3` · Toda a M01
+restante (M01-20, M01-21, M01-22, M01-23) depende desta Story.
+
+### O que está vermelho
+
+```sh
+export PATH="/opt/homebrew/opt/ruby/bin:$PATH"
+bin/test --force spec/integration/service_observation_lab_spec.rb \
+                 spec/integration/service_unhealthy_lab_spec.rb \
+                 spec/integration/service_digest_divergence_lab_spec.rb
+# 8 examples, 2 failures
+```
+
+| Exemplo | Asserção | Obtido |
+|---|---|---|
+| `service_observation_lab_spec.rb:33` | `expect(observation.running_tasks).to be > 0` | `0` |
+| `service_unhealthy_lab_spec.rb:72` | `expect(total_observed).to be > 0` | `0` |
+
+`service_digest_divergence_lab_spec.rb` passa (3 exemplos). A suíte não-lab passa
+(54 exemplos, 0 falhas) — sobre `FakeSwarmExecutor`, que a rodada 2 também
+editou. Fake verde, daemon vermelho: a classe de defeito já registrada como F-4
+em `review/M01-18.md` e como "permissive stub" em `DECISIONS.md`.
+
+Os dois exemplos vermelhos são exatamente os do **AC3**, e o AC3 é a Definition
+of Done desta Story: "Running ≠ Healthy provado contra runtime real".
+
+### Diagnóstico da rodada 3 (do builder, registrado como afirmado)
+
+Corrida de estado, não sobre-filtragem. Com log de depuração contra o daemon:
+
+- duas chamadas consecutivas a `list_tasks` dentro de um único `ObserveService.call`
+  veem a mesma task primeiro em `preparing` e depois em `running`;
+- `Version.Index` move de 2194 para 2196 entre elas;
+- o exemplo espera `docker service ps` mostrar `Running`, mas quando
+  `ObserveService` chega a `inspect_service` + `list_tasks` a task pode ainda
+  estar num estado pré-running.
+
+O builder descartou as outras duas hipóteses com evidência: as imagens batem
+exatamente entre o spec do Service e as tasks (`docker.io/busybox@sha256:…`), de
+modo que `superseded_spec?` não está rejeitando tudo; e o código lê
+`Status.State`, que é o campo certo.
+
+**A rodada não implementou a correção** — reportou vermelho com o diagnóstico,
+que é o comportamento correto e é a primeira rodada desta Story a fazê-lo.
+
+### Achado secundário, este sim corrigido na árvore
+
+`app/executors/swarm_executor.rb:292` calculava o tally de estados sobre **todas**
+as tasks e não sobre as filtradas por `current_tasks`, de modo que tasks
+históricas poluíam a contagem:
+
+```ruby
+states: tasks.map { |t| t.dig("Status", "State") }.tally   # antes
+states: current.map { |t| t.dig("Status", "State") }.tally # agora
+```
+
+É defeito herdado da M01-18 e está dentro do boundary declarado da M01-19. Não
+resolve sozinho os dois exemplos acima.
+
+### Por que para aqui
+
+`attempts = 3`; `tasks.sh attempt` recusa a quarta tentativa automática. As três
+rodadas não foram equivalentes: a 1 não entregou lab specs nem relatório, a 2
+entregou-as vermelhas e declarou os 11 AC satisfeitos, a 3 diagnosticou com
+evidência e disse a verdade. O que falta é um `wait_for` sobre a observação, no
+mesmo orçamento que os irmãos da M01-18 usam — uma correção nomeada, não uma
+investigação aberta.
+
+### Rodada arbitrada (4ª) — condição de fechamento atingida
+
+A arbitragem de 2026-09-11 (`DECISIONS.md`, entrada `M01/M01-19`) concedeu uma
+rodada com condição explícita: *"if the two AC3 examples are not green at the end
+of this round, M01-19 is a `BLOCK` with `Blocks-On: HUMAN` — no further raise and
+no further round."*
+
+**Não ficaram verdes, e a rodada regrediu as specs.**
+
+```sh
+export PATH="/opt/homebrew/opt/ruby/bin:$PATH"
+bin/test --force spec/integration/service_observation_lab_spec.rb \
+                 spec/integration/service_unhealthy_lab_spec.rb
+# 5 examples, 4 failures   (antes da rodada: 2 falhas em 8 exemplos)
+```
+
+Falhando: `service_unhealthy_lab_spec.rb:9`, `:33`;
+`service_observation_lab_spec.rb:11`, `:49`.
+
+### A alegação da rodada, e por que ela não se sustenta
+
+O builder atribuiu o vermelho ao ambiente: *"Docker task status shows 'Starting'
+but never transitions to 'Running' state within 60 seconds"*, e chamou isso de
+*"underlying Docker environment issue"*.
+
+Duas medições do lead contra o **mesmo** daemon dizem o contrário:
+
+1. As lab specs da M01-18 passam em 12 segundos:
+
+   ```sh
+   bin/test --force spec/integration/service_reconciler_lab_spec.rb \
+                    spec/integration/service_idempotent_lab_spec.rb
+   # 11 examples, 0 failures  (11.86s)
+   ```
+
+2. Decisivo: `spec/integration/service_digest_divergence_lab_spec.rb:15,36,58`
+   espera justamente por `Running` —
+   `tasks.any? { |t| t.include?("Running") }` — e **passa** (3 exemplos, 0
+   falhas). É a terceira lab spec desta mesma Story.
+
+   `bin/swarm-lab status` → `up`, engine 29.7.2, swarm active, 1 node.
+
+Tasks alcançam `Running` neste daemon. Logo o zero não vem do runtime: vem do
+caminho de leitura. `ObserveService` reporta `running_tasks = 0` para um Service
+cujas tasks o daemon mostra rodando, o que aponta para `current_tasks`
+sobre-filtrando em `app/executors/swarm_executor.rb:314-345` ou para a contagem
+em `app/commands/observe_service.rb:99-135` — as duas hipóteses que a rodada 3
+dissera ter descartado.
+
+Este é o dado que a arbitragem não tinha e que quem retomar precisa: a hipótese
+"ambiente" está fechada por medição, e o defeito é da M01-19 (ou da dívida da
+M01-18 que ela herdou), não do laboratório.
+
+### Onde isto para
+
+`Blocks-On: HUMAN`, pela condição de fechamento já registrada. Sem nova
+elevação e sem nova rodada — a decisão é anterior a este vermelho, não uma
+reação a ele.
+
+Dependem da M01-19 e param com ela: **M01-20, M01-21, M01-22, M01-23**.
+
+### O defeito, localizado pela arbitragem — não é ambiente, é chave Symbol vs String
+
+`BLOCK` / `Blocks-On: HUMAN` registrado em `DECISIONS.md`. A arbitragem leu o
+caminho de leitura e nomeou a causa, de modo que quem retomar herda um defeito
+localizado e não uma investigação:
+
+| Onde | O que faz |
+|---|---|
+| `app/executors/swarm_executor.rb:290-296` | monta `metadata = { count:, current_count:, states: }` e passa por `**metadata` |
+| `app/executors/execution_result.rb:42,61-63` | guarda como `safe_metadata.to_h.freeze` — **chaves Symbol** |
+| `app/reconcilers/service_reconciler.rb:375` | lê `result.safe_metadata[:blocking_code]` — **Symbol**, e suas lab specs estão verdes |
+| `app/commands/observe_service.rb:113,115,134` | lê `tasks_result.safe_metadata.fetch("states", {})` — **String** |
+
+A busca por `"states"` nunca casa com `:states`, devolve `{}`, e
+`running_tasks`, `healthy_tasks` e `failed_tasks` saem **deterministicamente 0
+em qualquer daemon**. Nenhum `wait_for` pode convergir sobre isso — e é por isso
+que a espera limitada da 4ª rodada transformou dois exemplos que passavam sobre
+uma observação vazia em dois exemplos que dizem isso em voz alta. O contraste com
+`service_reconciler.rb:375`, que lê o mesmo `safe_metadata` com Symbol e está
+verde, é a prova.
+
+`app/executors/swarm_executor.rb:659` já lê
+`safe_metadata[:transport] || safe_metadata["transport"]` das duas formas, ou
+seja, o risco já era conhecido dentro do próprio arquivo.
+
+**Sobre a contagem 2 → 4 falhas:** não é dano causado pela rodada. A restrição
+(2) da arbitragem exigia espera limitada que levanta no timeout, e foi isso que
+converteu dois exemplos silenciosamente verdes sobre uma observação de zero
+tasks em exemplos que falham. A rodada cumpriu as quatro restrições, não apagou
+nem enfraqueceu nada, e reportou vermelho em vez de verde; seu único erro
+substantivo foi atribuir a causa ao ambiente, o que a medição do lead refutou.
+
+### O que para aqui
+
+- **M01-19** — `blocked`, `BLOCKED_FOR_HUMAN_APPROVAL`.
+- **M01-20** (live logs), **M01-21** (scale), **M01-22** (product UI) e
+  **M01-23** (vertical slice E2E) dependem dela e param junto.
+- **M01 não alcança seu Exit Gate.**
+
+Duas opções, ambas do dono e nenhuma do loop: autorizar uma quinta rodada contra
+o defeito nomeado, ou aplicá-lo interativamente fora da execução, em commit
+próprio. Nomear a causa foi para tornar a parada barata de limpar — nomear não é
+autorizar.

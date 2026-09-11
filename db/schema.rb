@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_11_001100) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_11_002000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -368,6 +368,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_001100) do
     t.check_constraint "team_id::text ~ '^[0-9A-HJKMNP-TV-Z]{26}$'::text", name: "resource_locks_team_id_is_ulid"
   end
 
+  create_table "service_observations", id: { type: :string, limit: 26 }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "desired_tasks", default: 0, null: false
+    t.bigint "docker_version_index"
+    t.integer "failed_tasks", default: 0, null: false
+    t.integer "healthy_tasks", default: 0, null: false
+    t.jsonb "nodes", default: []
+    t.timestamptz "observed_at", null: false
+    t.string "observed_image_digest"
+    t.integer "running_tasks", default: 0, null: false
+    t.string "service_id", limit: 26, null: false
+    t.string "swarm_service_id"
+    t.string "update_status"
+    t.datetime "updated_at", null: false
+    t.index ["observed_at"], name: "idx_service_obs_staleness"
+    t.index ["service_id", "observed_at"], name: "idx_service_obs_by_service_and_time"
+    t.index ["service_id"], name: "index_service_observations_on_service_id"
+  end
+
   create_table "services", id: { type: :string, limit: 26 }, force: :cascade do |t|
     t.bigint "applied_revision"
     t.timestamptz "archived_at"
@@ -657,6 +676,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_001100) do
   add_foreign_key "projects", "teams", on_delete: :restrict
   add_foreign_key "reconciliation_runs", "teams", on_delete: :restrict
   add_foreign_key "resource_locks", "teams", on_delete: :restrict
+  add_foreign_key "service_observations", "services"
   add_foreign_key "services", "environments", on_delete: :restrict
   add_foreign_key "services", "teams", on_delete: :restrict
   add_foreign_key "sessions", "users", on_delete: :cascade
