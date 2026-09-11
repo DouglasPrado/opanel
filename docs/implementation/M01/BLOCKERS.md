@@ -705,3 +705,55 @@ not green at the end of this round, `M01-17` is a `BLOCK` with `Blocks-On:
 HUMAN` — no further raise, no further ADR, no further round"
 (`DECISIONS.md`, terceira entrada de 2026-09-11). AC5 e AC6 estão verdes; o AC4
 não.
+
+---
+
+## M01-17 — rodada da lease: 118 exemplos, 0 falhas, e um High de base
+
+**Estado:** os quatro itens da quarta arbitragem de 2026-09-11 foram executados e
+o diagnóstico dela se confirmou na íntegra. `network_reconciler.rb:105` passou a
+liberar a lease com `Opanel::WorkerIdentity.current` — a identidade que
+`acquire_resource_lock.rb:49` grava — em vez da string `"system"` de
+`system_actor`, que nunca casava, caía no `else` vazio de
+`release_resource_lock.rb:26-38` e deixava a lease de 30 s presa; a segunda
+execução era então recusada em `:50` e voltava antes do Step 2, sem inspecionar
+nada e sem gravar `ReconciliationRun`, de modo que o `order(:created_at).last` do
+exemplo lia a linha `CREATE` da primeira execução. Era defeito de produção: a
+varredura periódica de `reconcile_networks_job.rb` abandonava uma lease por
+Environment a cada passagem.
+
+`spec/unit/network_reconciler_spec.rb:22` trocou `worker_identity: anything` pela
+identidade real, e o AC12 ganhou seu primeiro exemplo de verdade — lock com dono
+estranho e `lease_until` expirado, tomada com `fencing_token` incrementado, e a
+afirmação de que o **primeiro** comando que o executor recebe é `inspect_network`,
+antes de qualquer `create_network`.
+
+**Medição do lead, nos dezesseis arquivos declarados: 118 exemplos, 0 falhas.**
+Os doze Acceptance Criteria têm exemplo verde, incluindo AC4 e AC12, que eram os
+dois Criticals da revisão anterior. A condição de encerramento absoluta da
+arbitragem não disparou.
+
+**Revisão independente:** `review/M01-17-round-5.md`, `COUNTS 0 1 0 0`. Nenhum
+Critical. O único High é escopo: o revisor encontrou `bin/autopilot`,
+`bin/next-milestone` e seis arquivos de `tools/opanel-loop/**` no diff da Story e
+o classificou como violação de boundary.
+
+**Fato verificado sobre esse High, sem juízo sobre o veredito.** Os quatro commits
+desta Story não tocam `bin/` nem `tools/`:
+
+```sh
+$ git diff --name-only 888deb0~1 1f24e9c -- bin tools
+(vazio)
+```
+
+Os arquivos que o revisor lista entram no diff porque a base registrada da Story
+é `eafe075` e entre ela e o HEAD existem sete commits de manutenção do loop —
+`676d2a4`, `dd23d4d`, `a190608`, `0516320`, `22fdeef`, `81f49ce`, `634ad0d`,
+`55cc3b5` — nenhum deles desta Story e todos anteriores às rodadas desta sessão.
+É o mesmo defeito de escopo por base velha já arbitrado em
+`DECISIONS.md:82-86,150`. Um deles, `634ad0d`, carrega junto a implementação de
+ADR-0009 da M01-17, mistura que já estava commitada antes desta sessão começar.
+
+Os counts foram gravados como vieram. Corrigir um veredito é escrevê-lo, e o
+implementador não faz isso: quem decide o que a corrente faz com este High é a
+arbitragem.
