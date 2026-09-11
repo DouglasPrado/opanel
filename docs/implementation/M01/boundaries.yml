@@ -916,6 +916,14 @@ boundaries:
     - spec/integration/operation_recovery_sweep_spec.rb
     - spec/integration/operation_recovery_sweep_concurrent_spec.rb
     - spec/integration/inbox_dedup_spec.rb
+    # Declared late, and the lead's omission rather than the builder's. AC4
+    # is "an event delivered twice produces one logical effect", and the
+    # first pass proved it with `find_or_create_by`, which is check-then-
+    # write and not the guarantee. The lead asked for the race against the
+    # `UNIQUE(source, source_event_id)` constraint and forgot to declare the
+    # file it would need; `bin/gate post-commit` caught it, which is what it
+    # is for. The reason is in `reports/M01-14.md`.
+    - spec/integration/inbox_dedup_concurrent_spec.rb
     - spec/integration/queue_backpressure_spec.rb
     - spec/security/outbox_payload_redaction_spec.rb
     - spec/security/outbox_schema_version_spec.rb

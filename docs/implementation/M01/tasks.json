@@ -275,7 +275,7 @@
     {
       "id": "M01-14",
       "file": "stories/M01-14-outbox-dispatcher-and-recovery-sweep.md",
-      "status": "review",
+      "status": "done",
       "dependsOn": [
         "M01-13"
       ],
@@ -291,7 +291,8 @@
       "blockedReason": {
         "qualifier": "BLOCKED_FOR_HUMAN_APPROVAL",
         "diagnosis": "Automatic attempt budget exhausted (3). Preserve findings and evidence; continue independent Stories. A human must authorize a new attempt budget."
-      }
+      },
+      "commit": "a8a18e6"
     },
     {
       "id": "M01-15",
